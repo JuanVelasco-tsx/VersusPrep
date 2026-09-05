@@ -1,4 +1,4 @@
-﻿# Contributing / Flujo de trabajo
+# Contributing / Flujo de trabajo
 
 Referencia del manejo de ramas y commits para la implementacion del
 L4D2 Versus Addon Manager. El plan de tareas vive en
@@ -83,3 +83,43 @@ Al llegar a cada checkpoint, ANTES de mergear la(s) rama(s) de esa etapa a
 - Las ramas de feature se pushean a `origin` con `git push -u origin <rama>`.
 - El merge a `main` se hace tras la revision del checkpoint (localmente con
   `--no-ff` o via PR en GitHub, segun se prefiera).
+
+## Edicion de archivos de texto via terminal (encoding)
+
+Regla fija para evitar corrupcion de encoding al editar prosa (sobre todo en
+espanol, con acentos y con backticks de Markdown) desde la terminal de
+PowerShell. Estos problemas ya ocurrieron (BOM inyectado, backticks comidos,
+acentos convertidos en basura) y NO deben redescubrirse cada vez.
+
+1. **Escribir siempre sin BOM.** Usar `Set-Content -Encoding utf8NoBOM`
+   (o `New-Object System.Text.UTF8Encoding($false)` con
+   `[System.IO.File]::WriteAllText(...)`). NUNCA `Set-Content -Encoding utf8`
+   a secas en Windows PowerShell 5.x: agrega un BOM que ensucia el diff.
+
+2. **Leer con encoding UTF-8 explicito.** Al releer para reemplazar contenido,
+   usar `[System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)`.
+   Leer sin especificar encoding puede reinterpretar mal los acentos.
+
+3. **Evitar here-strings para texto con acentos o backticks.**
+   Dentro de un here-string (`@" ... "@`) de PowerShell el backtick es
+   caracter de escape y se come la letra siguiente, y la interpolacion puede
+   corromper caracteres. Preferir un **array de lineas simples** unido con
+   `-join` un salto de linea.
+
+4. **Backticks de Markdown via variable.** Cuando el texto necesite backticks
+   inline (para `codigo`), definir una variable `$bt = [char]0x60` e
+   interpolarla/concatenarla, en vez de escribir el backtick literal (que
+   PowerShell interpreta como escape).
+
+5. **Usar comillas simples para las lineas, insertar comillas dobles por
+   variable.** Dentro de comillas dobles, la secuencia backslash-comilla NO
+   es un escape valido en PowerShell; usar strings con comillas simples y
+   concatenar `[char]0x22` donde haga falta una comilla doble literal.
+
+6. **Verificar despues de escribir.** Confirmar que (a) los primeros bytes no
+   son `EF BB BF` (BOM), (b) los acentos se leen bien, y (c) el `git diff`
+   muestra solo el cambio buscado, sin lineas fantasma por encoding.
+
+> Nota: este documento se mantiene sin acentos a proposito, como capa extra
+> de seguridad. La regla de encoding aplica a los archivos de prosa que si
+> llevan acentos (p. ej. `Context/*.md` y los specs en espanol).
