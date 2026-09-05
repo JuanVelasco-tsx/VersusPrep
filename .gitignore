@@ -8,6 +8,13 @@ out/
 release/
 *.tsbuildinfo
 
+# ---- VPK: nunca versionar archivos VPK ----
+# Regla general: excluye cualquier .vpk en cualquier carpeta del repo por
+# defecto. Es la que realmente protege contra commitear VPK (fusionados,
+# fixtures binarios, copias de addons, etc.). Las reglas puntuales de mas
+# abajo quedan como redundancia documentativa.
+*.vpk
+
 # ---- Datos locales generados por LocalStore en tiempo de ejecucion ----
 # Contienen datos reales de CADA instalacion (ruta de Steam del usuario,
 # su Active_Set, presets, estado de sesion pendiente). NO pertenecen al repo.
@@ -16,10 +23,12 @@ release/
 *.db
 local-store.json
 localstore.json
-manifest.json
-paths.json
 app-data/
 userdata/
+# Acotados a la carpeta de datos de usuario para NO ignorar por accidente
+# archivos de codigo/build que puedan llamarse igual en la raiz o en src.
+userdata/manifest.json
+userdata/paths.json
 
 # ---- Carpetas de trabajo temporal del Manager (extraccion / fusion) ----
 # Si se prueba el flujo localmente dentro del repo, el Manager crea carpetas
