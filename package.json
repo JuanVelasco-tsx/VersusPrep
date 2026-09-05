@@ -1,0 +1,30 @@
+{
+  "name": "l4d2-versus-addon-manager",
+  "version": "0.1.0",
+  "description": "Gestor de addons de la Steam Workshop para el modo Versus de Left 4 Dead 2 (Electron + TypeScript).",
+  "private": true,
+  "author": "L4D2 Versus Addon Manager contributors",
+  "license": "MIT",
+  "main": "dist/main/main.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "electron:pack": "electron-builder --dir"
+  },
+  "dependencies": {
+    "better-sqlite3": "13.0.3"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "4.2.0",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "26.4.1",
+    "electron": "44.2.0",
+    "electron-builder": "26.15.3",
+    "fast-check": "4.9.0",
+    "typescript": "5.9.3",
+    "vitest": "5.0.0"
+  }
+}

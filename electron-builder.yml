@@ -1,0 +1,34 @@
+# Configuración base de empaquetado (electron-builder).
+#
+# Nota de privilegios (design.md, decisión ya tomada): la aplicación se empaqueta
+# con manifest `asInvoker`, NUNCA `requireAdministrator`. El grueso de la app
+# (escaneo, UI, detección de rutas, listado de VPK) no necesita privilegios; la
+# elevación se dispara SOLO bajo demanda para las escrituras en el Game_Root,
+# gestionada en tiempo de ejecución por el ElevationService (tarea 17).
+#
+# Esta config es un esqueleto coherente para la Tarea 1: no pretende producir un
+# build de producción completo (eso llega con la UI y el bundling del renderer).
+
+appId: com.l4d2.versus-addon-manager
+productName: L4D2 Versus Addon Manager
+copyright: Copyright © L4D2 Versus Addon Manager contributors
+
+directories:
+  output: release
+  buildResources: build
+
+# Empaquetamos únicamente la salida compilada y el manifiesto de dependencias.
+files:
+  - dist/**/*
+  - package.json
+
+win:
+  # Manifest asInvoker: la app arranca SIN elevación. La elevación UAC es
+  # bajo demanda (verbo "runas" en runtime), no vía el manifiesto del ejecutable.
+  requestedExecutionLevel: asInvoker
+  target:
+    - dir
+
+# better-sqlite3 es un módulo nativo: electron-builder lo reconstruye contra el
+# runtime de Electron durante el empaquetado.
+npmRebuild: true

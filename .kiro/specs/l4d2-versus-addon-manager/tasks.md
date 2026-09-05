@@ -1,4 +1,4 @@
-# Implementation Plan: L4D2 Versus Addon Manager
+﻿# Implementation Plan: L4D2 Versus Addon Manager
 
 ## Overview
 
@@ -17,7 +17,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
 
 ## Tasks
 
-- [ ] 1. Andamiaje del proyecto (Electron + TypeScript + testing + fast-check)
+- [x] 1. Andamiaje del proyecto (Electron + TypeScript + testing + fast-check)
   - Inicializar el proyecto Electron con TypeScript (main + preload + renderer), configurar `tsconfig` estricto, `electron-builder`/empaquetado base y el manifest de aplicación con `asInvoker` (no `requireAdministrator`)
   - Definir la estructura de carpetas: `src/main/domain/`, `src/main/app/`, `src/main/data/`, `src/preload/`, `src/renderer/`, `test/`, `test/fixtures/`
   - Configurar el test runner (Vitest o Jest) e integrar **fast-check**; crear un helper de test que fije `numRuns` a un mínimo de 100 iteraciones y una convención de nombre de propiedad `Feature: l4d2-versus-addon-manager, Property N: <título>`
