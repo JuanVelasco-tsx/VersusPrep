@@ -53,6 +53,13 @@ Context/       # documentacion de contexto del proyecto
 .kiro/specs/   # especificacion (requirements, design, tasks)
 ```
 
+## Flujo de trabajo (ramas y commits)
+
+El trabajo de implementacion se hace en ramas de feature (una por seccion de
+`tasks.md`); `main` no recibe push directo. La convencion completa de ramas,
+formato de commits y revision en cada checkpoint esta en
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Disclaimer
 
 Este es un **proyecto fan-made, no afiliado a Valve**. "Left 4 Dead 2" y la
