@@ -1,4 +1,4 @@
-﻿# Implementation Plan: L4D2 Versus Addon Manager
+# Implementation Plan: L4D2 Versus Addon Manager
 
 ## Overview
 
