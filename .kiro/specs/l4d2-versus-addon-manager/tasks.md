@@ -25,7 +25,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
   - _Requirements: base para 1-9_
 
 - [ ] 2. VpkTool: wrapper de `vpk.exe` (lógica con mocks)
-  - [ ] 2.1 Implementar el filtrado de ruido de la salida de `vpk.exe`
+  - [x] 2.1 Implementar el filtrado de ruido de la salida de `vpk.exe`
     - Función pura que descarta líneas de stdout que comienzan con `CDynamicFunction:`, `FS:` o `Using`, conservando el resto sin alterarlas; usada por `list()`
     - _Requirements: 6.2_
 
