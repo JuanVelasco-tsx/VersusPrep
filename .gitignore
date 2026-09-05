@@ -1,0 +1,68 @@
+﻿# ---- Dependencias ----
+node_modules/
+
+# ---- Salida de build / empaquetado (Electron + electron-builder) ----
+dist/
+build/
+out/
+release/
+*.tsbuildinfo
+
+# ---- Datos locales generados por LocalStore en tiempo de ejecucion ----
+# Contienen datos reales de CADA instalacion (ruta de Steam del usuario,
+# su Active_Set, presets, estado de sesion pendiente). NO pertenecen al repo.
+*.sqlite
+*.sqlite3
+*.db
+local-store.json
+localstore.json
+manifest.json
+paths.json
+app-data/
+userdata/
+
+# ---- Carpetas de trabajo temporal del Manager (extraccion / fusion) ----
+# Si se prueba el flujo localmente dentro del repo, el Manager crea carpetas
+# temporales de extraccion y fusion. No deben versionarse.
+work/
+tmp/
+temp/
+extract/
+pak01_dir/
+pak01_dir.vpk
+*.vpk.backup*
+test_vpk_extraction/
+test_collision/
+
+# ---- Fixtures de VPK generados localmente ----
+# Los VPK de prueba se GENERAN sinteticamente en cada maquina (ver
+# test/fixtures/README.md); no se versionan binarios .vpk.
+test/fixtures/**/*.vpk
+test/fixtures/vpk/generated/
+
+# ---- Logs ----
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Entorno / secretos ----
+.env
+.env.*
+!.env.example
+
+# ---- Artefactos de sistema operativo ----
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# ---- Editores / IDE ----
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+
+# ---- Cobertura de tests ----
+coverage/
+.nyc_output/
