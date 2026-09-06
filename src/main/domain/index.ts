@@ -7,6 +7,11 @@
 export type {
   GamePaths,
   LibraryEntry,
+  RequiredPathKey,
+  PathVerification,
+  PathDetectionSource,
+  PathDetectionFailureReason,
+  PathDetectionResult,
   AddonInfo,
   ScannedAddon,
   VScriptClassification,
@@ -75,3 +80,44 @@ export type {
   VpkOperation,
   VpkToolErrorInit,
 } from "./vpk-tool.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 1 — PathDetector): parseo del `libraryfolders.vdf`
+// (formato KeyValues de Valve) y selección de la primera biblioteca que contiene
+// L4D2 (`apps.550`) en orden de aparición (AC 1.3, 1.5, 1.6 — Tarea 5.1). La
+// lectura desde disco/registro y la derivación de rutas quedan para la tarea 5.3.
+// ---------------------------------------------------------------------------
+export {
+  LIBRARY_FOLDERS_ROOT_KEY,
+  LIBRARY_PATH_KEY,
+  LIBRARY_APPS_KEY,
+  parseVdf,
+  parseLibraryFolders,
+} from "./vdf-parser.js";
+export type { VdfNode, VdfEntry } from "./vdf-parser.js";
+
+export { L4D2_APP_ID, findGameLibrary } from "./path-detector.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 1 — PathDetector, Tarea 5.3): lectura del registro,
+// derivación de rutas y verificación en disco, orquestadas por `detect()` sobre
+// dependencias inyectables (registro + FS + selección manual). El constructor
+// `pathsReady` centraliza el invariante "no hay rutas listas para persistir sin
+// verificación en disco previa" (lo prueba la Tarea 5.4 / Property 2).
+// ---------------------------------------------------------------------------
+export {
+  STEAM_REGISTRY_HIVE,
+  STEAM_REGISTRY_KEY,
+  STEAM_REGISTRY_VALUE,
+  PathDetector,
+  pathsReady,
+} from "./path-detector.js";
+export type {
+  RegistryReader,
+  FileReadResult,
+  FileSystemProbe,
+  ManualPathRequest,
+  ManualPathResponse,
+  ManualPathProvider,
+  PathDetectorDeps,
+} from "./path-detector.js";

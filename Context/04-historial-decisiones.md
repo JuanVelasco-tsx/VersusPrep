@@ -226,6 +226,295 @@ MergeEngine (tarea 11).
 
 ---
 
+### [2026-09-05] Parseo de `libraryfolders.vdf` y `findGameLibrary` (Tarea 5.1)
+**Qué:** Se implementó la Tarea 5.1 (PathDetector, AC 1.3 / 1.5 / 1.6): un parser
+KeyValues de Valve (`src/main/domain/vdf-parser.ts`) y la selección de la
+Game_Library con `findGameLibrary` (`src/main/domain/path-detector.ts`). Ambos
+se re-exportan desde el barrel `src/main/domain/index.ts`.
+
+**CONFIRMACIÓN — `LibraryEntry = { path; apps: string[] }` de la Tarea 1 ALCANZA
+para la Tarea 5 (cierra el "A revisar" de la entrada [2026-09-05] de tipos de
+dominio):** `findGameLibrary` (5.1) solo necesita, por biblioteca, el conjunto
+ORDENADO de AppIDs (para saber si `"550"` está presente y respetar el orden de
+aparición) y el `path` (para devolverlo cuando gana). `derivePaths` (5.3) usará
+ese mismo `path`. NO hacen falta label/nombre de biblioteca ni el tamaño por app
+(el bloque `apps` real es `appid -> bytes`; el tamaño se descarta). Por tanto NO
+se amplió `LibraryEntry`: la forma mínima de la Tarea 1 es suficiente. Este punto
+queda CERRADO.
+
+**Decisión de firma del parser (opera sobre CONTENIDO, no sobre ruta):** aunque
+`design.md` muestra `parseLibraryFolders(steamPath: string)`, la subtarea 5.1 es
+parseo PURO y testeable, así que `parseLibraryFolders(content: string)` opera
+sobre el TEXTO del archivo. La lectura desde disco a partir de `steamPath`
+(`readSteamPath` → leer `<steamPath>\steamapps\libraryfolders.vdf` → parsear)
+queda para la Tarea 5.3, que compondrá el I/O con este parser puro. Motivo:
+aislar el I/O del parseo hace el parser trivialmente testeable (unit + property).
+
+**Decisiones de comportamiento del parser KeyValues no fijadas por el spec:**
+  - **Comentarios `//`.** Se soportan: `//` FUERA de comillas descarta el resto
+    de la línea; `//` DENTRO de comillas es parte del valor (p. ej. `http://...`).
+  - **Tokens sin comillas.** El tokenizador los acepta por robustez (delimitados
+    por espacios/llaves), aunque `libraryfolders.vdf` en la práctica va todo
+    entrecomillado.
+  - **Casing de claves ESTRUCTURALES (`libraryfolders`, `path`, `apps`).** Se
+    comparan INSENSIBLE a mayúsculas (el nombre de campo del formato de Valve no
+    es sensible al casing). Los VALORES (rutas, AppIDs) se conservan tal cual.
+  - **Casing de la clave `"550"`.** Comparación EXACTA contra el literal `"550"`
+    (`L4D2_APP_ID`); al ser numérica, el casing no altera el dígito.
+  - **Claves duplicadas.** Los AppIDs del bloque `apps` se PRESERVAN en orden de
+    aparición, incluyendo duplicados (no se deduplican). Ante `path` duplicado en
+    una biblioteca, gana la ÚLTIMA ocurrencia ("última asignación gana").
+  - **Biblioteca sin `path`/sin `apps`.** `path` ausente → `""` (la verificación
+    en disco de 5.3 la descartará); `apps` ausente → `[]`.
+  - **Raíz.** Se busca el bloque `libraryfolders` (insensible a mayúsculas); si
+    falta el envoltorio, se toleran las entradas de nivel superior directamente.
+  - **Representación del árbol.** El nodo KeyValues es una lista ORDENADA de pares
+    (`VdfEntry[]`), no un `Record`, para preservar orden y admitir duplicados.
+
+**Verificación:** `npm run typecheck` (tsc estricto) pasa sin errores y `npm test`
+(Vitest) pasa las 54 pruebas, incluidas las 13 nuevas de `test/path-detector.test.ts`
+(parser: estructura real, indentación/tabs, `\r\n`, comentarios `//`, vacío, sin
+`apps`; selección: 0 con 550→null, varias→gana la primera, L4D2 en otro disco,
+única con 550, lista vacía). El property test de selección (Property 1) es la
+Tarea 5.2 y NO se implementó aquí.
+
+**Impacto:** `src/main/domain/vdf-parser.ts` y `src/main/domain/path-detector.ts`
+(nuevos), `src/main/domain/index.ts` (barrel) y `test/path-detector.test.ts`
+(nuevo). Condiciona la Tarea 5.2 (Property 1) y la Tarea 5.3 (`readSteamPath`,
+`derivePaths`, `verifyPathsOnDisk`, `detect`), que compondrán el I/O sobre este
+parser puro.
+
+---
+
+### [2026-09-05] Property test de selección de biblioteca vía VDF real (Tarea 5.2)
+**Qué:** Se implementó la Tarea 5.2 (Property 1: "Selección de la primera
+biblioteca con L4D2", AC 1.5) en `test/path-detector.property.test.ts`. El
+requisito explícito era ejercitar el PIPELINE COMPLETO
+`parseLibraryFolders` → `findGameLibrary`, no la selección aislada sobre
+`LibraryEntry[]` ya parseadas.
+**Decisiones no triviales del generador:**
+  - **VDF-texto, no estructuras parseadas.** El arbitrary genera un MODELO
+    abstracto de bibliotecas (lista ordenada; cada una con fragmento de path,
+    lista ordenada de AppIDs de ruido y un flag `hasL4D2` + posición de
+    inserción del literal `"550"`), y a partir de él RENDERIZA un
+    `libraryfolders.vdf` válido que pasa por el parser real. Así el test valida
+    tokenizador + árbol + selección juntos, como en producción.
+  - **Charset SEGURO de paths.** Los paths se generan con un charset acotado
+    (letras/dígitos/espacio/`:`/`\`/`/`/`.`/`-`/`_`/`()`), SIN `"` ni saltos de
+    línea/tab. El único carácter con escape es `\`, que al renderizar se emite
+    como `\\` para que el parser lo colapse a `\` y el path parseado vuelva
+    idéntico al generado. Se evitan a propósito `"` y saltos de línea: no aportan
+    cobertura sobre la política de SELECCIÓN y solo complicarían el escaping.
+  - **Unicidad por índice.** Cada path se prefija con su índice (`L{i}|...`) para
+    que la aserción `.toBe(expected)` sea inequívoca aun cuando varias
+    bibliotecas contengan `"550"`.
+  - **Literal `"550"` exacto.** El ruido usa un conjunto fijo de AppIDs
+    (`440/620/228980/570/730/240`) que NO incluye `"550"` ni variantes tipo
+    `"0550"`; la presencia de L4D2 se controla solo con el flag `hasL4D2`.
+  - **Esperado desde el MODELO (fuente independiente).** El resultado esperado
+    (path de la primera lib con `hasL4D2`, o `null`) se computa recorriendo el
+    modelo generado, NO reimplementando `findGameLibrary` sobre `LibraryEntry[]`.
+  - Se cubren 0 bibliotecas, `apps` vacío, `"550"` en posición arbitraria con
+    ruido alrededor y orden de aparición variado.
+**Verificación:** `npm run typecheck` (tsc estricto) y `npm test` (Vitest) pasan;
+la suite completa quedó en 55 tests (54 previos + el nuevo property test, con el
+piso de 100 iteraciones del helper `propertyTest`).
+**Impacto:** `test/path-detector.property.test.ts` (nuevo). Cierra la Tarea 5.2.
+
+---
+
+### [2026-09-05] PathDetector: registro, derivación, verificación y `detect` (Tarea 5.3)
+**Qué:** Se implementó la Tarea 5.3 (AC 1.1, 1.2, 1.4, 1.6–1.12): lectura del
+registro (`readSteamPath`), derivación de rutas (`derivePaths`), verificación en
+disco (`verifyPathsOnDisk`) y la orquestación completa (`detect`), sobre
+dependencias inyectables. Además se definieron los dos tipos de dominio que
+quedaron pendientes de la Tarea 1.
+
+**Forma elegida de `PathVerification` (en `types.ts`):**
+`{ present: Record<RequiredPathKey, boolean>; missing: RequiredPathKey[]; allPresent: boolean }`.
+Se decidió NO usar un booleano global: `detect` (AC 1.10) necesita saber QUÉ
+ruta específica falta para ofrecer la selección manual de ESA ruta y no de
+todas. El núcleo es el mapa `present` (una entrada por CADA ruta requerida,
+usando `Record<RequiredPathKey, boolean>` para que el compilador exija verificar
+todas y no "olvidar" ninguna); `missing` y `allPresent` son derivados de
+conveniencia. Se introdujo `RequiredPathKey` como subconjunto tipado de las
+claves de `GamePaths` (`gameRoot | workshopFolder | vpkToolPath | gameInfoFile |
+modsvsFolder`) — las 5 que enumera el AC 1.9 — para que ni la verificación ni
+`detect` puedan referir un rol de ruta inexistente. `steamPath` y `left4dead2Dir`
+NO se verifican como requeridas (el AC 1.9 no las lista).
+
+**Forma elegida de `PathDetectionResult` (en `types.ts`):** UNIÓN DISCRIMINADA
+por `kind`, al estilo de `OperationResult`/`ElevationOutcome`. Motivo: el flujo
+tiene caminos cualitativamente distintos con datos distintos, y la unión obliga
+al consumidor a manejarlos explícitamente. Dos variantes:
+  - `ready`: rutas verificadas y listas para persistir; lleva `paths`,
+    `verification` (la que las respalda) y `source: "auto" | "manual"`.
+  - `needs-manual`: la detección no se completó; lleva `reason`
+    (`PathDetectionFailureReason`: `steam-not-installed` AC 1.2 /
+    `library-folders-unreadable` AC 1.4 / `l4d2-not-in-libraries` AC 1.6 /
+    `required-path-missing` AC 1.10) para que la UI sepa QUÉ selección manual
+    ofrecer, más `paths?`/`verification?` opcionales cuando el fallo ocurrió tras
+    derivar rutas.
+
+**Interfaces inyectables (patrón `CommandRunner` de la Tarea 2.7):** el dominio
+depende de interfaces, no de módulos concretos, para ser testeable sin registro,
+FS ni UI reales:
+  - `RegistryReader.readValue(hive, key, value) => Promise<string | null>`: `null`
+    si la clave/valor no existe (AC 1.2). La implementación real (winreg / `reg
+    query` vía runner) es de una tarea posterior.
+  - `FileSystemProbe`: `readTextFile(path) => Promise<FileReadResult>` (unión
+    `{ ok:true; content } | { ok:false }`, sin excepciones, para que `detect`
+    decida el camino de fallo sin try/catch) y `exists(path) => Promise<boolean>`.
+  - `ManualPathProvider.requestPath(request) => Promise<ManualPathResponse>`:
+    `request` es `ManualPathRequest` (`steam-path` / `game-root` /
+    `required-path` con su `pathKey`) y la respuesta es
+    `{ kind:"selected"; path } | { kind:"cancelled" }` (unión, no `string|null`,
+    para forzar el manejo explícito de la cancelación). Mantiene `detect`
+    desacoplado de Electron/diálogos.
+Las tres se pasan por CONSTRUCTOR (`PathDetectorDeps`), como `VpkTool` recibe
+runner + vpkExe.
+
+**Cómo se garantiza estructuralmente "no persistir sin verificación" (invariante
+que probará la Tarea 5.4 / Property 2):** el estado `ready` de
+`PathDetectionResult` es el ÚNICO que representa "rutas listas para persistir", y
+se construye EXCLUSIVAMENTE a través del constructor `pathsReady(paths,
+verification, source)`, que devuelve `ready` sólo si `verification.allPresent ===
+true`; en caso contrario devuelve `needs-manual` con `required-path-missing`.
+Ningún camino de código fabrica el literal `{ kind: "ready", ... }` a mano: tanto
+la detección automática como la selección manual desembocan en `#verifyThenManual`,
+que llama a `verifyPathsOnDisk` y luego a `pathsReady`. Así es imposible alcanzar
+`ready` sin una verificación en disco cuyas 5 rutas requeridas estén todas
+presentes. La selección manual, además, re-verifica en disco la ruta elegida
+antes de aceptarla (`#requestExisting` reintenta si no existe, AC 1.11/1.12), y
+tras suplir una ruta se re-verifica el conjunto completo (AC 1.11).
+
+**Decisión de join de rutas:** se usa un join LITERAL con `\` (`joinWindows`), NO
+`path.join` de Node, por la misma razón documentada para `internalPathToDiskPath`:
+`path.join` depende de la plataforma de EJECUCIÓN (usaría `/` en Linux/CI) mientras
+que las rutas de L4D2 son de Windows por definición. Mantiene el resultado
+determinista en cualquier SO (los tests corren en CI no-Windows).
+
+**Cierra el pendiente de la Tarea 1:** el segundo punto del "A revisar" de la
+entrada [2026-09-05] "Decisiones de forma … tipos de dominio no explícitos"
+(`PathVerification` y `PathDetectionResult` sin definir) queda CERRADO: ambos se
+definieron aquí, junto a la implementación que los consume.
+
+**Verificación:** `npm run typecheck` (tsc estricto) pasa sin errores y `npm test`
+(Vitest) pasa las 72 pruebas (11 archivos), incluidas las nuevas de la Tarea 5.3
+en `test/path-detector.test.ts` (readSteamPath null/valor/vacío; derivePaths en
+otro disco; verifyPathsOnDisk faltantes/allPresent; invariante de `pathsReady`;
+`detect`: camino feliz, Steam ausente cancelado/suplido, VDF ausente, ninguna lib
+con 550, ruta faltante con selección + re-verificación, reintento AC 1.12 y
+cancelación). El property test formal (Property 2) es la Tarea 5.4 y NO se
+implementó aquí.
+
+**Impacto:** `src/main/domain/types.ts` (tipos nuevos), `src/main/domain/path-detector.ts`
+(implementación + interfaces inyectables), `src/main/domain/index.ts` (barrel) y
+`test/path-detector.test.ts` (tests). Condiciona la Tarea 5.4 (Property 2), la
+Tarea 15/18 (persistencia real de rutas vía `LocalStore.savePaths`, AC 1.13) y la
+Tarea 20 (capa IPC que consumirá `detect`).
+
+---
+
+### [2026-09-05] Property 2 (Tarea 5.4): generador y oráculo de "no persistir sin verificación"
+
+**Contexto:** la Tarea 5.4 escribe el property test de la Property 2 ("Ninguna
+ruta se persiste sin verificación en disco", Validates 1.9/1.11/1.13) sobre el
+`detect()` real de la Tarea 5.3. El invariante ya está garantizado
+estructuralmente por `pathsReady` (ver entrada anterior); la Property 2 lo
+CONFIRMA end-to-end ejerciendo el pipeline real y usando el FS mock como oráculo
+independiente.
+
+**Decisiones no triviales del generador (`test/path-detector.property.test.ts`):**
+
+- **Oráculo = FS mock, no reimplementación.** El test NUNCA reimplementa
+  `detect`/`verifyPathsOnDisk`. Deriva las 5 rutas requeridas con el
+  `derivePaths(LIB, STEAM)` real y consulta `fs.existing.has(path)` como fuente de
+  verdad independiente sobre el resultado de `detect()`. Así la propiedad compara
+  el comportamiento del código contra un oráculo externo (existencia real en el
+  FS), no contra sí mismo.
+
+- **Anti-bucle infinito (clave).** `#requestExisting` reintenta ante una ruta
+  `selected` que no existe (AC 1.12) y solo termina ante `cancelled` o una ruta
+  existente. Para que el test no cuelgue, el `MockManual` consume una COLA FINITA
+  de respuestas por request (0..4 elementos) y, AL AGOTARSE, devuelve `cancelled`.
+  Como las colas son finitas, tras a lo sumo N iteraciones el provider cancela y
+  el bucle termina. Se confirmó empíricamente: la suite del property test corre en
+  ~2s sin colgarse.
+
+- **Cobertura de los tres sub-casos de respuestas manuales (c).** Cada respuesta
+  del generador es (i) cancelación, (ii) selección de una ruta FIJA fuera del Set
+  del FS (`Z:\nope\*`, fuerza el reintento de AC 1.12), o (iii) selección de una
+  ruta requerida que el escenario marcó como existente (candidatas tomadas del
+  propio Set del FS). Las rutas "inexistentes" nunca se añaden al FS, garantizando
+  que jamás sean aceptadas en un `ready`.
+
+- **Dos caminos de derivación.** `useVdf=true` entrega un `libraryfolders.vdf` con
+  550 en LIB → `detect` deriva por Game_Library y verifica (camino principal).
+  `useVdf=false` deja el VDF ausente → `detect` pide Game_Root (camino manual). El
+  registro SIEMPRE devuelve STEAM (no se ejercita el fallo de registro aquí; eso
+  ya lo cubren los unit tests).
+
+- **Propiedades verificadas:** (a) si `ready`, las 5 rutas finales existen en el
+  FS y `verification.allPresent && missing==[]`; (b) en `needs-manual` con
+  paths+verification, `missing` coincide EXACTAMENTE con las rutas finales
+  inexistentes (existente⇒no en missing; ausente⇒en missing) y `allPresent` es
+  false; (c) reforzado dentro de (a): ninguna ruta final de un `ready` es
+  reportada inexistente por el FS.
+
+**Orden de claves requerido:** el property test declara LOCALMENTE el orden
+canónico de las 5 `RequiredPathKey` (en vez de importar el `REQUIRED_PATH_KEYS`
+interno del dominio) para no acoplarse a un símbolo interno ni tocar `src`; el
+tipado `readonly RequiredPathKey[]` hace que cualquier cambio en las claves
+requeridas rompa la compilación del test.
+
+**Tests de cancelación añadidos (unit, `test/path-detector.test.ts`):** se
+completó la cobertura de cancelaciones terminales que faltaba: Game_Root cancelado
+tras VDF ausente (→ `library-folders-unreadable`), Game_Root cancelado tras
+ninguna lib con 550 (→ `l4d2-not-in-libraries`), y confirmación de que la
+cancelación invoca al provider UNA sola vez (no reintenta; el bucle de
+`#requestExisting` es solo para `selected` inexistente).
+
+**Verificación:** `npm run typecheck` (tsc estricto) pasa; `npx vitest run` pasa
+las 76 pruebas (11 archivos), incluidas Property 1, Property 2 (>=100 iteraciones)
+y los 3 tests de cancelación nuevos.
+
+**Impacto:** `test/path-detector.property.test.ts` (Property 2) y
+`test/path-detector.test.ts` (tests de cancelación); sin cambios en `src`.
+Cierra la cobertura formal del Requirement 1 (PathDetector).
+
+---
+
+### [2026-09-05] Hardening de la Property 2 (tarea 5.4)
+
+**Qué:** dos refuerzos sobre `test/path-detector.property.test.ts`, sin cambiar el
+alcance de la tarea 5.4 ni tocar `src`.
+1. **No-vacuidad.** La Property 2 pasó de registrarse con el helper `propertyTest`
+   a un `test()` propio (nombre canónico idéntico vía `propertyName(2, ...)`) para
+   poder correr una aserción DESPUÉS de que la propiedad complete sus iteraciones.
+   Se cuenta `readyCount` (iteraciones que terminan en `ready`) y se afirma
+   `expect(readyCount).toBeGreaterThan(0)`, garantizando que la implicación "si
+   ready entonces las 5 rutas existen" NO fue vacuamente verdadera. Observado:
+   `readyCount ≈ 9` sobre 100 iteraciones (`MIN_NUM_RUNS`).
+2. **Exhaustividad de tipos.** Junto a la constante local `REQUIRED_KEYS` se añadió
+   un artefacto de solo-tipos (`... satisfies Record<RequiredPathKey, true>`, con
+   `void` para descartar el runtime). Si el union `RequiredPathKey` del dominio
+   crece y `REQUIRED_KEYS` queda desactualizada, faltaría una clave en el objeto y
+   el `satisfies` haría fallar el typecheck del test.
+
+**Motivo:** blindar la Property 2 contra falsos verdes: que el camino `ready`
+realmente se ejerza (no-vacuidad) y que las claves requeridas del test no queden
+silenciosamente desalineadas con el dominio (exhaustividad en compile-time).
+
+**Verificación:** `npm run typecheck` (tsc estricto) pasa; `npx vitest run` sigue
+verde con 76 pruebas (11 archivos) —el conteo no cambia porque la Property 2 sigue
+siendo un único test.
+
+**Impacto:** solo `test/path-detector.property.test.ts`; sin cambios en `src` ni en
+el estado de la tarea 5.4 (sigue `[x]`).
+
+---
+
 ## Plantilla para entradas futuras
 
 ```
@@ -235,3 +524,9 @@ MergeEngine (tarea 11).
 **Alternativas descartadas:** (opcional) qué otras opciones se evaluaron.
 **Impacto:** qué archivos, módulos o decisiones futuras afecta.
 ```
+
+### [2026-09-06] Fix: chequeo de exhaustividad de REQUIRED_KEYS era vacuo (test path-detector)
+**Qué:** En `test/path-detector.property.test.ts` el chequeo de exhaustividad agregado en el hardening de la tarea 5.4 (commit 05f4401) no cumplía su función: usaba `Object.fromEntries(...) as Record<RequiredPathKey, true>` y luego un `satisfies Record<RequiredPathKey, true>`. El `as` forzaba el tipo del valor y el `satisfies` lo comparaba contra ese mismo tipo ya forzado, así que SIEMPRE pasaba aunque `REQUIRED_KEYS` estuviera incompleto.
+**Decisión:** `REQUIRED_KEYS` pasa a ser una TUPLA literal (`as const satisfies readonly RequiredPathKey[]`) y el chequeo se reemplaza por un assert puramente a nivel de tipos (`type AssertExhaustive<Keys> = [RequiredPathKey] extends [Keys[number]] ? true : never`), SIN ningún `as`. Si el union `RequiredPathKey` crece y la tupla no se actualiza, el assert resuelve a `never` y el typecheck falla.
+**Evidencia:** al quitar temporalmente una entrada de la tupla, `npm run typecheck` falla con `TS2322: Type 'true' is not assignable to type 'never'` en `_requiredKeysExhaustive`, confirmando que la comprobación ya no es vacua. Con la tupla completa, typecheck pasa y la suite sigue 76/76.
+**Motivo:** un cast anula la verificación; el tipo objetivo debe derivarse de la tupla literal, no de un `as`.

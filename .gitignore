@@ -75,3 +75,8 @@ Desktop.ini
 # ---- Cobertura de tests ----
 coverage/
 .nyc_output/
+
+# ---- Metadata interna del sistema de gestion de tareas de Kiro ----
+# tasks.meta.json es estado de tracking del orquestador de tareas, no
+# codigo del proyecto. No pertenece al repo.
+**/tasks.meta.json

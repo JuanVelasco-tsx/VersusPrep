@@ -52,6 +52,135 @@ export interface LibraryEntry {
   apps: string[];
 }
 
+/**
+ * Claves de `GamePaths` que el AC 1.9 enumera como REQUERIDAS de verificar en
+ * disco: `gameRoot`, `workshopFolder`, `vpkToolPath`, `gameInfoFile` y
+ * `modsvsFolder`.
+ *
+ * Se modela como un subconjunto tipado de las claves de {@link GamePaths} (no un
+ * `string` libre) para que `verifyPathsOnDisk` y `detect` (tarea 5.3) no puedan
+ * referirse a un rol de ruta inexistente y para que, ante cualquier cambio de
+ * `GamePaths`, el compilador obligue a revisar qué rutas se verifican. `steamPath`
+ * y `left4dead2Dir` NO están aquí: el AC 1.9 no los lista como requeridos (ver la
+ * DECISIÓN documentada en el historial 2026-09-05, tarea 5.3).
+ */
+export type RequiredPathKey =
+  | "gameRoot"
+  | "workshopFolder"
+  | "vpkToolPath"
+  | "gameInfoFile"
+  | "modsvsFolder";
+
+/**
+ * Resultado de verificar en disco las rutas REQUERIDAS de un {@link GamePaths}
+ * (AC 1.9).
+ *
+ * DECISIÓN DE FORMA (documentada): NO se usa un booleano global. `detect` (AC
+ * 1.10) necesita saber QUÉ ruta específica falta para ofrecer la selección
+ * manual de ESA ruta y no de todas; un simple `boolean` perdería esa
+ * información. Por eso el núcleo es `present`, un mapa ruta→existencia con una
+ * entrada por CADA {@link RequiredPathKey} (todas presentes en el objeto; el
+ * valor dice si existe o no). De ahí se derivan dos conveniencias:
+ *
+ *  - `missing`: la lista de claves cuyo `present[key] === false`, en el orden de
+ *    {@link RequiredPathKey}, para que `detect` recorra e itere las rutas a pedir.
+ *  - `allPresent`: `true` si y solo si `missing.length === 0` (ninguna falta).
+ *
+ * `allPresent` es el ÚNICO predicado que habilita construir el estado "listo para
+ * persistir" de {@link PathDetectionResult} (ver invariante allí): así se hace
+ * estructuralmente imposible marcar rutas como persistibles sin una verificación
+ * en disco cuyas rutas requeridas estén TODAS presentes.
+ *
+ * Se usa `Record<RequiredPathKey, boolean>` (todas las claves obligatorias) en
+ * vez de un mapa parcial, para que el compilador garantice que se verificó CADA
+ * ruta requerida —no se puede "olvidar" una— antes de derivar `allPresent`.
+ */
+export interface PathVerification {
+  /** Existencia en disco de cada ruta requerida (una entrada por clave). */
+  present: Record<RequiredPathKey, boolean>;
+  /** Claves cuyas rutas NO existen en disco, en orden de {@link RequiredPathKey}. */
+  missing: RequiredPathKey[];
+  /** `true` solo si todas las rutas requeridas existen (`missing` vacío). */
+  allPresent: boolean;
+}
+
+/**
+ * Cómo se llegó a un {@link GamePaths}: por detección automática (registro +
+ * `libraryfolders.vdf`) o porque el usuario suplió al menos una ruta manualmente
+ * tras un fallo de la detección (AC 1.10–1.12). Útil para que la UI comunique el
+ * origen y para trazabilidad.
+ */
+export type PathDetectionSource = "auto" | "manual";
+
+/**
+ * Motivo por el que la detección AUTOMÁTICA no pudo completarse por sí sola y
+ * requiere selección manual. Cada variante mapea 1:1 con un AC de fallo del
+ * Requirement 1 y dice al orquestador/UI QUÉ selección manual ofrecer:
+ *
+ *  - `steam-not-installed` (AC 1.2): falta la clave/valor del registro →
+ *    selección manual del Steam_Path.
+ *  - `library-folders-unreadable` (AC 1.4): `libraryfolders.vdf` ausente,
+ *    ilegible o KeyValues malformado → selección manual del Game_Root.
+ *  - `l4d2-not-in-libraries` (AC 1.6): ninguna biblioteca contiene `550` →
+ *    selección manual del Game_Root.
+ *  - `required-path-missing` (AC 1.10): la detección llegó a derivar rutas pero
+ *    una o más rutas requeridas no existen en disco → selección manual de esas
+ *    rutas.
+ */
+export type PathDetectionFailureReason =
+  | "steam-not-installed"
+  | "library-folders-unreadable"
+  | "l4d2-not-in-libraries"
+  | "required-path-missing";
+
+/**
+ * Resultado del flujo completo de `PathDetector.detect()` (AC 1.1–1.12).
+ *
+ * DECISIÓN DE FORMA (documentada): se modela como UNIÓN DISCRIMINADA por `kind`,
+ * siguiendo el estilo de `OperationResult`/`ElevationOutcome` de este módulo.
+ * Motivo: el flujo tiene caminos cualitativamente distintos (rutas listas vs.
+ * distintos modos de fallo que piden selecciones manuales distintas y vs.
+ * cancelación del usuario), y cada uno acarrea datos diferentes. Una unión
+ * discriminada obliga al consumidor (orquestador/IPC, tarea 20) a manejar cada
+ * caso explícitamente y evita campos "válidos a veces".
+ *
+ *  - `kind: "ready"` — RUTAS LISTAS PARA PERSISTIR. Es el ÚNICO estado que
+ *    representa un `GamePaths` verificado y persistible. INVARIANTE ESTRUCTURAL
+ *    (lo prueba la tarea 5.4 / Property 2): esta variante SOLO puede construirse
+ *    a partir de un {@link PathVerification} con `allPresent === true`. Por eso
+ *    lleva embebido el `verification` que la respalda: no existe un `ready` sin
+ *    su verificación exitosa adjunta. El constructor `pathsReady` (path-detector.ts)
+ *    es el único camino de código que la produce y valida `allPresent` antes de
+ *    hacerlo; no hay otra forma de fabricar un `ready`. `source` indica si las
+ *    rutas vinieron de detección automática o de selección manual (ambas pasan
+ *    por la MISMA verificación en disco antes de llegar a `ready`).
+ *    NOTA: la PERSISTENCIA en sí (LocalStore.savePaths, AC 1.13) NO ocurre aquí;
+ *    es de una tarea posterior. `ready` solo significa "verificado y apto para
+ *    que el orquestador lo persista".
+ *
+ *  - `kind: "needs-manual"` — la detección no pudo completarse automáticamente y
+ *    se agotaron/rechazaron las oportunidades de selección manual, o el usuario
+ *    canceló. Lleva el `reason` (qué falló, AC 1.2/1.4/1.6/1.10) para que la UI
+ *    informe el motivo y ofrezca la selección manual pertinente. `paths` y
+ *    `verification` son opcionales: se incluyen cuando el fallo ocurrió después
+ *    de derivar rutas (`required-path-missing`), aportando qué rutas faltaban.
+ */
+export type PathDetectionResult =
+  | {
+      kind: "ready";
+      paths: GamePaths;
+      verification: PathVerification;
+      source: PathDetectionSource;
+    }
+  | {
+      kind: "needs-manual";
+      reason: PathDetectionFailureReason;
+      /** Rutas derivadas hasta el punto del fallo, si ya se habían derivado. */
+      paths?: GamePaths;
+      /** Verificación que reveló las rutas faltantes, si aplica. */
+      verification?: PathVerification;
+    };
+
 // ---------------------------------------------------------------------------
 // Requirement 2 — Escaneo de la Workshop_Folder (AddonScanner)
 // ---------------------------------------------------------------------------

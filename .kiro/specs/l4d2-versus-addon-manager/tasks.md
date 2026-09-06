@@ -73,20 +73,20 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 5. PathDetector (Requirement 1)
-  - [ ] 5.1 Implementar el parseo de `libraryfolders.vdf` y `findGameLibrary`
+  - [x] 5.1 Implementar el parseo de `libraryfolders.vdf` y `findGameLibrary`
     - Parser KeyValues de Valve; `findGameLibrary` selecciona la primera entrada cuyo bloque `apps` contiene la clave `550` en orden de aparición, o `null`
     - _Requirements: 1.3, 1.5_
 
-  - [ ]* 5.2 Escribir property test de selección de biblioteca
+  - [x]* 5.2 Escribir property test de selección de biblioteca
     - **Feature: l4d2-versus-addon-manager, Property 1: Selección de la primera biblioteca con L4D2**
     - **Validates: Requirements 1.5**
     - fast-check, mínimo 100 iteraciones, generando contenidos válidos de `libraryfolders.vdf` con 0..n bibliotecas conteniendo o no la clave `550`
 
-  - [ ] 5.3 Implementar lectura del registro, derivación de rutas y verificación en disco
+  - [x] 5.3 Implementar lectura del registro, derivación de rutas y verificación en disco
     - `readSteamPath` (HKCU\Software\Valve\Steam:SteamPath, `null` si ausente), `derivePaths` (usa el `path` de la Game_Library incluso en otro disco), `verifyPathsOnDisk` (marca faltantes), y `detect` que orquesta todo y ofrece selección manual con re-verificación ante fallos; el acceso al registro y al FS se inyecta para testeo
     - _Requirements: 1.1, 1.2, 1.4, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12_
 
-  - [ ]* 5.4 Escribir property test de verificación previa a persistencia
+  - [x]* 5.4 Escribir property test de verificación previa a persistencia
     - **Feature: l4d2-versus-addon-manager, Property 2: Ninguna ruta se persiste sin verificación en disco**
     - **Validates: Requirements 1.9, 1.11, 1.13**
     - fast-check con FS mockeado, mínimo 100 iteraciones; solo se persisten rutas verificadas, y toda ruta requerida inexistente se marca faltante
