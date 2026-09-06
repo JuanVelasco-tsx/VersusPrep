@@ -158,6 +158,42 @@ debe reemplazarse por `path.sep`.
 
 ---
 
+### [2026-09-05] Forma de CommandRunner y VpkToolError (Tarea 2.7)
+**Qué:** La tarea 2.7 introdujo dos tipos nuevos que el spec no fija (no están en
+los 12 tipos de la tarea 1): la interfaz inyectable `CommandRunner` (+ `CommandResult`)
+y el error tipado `VpkToolError`. Decisiones de forma tomadas:
+
+  - **`CommandRunner.run()` RESUELVE (no rechaza) para CUALQUIER exit code**, y solo
+    rechaza la promesa si el proceso NO pudo siquiera lanzarse (p. ej. ejecutable
+    inexistente). Motivo: la responsabilidad de decidir QUÉ exit code es "éxito"
+    queda en `VpkTool` (método privado `#assertSuccess`, criterio `exitCode === 0`),
+    NO en el runner. Así el runner es un transporte neutro (devuelve exit + stdout +
+    stderr) y el dominio concentra la política de éxito/fallo en un solo lugar.
+    ADVERTENCIA: una implementación real del runner (tarea 3) que "auto-rechace"
+    ante exit ≠ 0 (p. ej. usar `execFile` con su rechazo por código ≠ 0 sin
+    capturarlo) ROMPERÍA este contrato: `VpkTool` nunca vería el `CommandResult`
+    y no podría envolver el fallo como `VpkToolError` tipado con el addon. El runner
+    real DEBE capturar el exit ≠ 0 y resolver con el `CommandResult` correspondiente.
+
+  - **`addonId` es parámetro de CADA método** (`list/extract/pack`), NO del
+    constructor. Motivo: una sola instancia de `VpkTool` (mismo `vpk.exe` +
+    runner) opera sobre MÚLTIPLES addons en el flujo de MergeEngine (tarea 11);
+    pasar el addonId por método permite reutilizar la instancia a través de todos
+    los addons en vez de construir una por addon. El `vpkExe` y el runner, en
+    cambio, sí van en el constructor (dependencias estables de la instancia).
+
+  - **`list/extract/pack` NO usan `internalPathToDiskPath` (2.5).** Los argumentos
+    que recibe `vpk.exe` van SIEMPRE con `/` (formato interno del VPK); la
+    traducción a `\\` es responsabilidad de QUIEN ESCRIBE EN DISCO (MergeEngine,
+    tarea 11, al crear subdirectorios de destino), no de `VpkTool`. Por eso
+    `vpk-tool.ts` ni siquiera importa `internalPathToDiskPath`.
+
+**Impacto:** `src/main/domain/vpk-tool.ts` (tarea 2.7), sus unit tests (2.8), la
+implementación real del runner + integración (tarea 3), y el consumo desde
+MergeEngine (tarea 11).
+
+---
+
 ## Plantilla para entradas futuras
 
 ```
