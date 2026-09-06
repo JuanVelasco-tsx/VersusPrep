@@ -226,6 +226,66 @@ MergeEngine (tarea 11).
 
 ---
 
+### [2026-09-05] Parseo de `libraryfolders.vdf` y `findGameLibrary` (Tarea 5.1)
+**Qué:** Se implementó la Tarea 5.1 (PathDetector, AC 1.3 / 1.5 / 1.6): un parser
+KeyValues de Valve (`src/main/domain/vdf-parser.ts`) y la selección de la
+Game_Library con `findGameLibrary` (`src/main/domain/path-detector.ts`). Ambos
+se re-exportan desde el barrel `src/main/domain/index.ts`.
+
+**CONFIRMACIÓN — `LibraryEntry = { path; apps: string[] }` de la Tarea 1 ALCANZA
+para la Tarea 5 (cierra el "A revisar" de la entrada [2026-09-05] de tipos de
+dominio):** `findGameLibrary` (5.1) solo necesita, por biblioteca, el conjunto
+ORDENADO de AppIDs (para saber si `"550"` está presente y respetar el orden de
+aparición) y el `path` (para devolverlo cuando gana). `derivePaths` (5.3) usará
+ese mismo `path`. NO hacen falta label/nombre de biblioteca ni el tamaño por app
+(el bloque `apps` real es `appid -> bytes`; el tamaño se descarta). Por tanto NO
+se amplió `LibraryEntry`: la forma mínima de la Tarea 1 es suficiente. Este punto
+queda CERRADO.
+
+**Decisión de firma del parser (opera sobre CONTENIDO, no sobre ruta):** aunque
+`design.md` muestra `parseLibraryFolders(steamPath: string)`, la subtarea 5.1 es
+parseo PURO y testeable, así que `parseLibraryFolders(content: string)` opera
+sobre el TEXTO del archivo. La lectura desde disco a partir de `steamPath`
+(`readSteamPath` → leer `<steamPath>\steamapps\libraryfolders.vdf` → parsear)
+queda para la Tarea 5.3, que compondrá el I/O con este parser puro. Motivo:
+aislar el I/O del parseo hace el parser trivialmente testeable (unit + property).
+
+**Decisiones de comportamiento del parser KeyValues no fijadas por el spec:**
+  - **Comentarios `//`.** Se soportan: `//` FUERA de comillas descarta el resto
+    de la línea; `//` DENTRO de comillas es parte del valor (p. ej. `http://...`).
+  - **Tokens sin comillas.** El tokenizador los acepta por robustez (delimitados
+    por espacios/llaves), aunque `libraryfolders.vdf` en la práctica va todo
+    entrecomillado.
+  - **Casing de claves ESTRUCTURALES (`libraryfolders`, `path`, `apps`).** Se
+    comparan INSENSIBLE a mayúsculas (el nombre de campo del formato de Valve no
+    es sensible al casing). Los VALORES (rutas, AppIDs) se conservan tal cual.
+  - **Casing de la clave `"550"`.** Comparación EXACTA contra el literal `"550"`
+    (`L4D2_APP_ID`); al ser numérica, el casing no altera el dígito.
+  - **Claves duplicadas.** Los AppIDs del bloque `apps` se PRESERVAN en orden de
+    aparición, incluyendo duplicados (no se deduplican). Ante `path` duplicado en
+    una biblioteca, gana la ÚLTIMA ocurrencia ("última asignación gana").
+  - **Biblioteca sin `path`/sin `apps`.** `path` ausente → `""` (la verificación
+    en disco de 5.3 la descartará); `apps` ausente → `[]`.
+  - **Raíz.** Se busca el bloque `libraryfolders` (insensible a mayúsculas); si
+    falta el envoltorio, se toleran las entradas de nivel superior directamente.
+  - **Representación del árbol.** El nodo KeyValues es una lista ORDENADA de pares
+    (`VdfEntry[]`), no un `Record`, para preservar orden y admitir duplicados.
+
+**Verificación:** `npm run typecheck` (tsc estricto) pasa sin errores y `npm test`
+(Vitest) pasa las 54 pruebas, incluidas las 13 nuevas de `test/path-detector.test.ts`
+(parser: estructura real, indentación/tabs, `\r\n`, comentarios `//`, vacío, sin
+`apps`; selección: 0 con 550→null, varias→gana la primera, L4D2 en otro disco,
+única con 550, lista vacía). El property test de selección (Property 1) es la
+Tarea 5.2 y NO se implementó aquí.
+
+**Impacto:** `src/main/domain/vdf-parser.ts` y `src/main/domain/path-detector.ts`
+(nuevos), `src/main/domain/index.ts` (barrel) y `test/path-detector.test.ts`
+(nuevo). Condiciona la Tarea 5.2 (Property 1) y la Tarea 5.3 (`readSteamPath`,
+`derivePaths`, `verifyPathsOnDisk`, `detect`), que compondrán el I/O sobre este
+parser puro.
+
+---
+
 ## Plantilla para entradas futuras
 
 ```

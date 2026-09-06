@@ -73,7 +73,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 5. PathDetector (Requirement 1)
-  - [ ] 5.1 Implementar el parseo de `libraryfolders.vdf` y `findGameLibrary`
+  - [x] 5.1 Implementar el parseo de `libraryfolders.vdf` y `findGameLibrary`
     - Parser KeyValues de Valve; `findGameLibrary` selecciona la primera entrada cuyo bloque `apps` contiene la clave `550` en orden de aparición, o `null`
     - _Requirements: 1.3, 1.5_
 

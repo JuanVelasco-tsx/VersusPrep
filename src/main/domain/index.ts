@@ -75,3 +75,20 @@ export type {
   VpkOperation,
   VpkToolErrorInit,
 } from "./vpk-tool.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 1 — PathDetector): parseo del `libraryfolders.vdf`
+// (formato KeyValues de Valve) y selección de la primera biblioteca que contiene
+// L4D2 (`apps.550`) en orden de aparición (AC 1.3, 1.5, 1.6 — Tarea 5.1). La
+// lectura desde disco/registro y la derivación de rutas quedan para la tarea 5.3.
+// ---------------------------------------------------------------------------
+export {
+  LIBRARY_FOLDERS_ROOT_KEY,
+  LIBRARY_PATH_KEY,
+  LIBRARY_APPS_KEY,
+  parseVdf,
+  parseLibraryFolders,
+} from "./vdf-parser.js";
+export type { VdfNode, VdfEntry } from "./vdf-parser.js";
+
+export { L4D2_APP_ID, findGameLibrary } from "./path-detector.js";
