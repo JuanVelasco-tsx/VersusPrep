@@ -82,7 +82,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - **Validates: Requirements 1.5**
     - fast-check, mínimo 100 iteraciones, generando contenidos válidos de `libraryfolders.vdf` con 0..n bibliotecas conteniendo o no la clave `550`
 
-  - [ ] 5.3 Implementar lectura del registro, derivación de rutas y verificación en disco
+  - [x] 5.3 Implementar lectura del registro, derivación de rutas y verificación en disco
     - `readSteamPath` (HKCU\Software\Valve\Steam:SteamPath, `null` si ausente), `derivePaths` (usa el `path` de la Game_Library incluso en otro disco), `verifyPathsOnDisk` (marca faltantes), y `detect` que orquesta todo y ofrece selección manual con re-verificación ante fallos; el acceso al registro y al FS se inyecta para testeo
     - _Requirements: 1.1, 1.2, 1.4, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12_
 

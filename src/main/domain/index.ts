@@ -7,6 +7,11 @@
 export type {
   GamePaths,
   LibraryEntry,
+  RequiredPathKey,
+  PathVerification,
+  PathDetectionSource,
+  PathDetectionFailureReason,
+  PathDetectionResult,
   AddonInfo,
   ScannedAddon,
   VScriptClassification,
@@ -92,3 +97,27 @@ export {
 export type { VdfNode, VdfEntry } from "./vdf-parser.js";
 
 export { L4D2_APP_ID, findGameLibrary } from "./path-detector.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 1 — PathDetector, Tarea 5.3): lectura del registro,
+// derivación de rutas y verificación en disco, orquestadas por `detect()` sobre
+// dependencias inyectables (registro + FS + selección manual). El constructor
+// `pathsReady` centraliza el invariante "no hay rutas listas para persistir sin
+// verificación en disco previa" (lo prueba la Tarea 5.4 / Property 2).
+// ---------------------------------------------------------------------------
+export {
+  STEAM_REGISTRY_HIVE,
+  STEAM_REGISTRY_KEY,
+  STEAM_REGISTRY_VALUE,
+  PathDetector,
+  pathsReady,
+} from "./path-detector.js";
+export type {
+  RegistryReader,
+  FileReadResult,
+  FileSystemProbe,
+  ManualPathRequest,
+  ManualPathResponse,
+  ManualPathProvider,
+  PathDetectorDeps,
+} from "./path-detector.js";

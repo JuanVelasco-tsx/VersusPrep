@@ -323,6 +323,99 @@ piso de 100 iteraciones del helper `propertyTest`).
 
 ---
 
+### [2026-09-05] PathDetector: registro, derivación, verificación y `detect` (Tarea 5.3)
+**Qué:** Se implementó la Tarea 5.3 (AC 1.1, 1.2, 1.4, 1.6–1.12): lectura del
+registro (`readSteamPath`), derivación de rutas (`derivePaths`), verificación en
+disco (`verifyPathsOnDisk`) y la orquestación completa (`detect`), sobre
+dependencias inyectables. Además se definieron los dos tipos de dominio que
+quedaron pendientes de la Tarea 1.
+
+**Forma elegida de `PathVerification` (en `types.ts`):**
+`{ present: Record<RequiredPathKey, boolean>; missing: RequiredPathKey[]; allPresent: boolean }`.
+Se decidió NO usar un booleano global: `detect` (AC 1.10) necesita saber QUÉ
+ruta específica falta para ofrecer la selección manual de ESA ruta y no de
+todas. El núcleo es el mapa `present` (una entrada por CADA ruta requerida,
+usando `Record<RequiredPathKey, boolean>` para que el compilador exija verificar
+todas y no "olvidar" ninguna); `missing` y `allPresent` son derivados de
+conveniencia. Se introdujo `RequiredPathKey` como subconjunto tipado de las
+claves de `GamePaths` (`gameRoot | workshopFolder | vpkToolPath | gameInfoFile |
+modsvsFolder`) — las 5 que enumera el AC 1.9 — para que ni la verificación ni
+`detect` puedan referir un rol de ruta inexistente. `steamPath` y `left4dead2Dir`
+NO se verifican como requeridas (el AC 1.9 no las lista).
+
+**Forma elegida de `PathDetectionResult` (en `types.ts`):** UNIÓN DISCRIMINADA
+por `kind`, al estilo de `OperationResult`/`ElevationOutcome`. Motivo: el flujo
+tiene caminos cualitativamente distintos con datos distintos, y la unión obliga
+al consumidor a manejarlos explícitamente. Dos variantes:
+  - `ready`: rutas verificadas y listas para persistir; lleva `paths`,
+    `verification` (la que las respalda) y `source: "auto" | "manual"`.
+  - `needs-manual`: la detección no se completó; lleva `reason`
+    (`PathDetectionFailureReason`: `steam-not-installed` AC 1.2 /
+    `library-folders-unreadable` AC 1.4 / `l4d2-not-in-libraries` AC 1.6 /
+    `required-path-missing` AC 1.10) para que la UI sepa QUÉ selección manual
+    ofrecer, más `paths?`/`verification?` opcionales cuando el fallo ocurrió tras
+    derivar rutas.
+
+**Interfaces inyectables (patrón `CommandRunner` de la Tarea 2.7):** el dominio
+depende de interfaces, no de módulos concretos, para ser testeable sin registro,
+FS ni UI reales:
+  - `RegistryReader.readValue(hive, key, value) => Promise<string | null>`: `null`
+    si la clave/valor no existe (AC 1.2). La implementación real (winreg / `reg
+    query` vía runner) es de una tarea posterior.
+  - `FileSystemProbe`: `readTextFile(path) => Promise<FileReadResult>` (unión
+    `{ ok:true; content } | { ok:false }`, sin excepciones, para que `detect`
+    decida el camino de fallo sin try/catch) y `exists(path) => Promise<boolean>`.
+  - `ManualPathProvider.requestPath(request) => Promise<ManualPathResponse>`:
+    `request` es `ManualPathRequest` (`steam-path` / `game-root` /
+    `required-path` con su `pathKey`) y la respuesta es
+    `{ kind:"selected"; path } | { kind:"cancelled" }` (unión, no `string|null`,
+    para forzar el manejo explícito de la cancelación). Mantiene `detect`
+    desacoplado de Electron/diálogos.
+Las tres se pasan por CONSTRUCTOR (`PathDetectorDeps`), como `VpkTool` recibe
+runner + vpkExe.
+
+**Cómo se garantiza estructuralmente "no persistir sin verificación" (invariante
+que probará la Tarea 5.4 / Property 2):** el estado `ready` de
+`PathDetectionResult` es el ÚNICO que representa "rutas listas para persistir", y
+se construye EXCLUSIVAMENTE a través del constructor `pathsReady(paths,
+verification, source)`, que devuelve `ready` sólo si `verification.allPresent ===
+true`; en caso contrario devuelve `needs-manual` con `required-path-missing`.
+Ningún camino de código fabrica el literal `{ kind: "ready", ... }` a mano: tanto
+la detección automática como la selección manual desembocan en `#verifyThenManual`,
+que llama a `verifyPathsOnDisk` y luego a `pathsReady`. Así es imposible alcanzar
+`ready` sin una verificación en disco cuyas 5 rutas requeridas estén todas
+presentes. La selección manual, además, re-verifica en disco la ruta elegida
+antes de aceptarla (`#requestExisting` reintenta si no existe, AC 1.11/1.12), y
+tras suplir una ruta se re-verifica el conjunto completo (AC 1.11).
+
+**Decisión de join de rutas:** se usa un join LITERAL con `\` (`joinWindows`), NO
+`path.join` de Node, por la misma razón documentada para `internalPathToDiskPath`:
+`path.join` depende de la plataforma de EJECUCIÓN (usaría `/` en Linux/CI) mientras
+que las rutas de L4D2 son de Windows por definición. Mantiene el resultado
+determinista en cualquier SO (los tests corren en CI no-Windows).
+
+**Cierra el pendiente de la Tarea 1:** el segundo punto del "A revisar" de la
+entrada [2026-09-05] "Decisiones de forma … tipos de dominio no explícitos"
+(`PathVerification` y `PathDetectionResult` sin definir) queda CERRADO: ambos se
+definieron aquí, junto a la implementación que los consume.
+
+**Verificación:** `npm run typecheck` (tsc estricto) pasa sin errores y `npm test`
+(Vitest) pasa las 72 pruebas (11 archivos), incluidas las nuevas de la Tarea 5.3
+en `test/path-detector.test.ts` (readSteamPath null/valor/vacío; derivePaths en
+otro disco; verifyPathsOnDisk faltantes/allPresent; invariante de `pathsReady`;
+`detect`: camino feliz, Steam ausente cancelado/suplido, VDF ausente, ninguna lib
+con 550, ruta faltante con selección + re-verificación, reintento AC 1.12 y
+cancelación). El property test formal (Property 2) es la Tarea 5.4 y NO se
+implementó aquí.
+
+**Impacto:** `src/main/domain/types.ts` (tipos nuevos), `src/main/domain/path-detector.ts`
+(implementación + interfaces inyectables), `src/main/domain/index.ts` (barrel) y
+`test/path-detector.test.ts` (tests). Condiciona la Tarea 5.4 (Property 2), la
+Tarea 15/18 (persistencia real de rutas vía `LocalStore.savePaths`, AC 1.13) y la
+Tarea 20 (capa IPC que consumirá `detect`).
+
+---
+
 ## Plantilla para entradas futuras
 
 ```
