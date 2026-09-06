@@ -1,4 +1,4 @@
-﻿# ---- Dependencias ----
+# ---- Dependencias ----
 node_modules/
 
 # ---- Salida de build / empaquetado (Electron + electron-builder) ----
