@@ -77,7 +77,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - Parser KeyValues de Valve; `findGameLibrary` selecciona la primera entrada cuyo bloque `apps` contiene la clave `550` en orden de aparición, o `null`
     - _Requirements: 1.3, 1.5_
 
-  - [ ]* 5.2 Escribir property test de selección de biblioteca
+  - [x]* 5.2 Escribir property test de selección de biblioteca
     - **Feature: l4d2-versus-addon-manager, Property 1: Selección de la primera biblioteca con L4D2**
     - **Validates: Requirements 1.5**
     - fast-check, mínimo 100 iteraciones, generando contenidos válidos de `libraryfolders.vdf` con 0..n bibliotecas conteniendo o no la clave `550`

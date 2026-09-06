@@ -286,6 +286,43 @@ parser puro.
 
 ---
 
+### [2026-09-05] Property test de selección de biblioteca vía VDF real (Tarea 5.2)
+**Qué:** Se implementó la Tarea 5.2 (Property 1: "Selección de la primera
+biblioteca con L4D2", AC 1.5) en `test/path-detector.property.test.ts`. El
+requisito explícito era ejercitar el PIPELINE COMPLETO
+`parseLibraryFolders` → `findGameLibrary`, no la selección aislada sobre
+`LibraryEntry[]` ya parseadas.
+**Decisiones no triviales del generador:**
+  - **VDF-texto, no estructuras parseadas.** El arbitrary genera un MODELO
+    abstracto de bibliotecas (lista ordenada; cada una con fragmento de path,
+    lista ordenada de AppIDs de ruido y un flag `hasL4D2` + posición de
+    inserción del literal `"550"`), y a partir de él RENDERIZA un
+    `libraryfolders.vdf` válido que pasa por el parser real. Así el test valida
+    tokenizador + árbol + selección juntos, como en producción.
+  - **Charset SEGURO de paths.** Los paths se generan con un charset acotado
+    (letras/dígitos/espacio/`:`/`\`/`/`/`.`/`-`/`_`/`()`), SIN `"` ni saltos de
+    línea/tab. El único carácter con escape es `\`, que al renderizar se emite
+    como `\\` para que el parser lo colapse a `\` y el path parseado vuelva
+    idéntico al generado. Se evitan a propósito `"` y saltos de línea: no aportan
+    cobertura sobre la política de SELECCIÓN y solo complicarían el escaping.
+  - **Unicidad por índice.** Cada path se prefija con su índice (`L{i}|...`) para
+    que la aserción `.toBe(expected)` sea inequívoca aun cuando varias
+    bibliotecas contengan `"550"`.
+  - **Literal `"550"` exacto.** El ruido usa un conjunto fijo de AppIDs
+    (`440/620/228980/570/730/240`) que NO incluye `"550"` ni variantes tipo
+    `"0550"`; la presencia de L4D2 se controla solo con el flag `hasL4D2`.
+  - **Esperado desde el MODELO (fuente independiente).** El resultado esperado
+    (path de la primera lib con `hasL4D2`, o `null`) se computa recorriendo el
+    modelo generado, NO reimplementando `findGameLibrary` sobre `LibraryEntry[]`.
+  - Se cubren 0 bibliotecas, `apps` vacío, `"550"` en posición arbitraria con
+    ruido alrededor y orden de aparición variado.
+**Verificación:** `npm run typecheck` (tsc estricto) y `npm test` (Vitest) pasan;
+la suite completa quedó en 55 tests (54 previos + el nuevo property test, con el
+piso de 100 iteraciones del helper `propertyTest`).
+**Impacto:** `test/path-detector.property.test.ts` (nuevo). Cierra la Tarea 5.2.
+
+---
+
 ## Plantilla para entradas futuras
 
 ```
