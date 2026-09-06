@@ -78,6 +78,35 @@ Log de cambios de rumbo, correcciones de terminología y decisiones importantes 
 
 ---
 
+### [2026-09-05] Decisiones de comportamiento inferidas para filterVpkNoise (Tarea 2.1)
+**Qué:** El AC 6.2 y la Property 8 solo especifican: descartar las líneas que
+**comienzan con** `CDynamicFunction:`, `FS:` o `Using`, y conservar el resto
+**sin alterarlas**. Al implementar `filterVpkNoise` (tarea 2.1) hubo que decidir
+cuatro detalles de comportamiento que el spec NO especifica:
+  - **Sensible a mayúsculas.** Los prefijos se comparan tal cual (`FS:` sí, `fs:` no).
+    El spec los enumera literales sin decir case-insensitive. Nota: para VScript
+    (Property 5) el spec Sí pide case-insensitive explícito, así que aquí el
+    silencio se interpreta como sensible a mayúsculas.
+  - **Sin `trim`.** "Comienza con" = prefijo literal al inicio EXACTO de la línea;
+    una línea "  FS: ..." con espacios iniciales se CONSERVA (no comienza con el
+    prefijo de forma literal).
+  - **Fin de línea.** Se soporta `\n` y `\r\n`; se normaliza un `\r` colgante al
+    final de cada línea antes de evaluar el prefijo y se elimina de las líneas
+    devueltas.
+  - **Línea final vacía.** Un salto de línea terminal produce una última cadena
+    vacía que se DESCARTA; las líneas vacías intermedias se CONSERVAN; stdout vacío
+    devuelve arreglo vacío.
+**Motivo:** el requisito es a nivel de "línea" pero no define tokenización de
+líneas ni casing; fijar estos criterios ahora los hace deterministas y permite
+escribir el property test de la tarea 2.2 sin ambigüedad.
+**A revisar:** si al integrar con `vpk.exe` real (tarea 3) se observa que el binario
+emite los prefijos con otro casing o con indentación, habrá que revisitar las
+decisiones de casing y `trim`.
+**Impacto:** `src/main/domain/vpk-noise-filter.ts` (tarea 2.1) y el property test de
+la tarea 2.2. Consumido luego por `VpkTool.list()` (tarea 2.7).
+
+---
+
 ## Plantilla para entradas futuras
 
 ```
