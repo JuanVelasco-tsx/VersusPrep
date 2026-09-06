@@ -31,3 +31,18 @@ export {
   isVpkNoiseLine,
 } from "./vpk-noise-filter.js";
 export type { VpkNoisePrefix } from "./vpk-noise-filter.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 6.4, 6.5 — VpkTool): batching de la extracción `vpk x`
+// por longitud de línea de comando. Al igual que el filtrado de ruido, es
+// código de runtime (no solo tipos) porque `VpkTool.extract()` (tarea 2.7) lo
+// consumirá desde el dominio para particionar los paths antes de invocar vpk.
+// ---------------------------------------------------------------------------
+export {
+  DEFAULT_MAX_COMMAND_LENGTH,
+  DEFAULT_EXECUTABLE_NAME,
+  batchInternalPaths,
+  commandLengthForBatch,
+  commandOverheadPrefix,
+} from "./vpk-batch.js";
+export type { BatchInternalPathsOptions } from "./vpk-batch.js";

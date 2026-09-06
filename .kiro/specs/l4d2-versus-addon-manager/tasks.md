@@ -34,7 +34,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - **Validates: Requirements 6.2**
     - fast-check, mínimo 100 iteraciones, generando stdout con mezcla arbitraria de líneas de ruido y líneas válidas
 
-  - [ ] 2.3 Implementar el batching por longitud de línea de comando
+  - [x] 2.3 Implementar el batching por longitud de línea de comando
     - Función pura de particionado de `internalPaths` en lotes tales que la longitud total (`vpk.exe` + vpk + paths) no exceda un límite seguro (~6000, margen por debajo de ~8191); un path que por sí solo excede el límite queda en lote individual
     - _Requirements: 6.4, 6.5_
 
