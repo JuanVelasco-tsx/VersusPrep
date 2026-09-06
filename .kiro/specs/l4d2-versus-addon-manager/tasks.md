@@ -47,7 +47,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - Función pura que deriva el path de destino en disco (`\`) a partir del path interno del VPK (`/`), preservando la interpretación interna con `/`
     - _Requirements: 6.6_
 
-  - [ ]* 2.6 Escribir property test de separadores de path
+  - [x]* 2.6 Escribir property test de separadores de path
     - **Feature: l4d2-versus-addon-manager, Property 10: Coherencia de separadores de path**
     - **Validates: Requirements 6.6**
     - fast-check, mínimo 100 iteraciones
