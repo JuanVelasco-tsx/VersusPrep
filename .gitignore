@@ -75,3 +75,8 @@ Desktop.ini
 # ---- Cobertura de tests ----
 coverage/
 .nyc_output/
+# ---- Metadata interna del tracker de tareas de Kiro ----
+# Estado de sincronizacion del orquestador de tareas, NO codigo del proyecto.
+# Puede desincronizar checkboxes de tasks.md entre ramas (visto en la sesion
+# de la rama addon-scanner). No pertenece al repo.
+**/tasks.meta.json

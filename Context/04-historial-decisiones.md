@@ -256,6 +256,14 @@ MergeEngine (tarea 11).
 
 ---
 
+### [2026-09-06] `tasks.meta.json` agregado a `.gitignore` (metadata del tracker de tareas)
+**Qué:** `tasks.meta.json` es el estado interno del orquestador/tracker de tareas de Kiro (sincronización de progreso), NO código del proyecto. Se agregó la regla `**/tasks.meta.json` a `.gitignore` para ignorarlo en cualquier ubicación.
+**Motivo:** este archivo puede **desincronizar los checkboxes de `tasks.md` entre ramas**. En esta sesión pasó de forma concreta: al tocar `tasks.md` en la rama `addon-scanner`, `tasks.meta.json` sincronizó y dejó marcados como completados los checkboxes de la **sección 5 (5.1–5.4)**, una sección que en esta rama **no existe** (la rama `addon-scanner` salió de `main`, no de `path-detector`). Se detectó y se revirtió a mano. En `path-detector` ya estaba ignorado, pero como `addon-scanner` salió de `main` (que no tiene esa regla), acá faltaba.
+**Mitigación operativa vigente:** además de ignorarlo, la práctica es **revisar el `git diff` de `tasks.md` antes de cada commit** para no arrastrar marcados espurios de checkboxes. No hay solución automática todavía; la revisión manual del diff es la salvaguarda actual.
+**Impacto:** `.gitignore`. Evita commitear estado del tracker y reduce el riesgo de checkboxes desincronizados entre ramas.
+
+---
+
 ## Plantilla para entradas futuras
 
 ```
