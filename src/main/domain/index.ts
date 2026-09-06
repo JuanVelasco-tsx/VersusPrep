@@ -91,3 +91,14 @@ export {
   isVScriptPath,
   VScriptDetector,
 } from "./vscript-detector.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 3 — AC 3.6, 3.7, 3.8): política PURA de inclusión de
+// addons en el Active_Set. Decide si un Addon se incluye según su clasificación
+// VScript y la confirmación explícita de forzado del usuario (bloqueo por
+// defecto de los VScript_Addon salvo forzado). La ADVERTENCIA visual del AC 3.6
+// es responsabilidad de la UI; aquí solo vive la decisión de inclusión. La capa
+// IPC/orquestador (tareas 18/20) y los tests (tareas 8.1/8.2) la consumen.
+// ---------------------------------------------------------------------------
+export { isAllowedInActiveSet, isVScriptAddonAllowedInput } from "./active-set-policy.js";
+export type { ActiveSetInclusionInput } from "./active-set-policy.js";

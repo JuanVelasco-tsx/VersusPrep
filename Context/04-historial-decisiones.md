@@ -328,6 +328,27 @@ property test futuro con aserciones de no-vacuidad (p. ej. Property 6, tarea 8.2
 
 ---
 
+### [2026-09-06] Forma de la política de inclusión del Active_Set (Tarea 8.1)
+**Qué:** `isAllowedInActiveSet` (nuevo módulo `src/main/domain/active-set-policy.ts`)
+se modela como una FUNCIÓN PURA sobre un objeto de dos booleanos
+(`{ isVScriptAddon, forceConfirmed }`), no sobre el `VScriptClassification` completo.
+Lógica = tabla de verdad `permitido = !isVScriptAddon || forceConfirmed`: no-VScript
+siempre permitido; VScript con confirmación explícita permitido (AC 3.8); VScript sin
+confirmación bloqueado por defecto (AC 3.7).
+**Motivo:** la decisión SOLO depende del flag `isVScriptAddon`, no del `reason`
+(`nut-in-vscripts` y `listing-failed` son ambos VScript_Addon a efectos del bloqueo).
+Tomar la clasificación entera acoplaría innecesariamente la función a la forma del
+detector. Se agrega un helper `isVScriptAddonAllowedInput(classification, forceConfirmed)`
+que mapea desde un `VScriptClassification` para el llamador (orquestador/IPC), dejando
+la función núcleo trivialmente property-testeable (tarea 8.2, Property 6).
+**Alcance:** la ADVERTENCIA visual del AC 3.6 es responsabilidad de la UI (tarea 21);
+este módulo solo decide la INCLUSIÓN, no emite mensajes.
+**Impacto:** `src/main/domain/active-set-policy.ts` y su export en `index.ts` (barrel),
+sus unit tests `test/active-set-policy.test.ts` (tarea 8.1) y el property test 8.2
+(Property 6). Consumido luego por el orquestador (tarea 18) y la capa IPC (tarea 20).
+
+---
+
 ## Plantilla para entradas futuras
 
 ```

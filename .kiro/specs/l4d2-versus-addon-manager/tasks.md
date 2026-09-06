@@ -117,7 +117,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - fast-check, mínimo 100 iteraciones, generando listados con paths `.nut` dentro y fuera de `scripts/vscripts/` y variaciones de mayúsculas
 
 - [ ] 8. Reglas de inclusión del Active_Set (Requirement 3.7, 3.8)
-  - [ ] 8.1 Implementar la política de inclusión de addons en el Active_Set
+  - [x] 8.1 Implementar la política de inclusión de addons en el Active_Set
     - Función pura que decide si un Addon forma parte del Active_Set: permitido si no es VScript_Addon, o si es VScript_Addon con confirmación explícita de forzado; bloqueado por defecto en caso contrario
     - _Requirements: 3.6, 3.7, 3.8_
 
