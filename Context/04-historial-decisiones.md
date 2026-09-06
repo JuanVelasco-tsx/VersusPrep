@@ -524,3 +524,9 @@ el estado de la tarea 5.4 (sigue `[x]`).
 **Alternativas descartadas:** (opcional) qué otras opciones se evaluaron.
 **Impacto:** qué archivos, módulos o decisiones futuras afecta.
 ```
+
+### [2026-09-06] Fix: chequeo de exhaustividad de REQUIRED_KEYS era vacuo (test path-detector)
+**Qué:** En `test/path-detector.property.test.ts` el chequeo de exhaustividad agregado en el hardening de la tarea 5.4 (commit 05f4401) no cumplía su función: usaba `Object.fromEntries(...) as Record<RequiredPathKey, true>` y luego un `satisfies Record<RequiredPathKey, true>`. El `as` forzaba el tipo del valor y el `satisfies` lo comparaba contra ese mismo tipo ya forzado, así que SIEMPRE pasaba aunque `REQUIRED_KEYS` estuviera incompleto.
+**Decisión:** `REQUIRED_KEYS` pasa a ser una TUPLA literal (`as const satisfies readonly RequiredPathKey[]`) y el chequeo se reemplaza por un assert puramente a nivel de tipos (`type AssertExhaustive<Keys> = [RequiredPathKey] extends [Keys[number]] ? true : never`), SIN ningún `as`. Si el union `RequiredPathKey` crece y la tupla no se actualiza, el assert resuelve a `never` y el typecheck falla.
+**Evidencia:** al quitar temporalmente una entrada de la tupla, `npm run typecheck` falla con `TS2322: Type 'true' is not assignable to type 'never'` en `_requiredKeysExhaustive`, confirmando que la comprobación ya no es vacua. Con la tupla completa, typecheck pasa y la suite sigue 76/76.
+**Motivo:** un cast anula la verificación; el tipo objetivo debe derivarse de la tupla literal, no de un `as`.

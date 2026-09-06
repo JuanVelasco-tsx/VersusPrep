@@ -379,28 +379,42 @@ class P2Manual implements ManualPathProvider {
  * Las 5 rutas requeridas en orden canónico (AC 1.9). Se declara LOCALMENTE en el
  * test (no se importa del dominio) para no acoplar el test a un export interno;
  * el orden coincide con `RequiredPathKey`/`REQUIRED_PATH_KEYS` del dominio y el
- * tipado `readonly RequiredPathKey[]` obliga a que cualquier cambio en las claves
- * requeridas rompa la compilación aquí.
+ * tipado obliga a que cualquier cambio en las claves requeridas rompa la
+ * compilación aquí. Ahora es una TUPLA literal (`as const`) para que el chequeo
+ * de exhaustividad de abajo funcione a nivel de tipos: con `readonly
+ * RequiredPathKey[]`, `typeof REQUIRED_KEYS[number]` colapsaría a
+ * `RequiredPathKey` completo y el assert daría `true` siempre. El `as const`
+ * congela la tupla de literales y el `satisfies readonly RequiredPathKey[]`
+ * valida que cada literal sea una clave requerida válida (un typo tipo
+ * "gameRootX" rompería) SIN ensanchar el tipo inferido.
  */
-const REQUIRED_KEYS: readonly RequiredPathKey[] = [
+const REQUIRED_KEYS = [
   "gameRoot",
   "workshopFolder",
   "vpkToolPath",
   "gameInfoFile",
   "modsvsFolder",
-];
+] as const satisfies readonly RequiredPathKey[];
 
 /**
- * CHEQUEO DE EXHAUSTIVIDAD EN TIEMPO DE COMPILACIÓN (hardening 5.4).
- * REQUIRED_KEYS está duplicado localmente a propósito (no acoplar el test a un
- * export interno del dominio). Si el union `RequiredPathKey` CRECE en el dominio
- * y esta constante queda desactualizada, el `satisfies` de abajo hace fallar el
- * typecheck del test hasta actualizarla. Es puramente de tipos; `void` lo descarta.
+ * CHEQUEO DE EXHAUSTIVIDAD EN TIEMPO DE COMPILACIÓN (fix del hardening 5.4).
+ *
+ * REQUIRED_KEYS se duplica localmente a propósito (no acoplar el test a un export
+ * interno del dominio). Este chequeo garantiza, PURAMENTE A NIVEL DE TIPOS (sin
+ * ningún `as`), que la tupla local cubre TODAS las variantes del union
+ * `RequiredPathKey`: si el union crece en el dominio y REQUIRED_KEYS no se
+ * actualiza, `AssertExhaustive` resuelve a `never`, y asignarle `true` a una
+ * variable de tipo `never` HACE FALLAR el typecheck hasta actualizar la tupla.
+ *
+ * Por qué NO lleva `as`: un cast forzaría el tipo del valor y volvería vacua la
+ * verificación (el bug del intento anterior). Acá el tipo objetivo lo produce
+ * `AssertExhaustive<typeof REQUIRED_KEYS>` a partir de la tupla literal, no de un
+ * cast, así que la comprobación es real.
  */
-const _requiredKeysExhaustiveness = Object.fromEntries(
-  REQUIRED_KEYS.map((k) => [k, true as const]),
-) as Record<RequiredPathKey, true>;
-void (_requiredKeysExhaustiveness satisfies Record<RequiredPathKey, true>);
+type AssertExhaustive<Keys extends readonly RequiredPathKey[]> =
+  [RequiredPathKey] extends [Keys[number]] ? true : never;
+const _requiredKeysExhaustive: AssertExhaustive<typeof REQUIRED_KEYS> = true;
+void _requiredKeysExhaustive;
 
 /** Deriva las 5 rutas requeridas desde LIB/STEAM usando la topología real. */
 function requiredPathsOf(detector: PathDetector): Record<RequiredPathKey, string> {
