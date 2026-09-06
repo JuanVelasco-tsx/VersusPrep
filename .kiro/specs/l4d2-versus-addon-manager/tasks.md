@@ -111,7 +111,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - Usa `VpkTool.list`; clasifica como VScript_Addon si y solo si hay un path con prefijo `scripts/vscripts/` (case-insensitive) y extensión `.nut` (case-insensitive); ignora `.nut` fuera de ese prefijo; **nunca** usa el flag `addonContent_Script`; si `vpk l` falla, clasifica como VScript_Addon por precaución
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-  - [ ]* 7.2 Escribir property test de clasificación VScript
+  - [x]* 7.2 Escribir property test de clasificación VScript
     - **Feature: l4d2-versus-addon-manager, Property 5: Clasificación VScript a partir del listado real**
     - **Validates: Requirements 3.2, 3.3, 3.4**
     - fast-check, mínimo 100 iteraciones, generando listados con paths `.nut` dentro y fuera de `scripts/vscripts/` y variaciones de mayúsculas
