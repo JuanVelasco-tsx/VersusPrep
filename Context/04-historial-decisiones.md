@@ -485,6 +485,36 @@ Cierra la cobertura formal del Requirement 1 (PathDetector).
 
 ---
 
+### [2026-09-05] Hardening de la Property 2 (tarea 5.4)
+
+**Qué:** dos refuerzos sobre `test/path-detector.property.test.ts`, sin cambiar el
+alcance de la tarea 5.4 ni tocar `src`.
+1. **No-vacuidad.** La Property 2 pasó de registrarse con el helper `propertyTest`
+   a un `test()` propio (nombre canónico idéntico vía `propertyName(2, ...)`) para
+   poder correr una aserción DESPUÉS de que la propiedad complete sus iteraciones.
+   Se cuenta `readyCount` (iteraciones que terminan en `ready`) y se afirma
+   `expect(readyCount).toBeGreaterThan(0)`, garantizando que la implicación "si
+   ready entonces las 5 rutas existen" NO fue vacuamente verdadera. Observado:
+   `readyCount ≈ 9` sobre 100 iteraciones (`MIN_NUM_RUNS`).
+2. **Exhaustividad de tipos.** Junto a la constante local `REQUIRED_KEYS` se añadió
+   un artefacto de solo-tipos (`... satisfies Record<RequiredPathKey, true>`, con
+   `void` para descartar el runtime). Si el union `RequiredPathKey` del dominio
+   crece y `REQUIRED_KEYS` queda desactualizada, faltaría una clave en el objeto y
+   el `satisfies` haría fallar el typecheck del test.
+
+**Motivo:** blindar la Property 2 contra falsos verdes: que el camino `ready`
+realmente se ejerza (no-vacuidad) y que las claves requeridas del test no queden
+silenciosamente desalineadas con el dominio (exhaustividad en compile-time).
+
+**Verificación:** `npm run typecheck` (tsc estricto) pasa; `npx vitest run` sigue
+verde con 76 pruebas (11 archivos) —el conteo no cambia porque la Property 2 sigue
+siendo un único test.
+
+**Impacto:** solo `test/path-detector.property.test.ts`; sin cambios en `src` ni en
+el estado de la tarea 5.4 (sigue `[x]`).
+
+---
+
 ## Plantilla para entradas futuras
 
 ```

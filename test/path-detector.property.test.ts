@@ -1,7 +1,8 @@
+import { expect, test } from "vitest";
 import fc from "fast-check";
 
 import { findGameLibrary, parseLibraryFolders } from "../src/main/domain/index.js";
-import { propertyTest } from "./helpers/property.js";
+import { MIN_NUM_RUNS, propertyName, propertyTest } from "./helpers/property.js";
 
 /**
  * Property test de la selección de la Game_Library (Tarea 5.2).
@@ -389,6 +390,18 @@ const REQUIRED_KEYS: readonly RequiredPathKey[] = [
   "modsvsFolder",
 ];
 
+/**
+ * CHEQUEO DE EXHAUSTIVIDAD EN TIEMPO DE COMPILACIÓN (hardening 5.4).
+ * REQUIRED_KEYS está duplicado localmente a propósito (no acoplar el test a un
+ * export interno del dominio). Si el union `RequiredPathKey` CRECE en el dominio
+ * y esta constante queda desactualizada, el `satisfies` de abajo hace fallar el
+ * typecheck del test hasta actualizarla. Es puramente de tipos; `void` lo descarta.
+ */
+const _requiredKeysExhaustiveness = Object.fromEntries(
+  REQUIRED_KEYS.map((k) => [k, true as const]),
+) as Record<RequiredPathKey, true>;
+void (_requiredKeysExhaustiveness satisfies Record<RequiredPathKey, true>);
+
 /** Deriva las 5 rutas requeridas desde LIB/STEAM usando la topología real. */
 function requiredPathsOf(detector: PathDetector): Record<RequiredPathKey, string> {
   const paths: GamePaths = detector.derivePaths(P2_LIB, P2_STEAM);
@@ -486,70 +499,91 @@ const templateDetector = new PathDetector({
 });
 const REQUIRED = requiredPathsOf(templateDetector);
 
-propertyTest(
-  2,
-  "Ninguna ruta se persiste sin verificación en disco",
-  fc.asyncProperty(scenarioArbFor(REQUIRED), async (scenario) => {
-    // FS: rutas requeridas existentes según el escenario. Si useVdf, además
-    // entrega el VDF con 550 en LIB (para derivar por Game_Library).
-    const existing = REQUIRED_KEYS.filter((k) => scenario.existRequired[k]).map(
-      (k) => REQUIRED[k],
-    );
-    const files: Array<[string, string]> = scenario.useVdf
-      ? [[P2_VDF_PATH, p2VdfWithL4D2()]]
-      : [];
-    const fs = new P2Fs(existing, files);
+// Se usa un `test()` propio (en vez del helper `propertyTest`) porque la
+// no-vacuidad exige ejecutar una aserción DESPUÉS de que la propiedad complete
+// todas sus iteraciones, cosa que el helper compartido no permite. El nombre se
+// construye con `propertyName(2, ...)` para que sea IDÉNTICO al que generaba el
+// helper. La lógica del predicado (a)/(b)/(c) se mantiene intacta.
+test(
+  propertyName(2, "Ninguna ruta se persiste sin verificación en disco"),
+  async () => {
+    // Cuenta cuántas iteraciones terminaron en `ready`; la aserción final de
+    // no-vacuidad garantiza que la implicación "si ready entonces ..." se
+    // ejerció sobre al menos un caso `ready` (y no fue trivialmente cierta).
+    let readyCount = 0;
 
-    const requiredQueueMap = new Map<string, ManualPathResponse[]>(
-      REQUIRED_KEYS.map((k) => [k, scenario.requiredQueues[k]]),
-    );
+    await fc.assert(
+      fc.asyncProperty(scenarioArbFor(REQUIRED), async (scenario) => {
+        // FS: rutas requeridas existentes según el escenario. Si useVdf, además
+        // entrega el VDF con 550 en LIB (para derivar por Game_Library).
+        const existing = REQUIRED_KEYS.filter((k) => scenario.existRequired[k]).map(
+          (k) => REQUIRED[k],
+        );
+        const files: Array<[string, string]> = scenario.useVdf
+          ? [[P2_VDF_PATH, p2VdfWithL4D2()]]
+          : [];
+        const fs = new P2Fs(existing, files);
 
-    const manual = new P2Manual({
-      gameRoot: scenario.gameRootQueue,
-      required: requiredQueueMap,
-    });
+        const requiredQueueMap = new Map<string, ManualPathResponse[]>(
+          REQUIRED_KEYS.map((k) => [k, scenario.requiredQueues[k]]),
+        );
 
-    const detector = new PathDetector({
-      registry: new P2Registry(),
-      fs,
-      manual,
-    });
+        const manual = new P2Manual({
+          gameRoot: scenario.gameRootQueue,
+          required: requiredQueueMap,
+        });
 
-    const result = await detector.detect();
+        const detector = new PathDetector({
+          registry: new P2Registry(),
+          fs,
+          manual,
+        });
 
-    // Oráculo independiente: consulta directa al FS mock.
-    const existsInFs = (p: string): boolean => fs.existing.has(p);
+        const result = await detector.detect();
 
-    if (result.kind === "ready") {
-      // (a) Las 5 rutas requeridas finales existen realmente en el FS.
-      for (const key of REQUIRED_KEYS) {
-        if (!existsInFs(result.paths[key])) {
-          return false;
+        // Oráculo independiente: consulta directa al FS mock.
+        const existsInFs = (p: string): boolean => fs.existing.has(p);
+
+        if (result.kind === "ready") {
+          readyCount++;
+          // (a) Las 5 rutas requeridas finales existen realmente en el FS.
+          for (const key of REQUIRED_KEYS) {
+            if (!existsInFs(result.paths[key])) {
+              return false;
+            }
+          }
+          // (a) verification consistente.
+          if (!result.verification.allPresent) return false;
+          if (result.verification.missing.length !== 0) return false;
+          // (b)+(c) reforzado: ninguna ruta requerida final es inexistente en el FS.
+          const anyMissing = REQUIRED_KEYS.some((k) => !existsInFs(result.paths[k]));
+          if (anyMissing) return false;
+          return true;
         }
-      }
-      // (a) verification consistente.
-      if (!result.verification.allPresent) return false;
-      if (result.verification.missing.length !== 0) return false;
-      // (b)+(c) reforzado: ninguna ruta requerida final es inexistente en el FS.
-      const anyMissing = REQUIRED_KEYS.some((k) => !existsInFs(result.paths[k]));
-      if (anyMissing) return false;
-      return true;
-    }
 
-    // needs-manual: si trae paths+verification (required-path-missing), el
-    // oráculo debe coincidir con `missing` (b).
-    if (result.paths !== undefined && result.verification !== undefined) {
-      const v: PathVerification = result.verification;
-      for (const key of REQUIRED_KEYS) {
-        const existsNow = existsInFs(result.paths[key]);
-        const inMissing = v.missing.includes(key);
-        if (existsNow && inMissing) return false; // existente jamás en missing
-        if (!existsNow && !inMissing) return false; // ausente siempre en missing
-      }
-      // Un needs-manual con verificación no puede tener allPresent true.
-      if (v.allPresent) return false;
-    }
-    // (c) si el resultado NO es ready, no hay nada que "persistir": OK.
-    return true;
-  }),
+        // needs-manual: si trae paths+verification (required-path-missing), el
+        // oráculo debe coincidir con `missing` (b).
+        if (result.paths !== undefined && result.verification !== undefined) {
+          const v: PathVerification = result.verification;
+          for (const key of REQUIRED_KEYS) {
+            const existsNow = existsInFs(result.paths[key]);
+            const inMissing = v.missing.includes(key);
+            if (existsNow && inMissing) return false; // existente jamás en missing
+            if (!existsNow && !inMissing) return false; // ausente siempre en missing
+          }
+          // Un needs-manual con verificación no puede tener allPresent true.
+          if (v.allPresent) return false;
+        }
+        // (c) si el resultado NO es ready, no hay nada que "persistir": OK.
+        return true;
+      }),
+      { numRuns: MIN_NUM_RUNS },
+    );
+
+    // NO-VACUIDAD: si nunca se llegó a `ready`, la implicación de la Property 2
+    // sería vacuamente verdadera y no probaría nada. Exigir readyCount > 0
+    // detecta esa vacuidad. Como la propiedad NO falla, fast-check no hace
+    // shrinking, así que readyCount cuenta exactamente una vez por iteración.
+    expect(readyCount).toBeGreaterThan(0);
+  },
 );
