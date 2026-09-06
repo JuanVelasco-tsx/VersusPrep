@@ -92,16 +92,16 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - fast-check con FS mockeado, mínimo 100 iteraciones; solo se persisten rutas verificadas, y toda ruta requerida inexistente se marca faltante
 
 - [ ] 6. AddonScanner (Requirement 2)
-  - [ ] 6.1 Implementar el escaneo de la Workshop_Folder
+  - [x] 6.1 Implementar el escaneo de la Workshop_Folder
     - Incluye solo `.vpk` de nivel superior (ignora subdirectorios y otras extensiones); trata `<id>.vpk` como Addon `<id>`; asocia `<id>.jpg` como Addon_Cover si existe (`null` si no); lectura opcional de `addoninfo.txt` interno que no bloquea el escaneo; FS inyectado
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-  - [ ]* 6.2 Escribir property test del contenido del escaneo
+  - [x]* 6.2 Escribir property test del contenido del escaneo
     - **Feature: l4d2-versus-addon-manager, Property 3: El escaneo incluye exactamente los `.vpk` de nivel superior**
     - **Validates: Requirements 2.1, 2.2, 2.3**
     - fast-check con FS mockeado, mínimo 100 iteraciones, generando mezclas arbitrarias de `.vpk`, `.jpg`, otras extensiones y subdirectorios
 
-  - [ ]* 6.3 Escribir property test de asociación de Addon_Cover
+  - [x]* 6.3 Escribir property test de asociación de Addon_Cover
     - **Feature: l4d2-versus-addon-manager, Property 4: Asociación correcta de Addon_Cover**
     - **Validates: Requirements 2.4**
     - fast-check con FS mockeado, mínimo 100 iteraciones; cover = ruta de `<id>.jpg` si existe, `null` si no
