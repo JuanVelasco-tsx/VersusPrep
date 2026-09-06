@@ -416,6 +416,75 @@ Tarea 20 (capa IPC que consumirá `detect`).
 
 ---
 
+### [2026-09-05] Property 2 (Tarea 5.4): generador y oráculo de "no persistir sin verificación"
+
+**Contexto:** la Tarea 5.4 escribe el property test de la Property 2 ("Ninguna
+ruta se persiste sin verificación en disco", Validates 1.9/1.11/1.13) sobre el
+`detect()` real de la Tarea 5.3. El invariante ya está garantizado
+estructuralmente por `pathsReady` (ver entrada anterior); la Property 2 lo
+CONFIRMA end-to-end ejerciendo el pipeline real y usando el FS mock como oráculo
+independiente.
+
+**Decisiones no triviales del generador (`test/path-detector.property.test.ts`):**
+
+- **Oráculo = FS mock, no reimplementación.** El test NUNCA reimplementa
+  `detect`/`verifyPathsOnDisk`. Deriva las 5 rutas requeridas con el
+  `derivePaths(LIB, STEAM)` real y consulta `fs.existing.has(path)` como fuente de
+  verdad independiente sobre el resultado de `detect()`. Así la propiedad compara
+  el comportamiento del código contra un oráculo externo (existencia real en el
+  FS), no contra sí mismo.
+
+- **Anti-bucle infinito (clave).** `#requestExisting` reintenta ante una ruta
+  `selected` que no existe (AC 1.12) y solo termina ante `cancelled` o una ruta
+  existente. Para que el test no cuelgue, el `MockManual` consume una COLA FINITA
+  de respuestas por request (0..4 elementos) y, AL AGOTARSE, devuelve `cancelled`.
+  Como las colas son finitas, tras a lo sumo N iteraciones el provider cancela y
+  el bucle termina. Se confirmó empíricamente: la suite del property test corre en
+  ~2s sin colgarse.
+
+- **Cobertura de los tres sub-casos de respuestas manuales (c).** Cada respuesta
+  del generador es (i) cancelación, (ii) selección de una ruta FIJA fuera del Set
+  del FS (`Z:\nope\*`, fuerza el reintento de AC 1.12), o (iii) selección de una
+  ruta requerida que el escenario marcó como existente (candidatas tomadas del
+  propio Set del FS). Las rutas "inexistentes" nunca se añaden al FS, garantizando
+  que jamás sean aceptadas en un `ready`.
+
+- **Dos caminos de derivación.** `useVdf=true` entrega un `libraryfolders.vdf` con
+  550 en LIB → `detect` deriva por Game_Library y verifica (camino principal).
+  `useVdf=false` deja el VDF ausente → `detect` pide Game_Root (camino manual). El
+  registro SIEMPRE devuelve STEAM (no se ejercita el fallo de registro aquí; eso
+  ya lo cubren los unit tests).
+
+- **Propiedades verificadas:** (a) si `ready`, las 5 rutas finales existen en el
+  FS y `verification.allPresent && missing==[]`; (b) en `needs-manual` con
+  paths+verification, `missing` coincide EXACTAMENTE con las rutas finales
+  inexistentes (existente⇒no en missing; ausente⇒en missing) y `allPresent` es
+  false; (c) reforzado dentro de (a): ninguna ruta final de un `ready` es
+  reportada inexistente por el FS.
+
+**Orden de claves requerido:** el property test declara LOCALMENTE el orden
+canónico de las 5 `RequiredPathKey` (en vez de importar el `REQUIRED_PATH_KEYS`
+interno del dominio) para no acoplarse a un símbolo interno ni tocar `src`; el
+tipado `readonly RequiredPathKey[]` hace que cualquier cambio en las claves
+requeridas rompa la compilación del test.
+
+**Tests de cancelación añadidos (unit, `test/path-detector.test.ts`):** se
+completó la cobertura de cancelaciones terminales que faltaba: Game_Root cancelado
+tras VDF ausente (→ `library-folders-unreadable`), Game_Root cancelado tras
+ninguna lib con 550 (→ `l4d2-not-in-libraries`), y confirmación de que la
+cancelación invoca al provider UNA sola vez (no reintenta; el bucle de
+`#requestExisting` es solo para `selected` inexistente).
+
+**Verificación:** `npm run typecheck` (tsc estricto) pasa; `npx vitest run` pasa
+las 76 pruebas (11 archivos), incluidas Property 1, Property 2 (>=100 iteraciones)
+y los 3 tests de cancelación nuevos.
+
+**Impacto:** `test/path-detector.property.test.ts` (Property 2) y
+`test/path-detector.test.ts` (tests de cancelación); sin cambios en `src`.
+Cierra la cobertura formal del Requirement 1 (PathDetector).
+
+---
+
 ## Plantilla para entradas futuras
 
 ```

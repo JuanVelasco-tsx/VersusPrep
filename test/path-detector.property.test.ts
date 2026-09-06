@@ -208,3 +208,348 @@ propertyTest(
     return actual === expected;
   }),
 );
+
+// ===========================================================================
+// Property 2 (Tarea 5.4)
+//
+// Feature: l4d2-versus-addon-manager, Property 2: Ninguna ruta se persiste sin
+// verificación en disco
+// **Validates: Requirements 1.9, 1.11, 1.13**
+//
+// ---------------------------------------------------------------------------
+// QUÉ INVARIANTE PRUEBA
+//
+// Es IMPOSIBLE obtener un resultado `ready` (estado "listo para persistir", AC
+// 1.13) sin que la verificación en disco (AC 1.9) haya confirmado las 5 rutas
+// requeridas, y toda ruta suplida manualmente pasa por re-verificación (AC
+// 1.11). El test ejerce el PIPELINE REAL `detector.detect()` (registro +
+// parseo del VDF + findGameLibrary + derivePaths + verifyPathsOnDisk +
+// selección manual con re-verificación) contra un FileSystemProbe mockeado, y
+// usa ese mismo FS como ORÁCULO INDEPENDIENTE: nunca reimplementa `detect` ni
+// `verifyPathsOnDisk`, solo consulta `exists()` sobre las rutas del resultado.
+//
+// ---------------------------------------------------------------------------
+// ESTRATEGIA DE GENERACIÓN
+//
+// El generador varía el estado del FS mockeado y las respuestas de selección
+// manual, cubriendo tanto el camino "VDF con 550 → deriva rutas → verifica" como
+// el camino "usuario da Game_Root", con foco fuerte en la verificación de las 5
+// rutas requeridas y su selección manual/cancelación:
+//
+//   1. RUTAS REQUERIDAS EXISTENTES. Se genera un subconjunto ARBITRARIO de las 5
+//      rutas requeridas derivadas (`derivePaths(LIB, STEAM)`) que existen en el
+//      FS: incluye "ninguna", "todas" y parciales. gameRoot/left4dead2Dir se
+//      añaden como existentes solo si su bandera lo indica; el resto (workshop,
+//      vpkTool, gameinfo, modsvs) por bandera individual.
+//
+//   2. CAMINO DE DERIVACIÓN. `useVdf` decide el camino:
+//        - true  → el FS entrega un `libraryfolders.vdf` con 550 en LIB, de modo
+//          que `detect` deriva las rutas desde la Game_Library (AC 1.7) y las
+//          verifica (camino principal de la Property 2).
+//        - false → el VDF está AUSENTE (readTextFile ok:false); `detect` pide el
+//          Game_Root. El usuario puede darlo (existente/inexistente) o cancelar,
+//          ejercitando el camino manual → verificación.
+//
+//   3. RESPUESTAS DE SELECCIÓN MANUAL (colas FINITAS). Para cada tipo de request
+//      (`steam-path` no se ejercita aquí porque el registro SIEMPRE da STEAM;
+//      `game-root` y cada `required-path`) se programa una COLA FINITA de
+//      respuestas. Cada respuesta es una de:
+//        (i)   cancelación,
+//        (ii)  selección de una ruta que NO existe en el FS (fuerza el reintento
+//              de #requestExisting por AC 1.12), o
+//        (iii) selección de una ruta que SÍ existe en el FS.
+//      GARANTÍA ANTI-BUCLE: el MockManual consume la cola y, AL AGOTARSE,
+//      CANCELA. Como #requestExisting solo reintenta ante `selected`-inexistente
+//      y las colas son finitas, tras a lo sumo N iteraciones el provider devuelve
+//      `cancelled` y el bucle termina. Así el test nunca cuelga.
+//
+//   4. RUTAS MANUALES CANDIDATAS. Las rutas "existentes" ofrecidas manualmente se
+//      toman del conjunto de rutas requeridas que el generador marcó como
+//      existentes (para (iii)); las "inexistentes" son literales fijos fuera del
+//      set (para (ii)). Para game-root existente se usa GAME_ROOT solo si el
+//      generador lo marcó existente.
+//
+// ---------------------------------------------------------------------------
+// ORÁCULO Y PROPIEDADES VERIFICADAS (consultando el FS mock, no el código)
+//
+//   (a) NUNCA ready sin las 5 rutas realmente existentes: si `ready`, las 5
+//       rutas de `result.paths` existen en el FS (via `exists` del mock),
+//       `verification.allPresent === true` y `verification.missing === []`.
+//   (b) `missing` refleja lo ausente: para el PathVerification del resultado,
+//       toda ruta requerida cuyo valor final NO existe está en `missing`, y
+//       ninguna existente está en `missing`.
+//   (c) Ruta manual inexistente nunca produce ready: en `ready`, ninguna ruta
+//       requerida final es reportada inexistente por el FS (refuerzo de (a)); y
+//       si el resultado es `ready`, toda ruta final pasó la re-verificación.
+// ---------------------------------------------------------------------------
+
+import { PathDetector } from "../src/main/domain/index.js";
+import type {
+  FileReadResult,
+  FileSystemProbe,
+  GamePaths,
+  ManualPathProvider,
+  ManualPathRequest,
+  ManualPathResponse,
+  PathVerification,
+  RegistryReader,
+  RequiredPathKey,
+} from "../src/main/domain/index.js";
+
+// Rutas de referencia (Game_Library en disco D:, Steam en C:); coinciden con las
+// del unit test para reusar la topología real de derivePaths.
+const P2_STEAM = "C:\\Program Files (x86)\\Steam";
+const P2_LIB = "D:\\SteamLibrary";
+const P2_VDF_PATH = `${P2_STEAM}\\steamapps\\libraryfolders.vdf`;
+
+/** VDF con 550 en la biblioteca D: (otro disco que Steam en C:). */
+function p2VdfWithL4D2(): string {
+  return `
+"libraryfolders"
+{
+    "0" { "path" "${P2_STEAM.replace(/\\/g, "\\\\")}" "apps" { "440" "1" } }
+    "1" { "path" "${P2_LIB.replace(/\\/g, "\\\\")}" "apps" { "550" "2" } }
+}
+`;
+}
+
+/** Registro mínimo que SIEMPRE devuelve STEAM (no ejercitamos el fallo de registro aquí). */
+class P2Registry implements RegistryReader {
+  async readValue(): Promise<string | null> {
+    return P2_STEAM;
+  }
+}
+
+/** FS mockeado: un Set de rutas existentes + un mapa opcional de archivos de texto. */
+class P2Fs implements FileSystemProbe {
+  readonly existing: Set<string>;
+  readonly #files: Map<string, string>;
+
+  constructor(existing: Iterable<string>, files: Iterable<[string, string]> = []) {
+    this.existing = new Set(existing);
+    this.#files = new Map(files);
+  }
+
+  async readTextFile(path: string): Promise<FileReadResult> {
+    const content = this.#files.get(path);
+    return content === undefined ? { ok: false } : { ok: true, content };
+  }
+
+  async exists(path: string): Promise<boolean> {
+    return this.existing.has(path);
+  }
+}
+
+/**
+ * ManualPathProvider con colas FINITAS por tipo de request; al agotarse la cola
+ * correspondiente, CANCELA. Esto garantiza terminación de #requestExisting.
+ */
+class P2Manual implements ManualPathProvider {
+  #steamPath: ManualPathResponse[];
+  #gameRoot: ManualPathResponse[];
+  #required: Map<string, ManualPathResponse[]>;
+
+  constructor(opts: {
+    steamPath?: ManualPathResponse[];
+    gameRoot?: ManualPathResponse[];
+    required?: Map<string, ManualPathResponse[]>;
+  }) {
+    this.#steamPath = [...(opts.steamPath ?? [])];
+    this.#gameRoot = [...(opts.gameRoot ?? [])];
+    this.#required = new Map();
+    for (const [k, v] of opts.required ?? []) {
+      this.#required.set(k, [...v]);
+    }
+  }
+
+  async requestPath(request: ManualPathRequest): Promise<ManualPathResponse> {
+    if (request.kind === "steam-path") {
+      return this.#steamPath.shift() ?? { kind: "cancelled" };
+    }
+    if (request.kind === "game-root") {
+      return this.#gameRoot.shift() ?? { kind: "cancelled" };
+    }
+    const list = this.#required.get(request.pathKey) ?? [];
+    return list.shift() ?? { kind: "cancelled" };
+  }
+}
+
+/**
+ * Las 5 rutas requeridas en orden canónico (AC 1.9). Se declara LOCALMENTE en el
+ * test (no se importa del dominio) para no acoplar el test a un export interno;
+ * el orden coincide con `RequiredPathKey`/`REQUIRED_PATH_KEYS` del dominio y el
+ * tipado `readonly RequiredPathKey[]` obliga a que cualquier cambio en las claves
+ * requeridas rompa la compilación aquí.
+ */
+const REQUIRED_KEYS: readonly RequiredPathKey[] = [
+  "gameRoot",
+  "workshopFolder",
+  "vpkToolPath",
+  "gameInfoFile",
+  "modsvsFolder",
+];
+
+/** Deriva las 5 rutas requeridas desde LIB/STEAM usando la topología real. */
+function requiredPathsOf(detector: PathDetector): Record<RequiredPathKey, string> {
+  const paths: GamePaths = detector.derivePaths(P2_LIB, P2_STEAM);
+  const out = {} as Record<RequiredPathKey, string>;
+  for (const key of REQUIRED_KEYS) {
+    out[key] = paths[key];
+  }
+  return out;
+}
+
+// Rutas "inexistentes" fijas para respuestas manuales tipo (ii): NUNCA se añaden
+// al Set de existentes del FS, así fuerzan el reintento de AC 1.12.
+const NONEXISTENT_MANUAL_PATHS = [
+  "Z:\\nope\\a",
+  "Z:\\nope\\b",
+  "Z:\\nope\\c",
+] as const;
+
+/** Arbitrary de una respuesta manual, parametrizada por rutas existentes candidatas. */
+function manualResponseArb(
+  existentCandidates: string[],
+): fc.Arbitrary<ManualPathResponse> {
+  const options: fc.Arbitrary<ManualPathResponse>[] = [
+    fc.constant<ManualPathResponse>({ kind: "cancelled" }),
+    fc
+      .constantFrom(...NONEXISTENT_MANUAL_PATHS)
+      .map<ManualPathResponse>((path) => ({ kind: "selected", path })),
+  ];
+  if (existentCandidates.length > 0) {
+    options.push(
+      fc
+        .constantFrom(...existentCandidates)
+        .map<ManualPathResponse>((path) => ({ kind: "selected", path })),
+    );
+  }
+  return fc.oneof(...options);
+}
+
+/** Cola FINITA de respuestas manuales (0..4 elementos). */
+function manualQueueArb(existentCandidates: string[]): fc.Arbitrary<ManualPathResponse[]> {
+  return fc.array(manualResponseArb(existentCandidates), { minLength: 0, maxLength: 4 });
+}
+
+interface P2Scenario {
+  /** Qué rutas requeridas existen en el FS (subconjunto arbitrario). */
+  existRequired: Record<RequiredPathKey, boolean>;
+  /** true → FS entrega VDF con 550; false → VDF ausente (pide Game_Root). */
+  useVdf: boolean;
+  /** Cola finita de respuestas para game-root (solo relevante si !useVdf). */
+  gameRootQueue: ManualPathResponse[];
+  /** Colas finitas por cada required-path. */
+  requiredQueues: Record<RequiredPathKey, ManualPathResponse[]>;
+}
+
+const boolByKeyArb: fc.Arbitrary<Record<RequiredPathKey, boolean>> = fc.record({
+  gameRoot: fc.boolean(),
+  workshopFolder: fc.boolean(),
+  vpkToolPath: fc.boolean(),
+  gameInfoFile: fc.boolean(),
+  modsvsFolder: fc.boolean(),
+});
+
+/**
+ * Construye el escenario. Necesita las rutas requeridas derivadas para poder
+ * ofrecer, en las colas manuales, rutas EXISTENTES reales (las que el escenario
+ * marcó como existentes). Por eso el arbitrary se arma sobre un detector fijo.
+ */
+function scenarioArbFor(required: Record<RequiredPathKey, string>): fc.Arbitrary<P2Scenario> {
+  return boolByKeyArb.chain((existRequired) => {
+    // Candidatas existentes para respuestas (iii): las rutas requeridas marcadas
+    // como existentes. Se ofrecen como posibles selecciones manuales válidas.
+    const existentCandidates = REQUIRED_KEYS.filter((k) => existRequired[k]).map(
+      (k) => required[k],
+    );
+    return fc.record({
+      existRequired: fc.constant(existRequired),
+      useVdf: fc.boolean(),
+      gameRootQueue: manualQueueArb(existentCandidates),
+      requiredQueues: fc.record({
+        gameRoot: manualQueueArb(existentCandidates),
+        workshopFolder: manualQueueArb(existentCandidates),
+        vpkToolPath: manualQueueArb(existentCandidates),
+        gameInfoFile: manualQueueArb(existentCandidates),
+        modsvsFolder: manualQueueArb(existentCandidates),
+      }),
+    });
+  });
+}
+
+// Detector "plantilla" solo para derivar las rutas requeridas (derivePaths es puro).
+const templateDetector = new PathDetector({
+  registry: new P2Registry(),
+  fs: new P2Fs([]),
+  manual: new P2Manual({}),
+});
+const REQUIRED = requiredPathsOf(templateDetector);
+
+propertyTest(
+  2,
+  "Ninguna ruta se persiste sin verificación en disco",
+  fc.asyncProperty(scenarioArbFor(REQUIRED), async (scenario) => {
+    // FS: rutas requeridas existentes según el escenario. Si useVdf, además
+    // entrega el VDF con 550 en LIB (para derivar por Game_Library).
+    const existing = REQUIRED_KEYS.filter((k) => scenario.existRequired[k]).map(
+      (k) => REQUIRED[k],
+    );
+    const files: Array<[string, string]> = scenario.useVdf
+      ? [[P2_VDF_PATH, p2VdfWithL4D2()]]
+      : [];
+    const fs = new P2Fs(existing, files);
+
+    const requiredQueueMap = new Map<string, ManualPathResponse[]>(
+      REQUIRED_KEYS.map((k) => [k, scenario.requiredQueues[k]]),
+    );
+
+    const manual = new P2Manual({
+      gameRoot: scenario.gameRootQueue,
+      required: requiredQueueMap,
+    });
+
+    const detector = new PathDetector({
+      registry: new P2Registry(),
+      fs,
+      manual,
+    });
+
+    const result = await detector.detect();
+
+    // Oráculo independiente: consulta directa al FS mock.
+    const existsInFs = (p: string): boolean => fs.existing.has(p);
+
+    if (result.kind === "ready") {
+      // (a) Las 5 rutas requeridas finales existen realmente en el FS.
+      for (const key of REQUIRED_KEYS) {
+        if (!existsInFs(result.paths[key])) {
+          return false;
+        }
+      }
+      // (a) verification consistente.
+      if (!result.verification.allPresent) return false;
+      if (result.verification.missing.length !== 0) return false;
+      // (b)+(c) reforzado: ninguna ruta requerida final es inexistente en el FS.
+      const anyMissing = REQUIRED_KEYS.some((k) => !existsInFs(result.paths[k]));
+      if (anyMissing) return false;
+      return true;
+    }
+
+    // needs-manual: si trae paths+verification (required-path-missing), el
+    // oráculo debe coincidir con `missing` (b).
+    if (result.paths !== undefined && result.verification !== undefined) {
+      const v: PathVerification = result.verification;
+      for (const key of REQUIRED_KEYS) {
+        const existsNow = existsInFs(result.paths[key]);
+        const inMissing = v.missing.includes(key);
+        if (existsNow && inMissing) return false; // existente jamás en missing
+        if (!existsNow && !inMissing) return false; // ausente siempre en missing
+      }
+      // Un needs-manual con verificación no puede tener allPresent true.
+      if (v.allPresent) return false;
+    }
+    // (c) si el resultado NO es ready, no hay nada que "persistir": OK.
+    return true;
+  }),
+);

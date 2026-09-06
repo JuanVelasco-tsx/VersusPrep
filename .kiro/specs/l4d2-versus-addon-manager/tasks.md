@@ -86,7 +86,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - `readSteamPath` (HKCU\Software\Valve\Steam:SteamPath, `null` si ausente), `derivePaths` (usa el `path` de la Game_Library incluso en otro disco), `verifyPathsOnDisk` (marca faltantes), y `detect` que orquesta todo y ofrece selección manual con re-verificación ante fallos; el acceso al registro y al FS se inyecta para testeo
     - _Requirements: 1.1, 1.2, 1.4, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12_
 
-  - [ ]* 5.4 Escribir property test de verificación previa a persistencia
+  - [x]* 5.4 Escribir property test de verificación previa a persistencia
     - **Feature: l4d2-versus-addon-manager, Property 2: Ninguna ruta se persiste sin verificación en disco**
     - **Validates: Requirements 1.9, 1.11, 1.13**
     - fast-check con FS mockeado, mínimo 100 iteraciones; solo se persisten rutas verificadas, y toda ruta requerida inexistente se marca faltante

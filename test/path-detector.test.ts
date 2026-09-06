@@ -576,4 +576,56 @@ describe("detect: flujo completo (AC 1.1–1.12)", () => {
       expect(result.verification?.missing).toContain("modsvsFolder");
     }
   });
+
+  // -------------------------------------------------------------------------
+  // Cancelaciones terminales: la cancelación de una selección manual SIEMPRE
+  // termina la detección en needs-manual (definitivo). El ÚNICO bucle de
+  // reintento de #requestExisting es para rutas `selected` inexistentes
+  // (AC 1.12), NUNCA para `cancelled`.
+  // -------------------------------------------------------------------------
+
+  test("Game_Root cancelado tras VDF ausente → needs-manual library-folders-unreadable (AC 1.4)", async () => {
+    const registry = new MockRegistry(STEAM);
+    // FS sin el VDF (readTextFile → ok:false). El usuario CANCELA el Game_Root.
+    const fs = new MockFs(ALL_REQUIRED);
+    const manual = new MockManual().onGameRoot(cancelled);
+    const detector = makeDetector({ registry, fs, manual });
+
+    const result = await detector.detect();
+    expect(result).toEqual({
+      kind: "needs-manual",
+      reason: "library-folders-unreadable",
+    });
+  });
+
+  test("Game_Root cancelado tras ninguna lib con 550 → needs-manual l4d2-not-in-libraries (AC 1.6)", async () => {
+    const registry = new MockRegistry(STEAM);
+    // VDF válido pero SIN la clave 550. El usuario CANCELA el Game_Root.
+    const vdfNo550 = `"libraryfolders" { "0" { "path" "${LIB.replace(
+      /\\/g,
+      "\\\\",
+    )}" "apps" { "440" "1" } } }`;
+    const fs = new MockFs(ALL_REQUIRED, [[VDF_PATH, vdfNo550]]);
+    const manual = new MockManual().onGameRoot(cancelled);
+    const detector = makeDetector({ registry, fs, manual });
+
+    const result = await detector.detect();
+    expect(result).toEqual({
+      kind: "needs-manual",
+      reason: "l4d2-not-in-libraries",
+    });
+  });
+
+  test("la cancelación NO reintenta: se invoca al provider UNA sola vez y termina en needs-manual", async () => {
+    // Caso más claro: Steam ausente + usuario cancela. Si #requestExisting
+    // reintentara ante `cancelled`, habría más de una solicitud steam-path.
+    const registry = new MockRegistry(null);
+    const manual = new MockManual().onSteamPath(cancelled);
+    const detector = makeDetector({ registry, manual });
+
+    const result = await detector.detect();
+    expect(result).toEqual({ kind: "needs-manual", reason: "steam-not-installed" });
+    // Exactamente UNA invocación ante cancelación (no bucle infinito).
+    expect(manual.requests.filter((r) => r.kind === "steam-path").length).toBe(1);
+  });
 });
