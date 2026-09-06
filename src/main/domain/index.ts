@@ -40,6 +40,7 @@ export type { VpkNoisePrefix } from "./vpk-noise-filter.js";
 // ---------------------------------------------------------------------------
 export {
   DEFAULT_MAX_COMMAND_LENGTH,
+  DEFAULT_MAX_BATCH_SIZE,
   DEFAULT_EXECUTABLE_NAME,
   batchInternalPaths,
   commandLengthForBatch,
