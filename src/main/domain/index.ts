@@ -59,3 +59,18 @@ export {
   DISK_SEPARATOR,
   internalPathToDiskPath,
 } from "./vpk-path.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 6.1, 6.3, 6.12 — VpkTool): única puerta a `vpk.exe`.
+// Reúne el filtrado de ruido (2.1) y el batching (2.3) sobre un ejecutor de
+// comandos inyectable, y propaga los exit ≠ 0 como `VpkToolError` tipado que
+// identifica el addon. MergeEngine (tarea 11) y los tests (2.8) lo consumen.
+// ---------------------------------------------------------------------------
+export { SUCCESS_EXIT_CODE, VpkTool, VpkToolError } from "./vpk-tool.js";
+export type {
+  CommandResult,
+  CommandRunner,
+  CommandRunOptions,
+  VpkOperation,
+  VpkToolErrorInit,
+} from "./vpk-tool.js";

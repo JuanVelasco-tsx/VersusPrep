@@ -52,7 +52,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - **Validates: Requirements 6.6**
     - fast-check, mínimo 100 iteraciones
 
-  - [ ] 2.7 Implementar `VpkTool` (`list`, `extract`, `pack`) sobre un ejecutor inyectable
+  - [x] 2.7 Implementar `VpkTool` (`list`, `extract`, `pack`) sobre un ejecutor inyectable
     - Ejecuta `vpk l`/`vpk x`/`vpk <carpeta>` vía un `CommandRunner` inyectado (`execFile`/`spawn`, argumentos como array, sin shell); `list` aplica el filtrado (2.1), `extract` usa el batching (2.3) y crea `destDir` como working directory; cualquier exit distinto de éxito se propaga como error tipado que identifica el addon
     - _Requirements: 6.1, 6.3, 6.12_
 
