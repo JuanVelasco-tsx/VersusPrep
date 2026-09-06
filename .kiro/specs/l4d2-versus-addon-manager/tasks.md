@@ -69,7 +69,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - Ejecuta `list` → `extract` (por lotes) → `pack` sobre los fixtures reales; verifica que la extracción del fixture de >200 archivos completa sin `exit -1` y que todos los archivos se extraen; se ejecuta solo si el binario `vpk.exe` está disponible
     - _Requirements: 6.1, 6.3, 6.4, 6.5, 6.8, 6.12_
 
-- [ ] 4. Checkpoint - Asegurar que los tests del wrapper VPK pasan
+- [x] 4. Checkpoint - Asegurar que los tests del wrapper VPK pasan
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 5. PathDetector (Requirement 1)
