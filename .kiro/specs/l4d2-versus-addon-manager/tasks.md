@@ -121,7 +121,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - Función pura que decide si un Addon forma parte del Active_Set: permitido si no es VScript_Addon, o si es VScript_Addon con confirmación explícita de forzado; bloqueado por defecto en caso contrario
     - _Requirements: 3.6, 3.7, 3.8_
 
-  - [ ]* 8.2 Escribir property test de inclusión bloqueada de VScript_Addon
+  - [x]* 8.2 Escribir property test de inclusión bloqueada de VScript_Addon
     - **Feature: l4d2-versus-addon-manager, Property 6: Inclusión bloqueada de VScript_Addon salvo confirmación explícita**
     - **Validates: Requirements 3.7, 3.8**
     - fast-check, mínimo 100 iteraciones, variando `isVScriptAddon` y la confirmación del usuario
