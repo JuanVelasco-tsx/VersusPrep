@@ -29,7 +29,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - Función pura que descarta líneas de stdout que comienzan con `CDynamicFunction:`, `FS:` o `Using`, conservando el resto sin alterarlas; usada por `list()`
     - _Requirements: 6.2_
 
-  - [ ]* 2.2 Escribir property test del filtrado de ruido
+  - [x]* 2.2 Escribir property test del filtrado de ruido
     - **Feature: l4d2-versus-addon-manager, Property 8: Filtrado del ruido de la VPK_Tool**
     - **Validates: Requirements 6.2**
     - fast-check, mínimo 100 iteraciones, generando stdout con mezcla arbitraria de líneas de ruido y líneas válidas
