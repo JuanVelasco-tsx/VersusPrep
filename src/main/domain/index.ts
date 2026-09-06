@@ -75,3 +75,19 @@ export type {
   VpkOperation,
   VpkToolErrorInit,
 } from "./vpk-tool.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 3 — VScriptDetector): clasificación anti-VScript a partir
+// del listado REAL del VPK (`VpkTool.list`), nunca del flag `addonContent_Script`.
+// Se re-exporta código de runtime (la clase orquestadora y el núcleo puro de
+// match) además de sus constantes, para que la capa IPC (tarea 20) y los tests
+// (tareas 7.1/7.2) lo consuman desde el dominio. El núcleo puro se expone
+// aparte para poder testear el match de paths de forma aislada (property 7.2).
+// ---------------------------------------------------------------------------
+export {
+  VSCRIPTS_PREFIX,
+  VSCRIPT_EXTENSION,
+  classifyVScriptPaths,
+  isVScriptPath,
+  VScriptDetector,
+} from "./vscript-detector.js";

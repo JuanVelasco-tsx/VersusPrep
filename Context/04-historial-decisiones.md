@@ -226,6 +226,77 @@ MergeEngine (tarea 11).
 
 ---
 
+### [2026-09-06] Decisión de rama: `vscript-detector` desde main, ramas hermanas (Opción 1)
+**Qué:** La rama `vscript-detector` (secciones 7-8 del plan) se creó DESDE main
+(commit cd3e009), NO encadenada sobre `addon-scanner`.
+**Motivo:** las secciones 5 (PathDetector), 6 (AddonScanner) y 7-8 (VScript) son
+ramas HERMANAS independientes del plan, no una cadena de dependencias. La sección 7
+solo necesita `VpkTool.list` y el tipo `ScannedAddon`, ambos YA presentes en main.
+Encadenar la sección 7 sobre `addon-scanner` sin necesidad técnica reintroduciría el
+mismo acoplamiento evitable que ya se descartó para la sección 6. Los solapamientos de
+merge que aparezcan en el checkpoint 9 son esperables y preferibles a ramas acopladas
+sin motivo. Coherente con el mapa de ramas de CONTRIBUTING.md (vscript-detector =
+secciones 7-8).
+**Impacto:** organización de ramas; se materializa en el conflicto trivial anotado en
+la entrada siguiente para el checkpoint 9.
+
+---
+
+### [2026-09-06] Aviso para el checkpoint 9: merge del barrel `index.ts` (adición-adición trivial)
+**Qué:** Las tres ramas hermanas (path-detector, addon-scanner, vscript-detector) agregan
+su bloque de exports en el MISMO punto final de `src/main/domain/index.ts` (después del
+bloque de `vpk-tool.js`). Al mergear las tres a main en el checkpoint 9, git marcará un
+conflicto de tipo ADICIÓN-ADICIÓN en esa región.
+**Motivo/naturaleza:** el conflicto es TRIVIAL y NO estructural: se resuelve CONCATENANDO
+los tres bloques. Cada rama exporta símbolos DISTINTOS de módulos DISTINTOS; no hay exports
+duplicados, ni renombres, ni reestructuración. Además, `path-detector` inserta 5 tipos
+nuevos (RequiredPathKey, PathVerification, PathDetectionSource, PathDetectionFailureReason,
+PathDetectionResult) DENTRO del bloque `export type { ... } from "./types.js"` entre
+`LibraryEntry` y `AddonInfo`; `addon-scanner` y `vscript-detector` NO tocan ese bloque, así
+que ahí NO hay conflicto. `vscript-detector` solo AÑADE un bloque nuevo al final (clase
+`VScriptDetector`, `classifyVScriptPaths`, `isVScriptPath`, `VSCRIPTS_PREFIX`,
+`VSCRIPT_EXTENSION`).
+**Impacto:** se deja anotado para no redescubrirlo durante el checkpoint 9 y resolverlo por
+concatenación sin dudar.
+
+---
+
+### [2026-09-06] Decisión de normalización del prefijo/extensión del VScriptDetector (Tarea 7.1)
+**Qué:** En `vscript-detector.ts` (tarea 7.1), el match que decide si un path del listado de
+`vpk l` cuenta como VScript (AC 3.2/3.3) se normaliza así, antes de comparar:
+  - **Case-insensitive** en AMBAS comparaciones: se pasa el path a `toLowerCase()` y se
+    compara contra el prefijo `scripts/vscripts/` y la extensión `.nut` en minúsculas. Así
+    `Scripts/VScripts/Foo.NUT` cuenta (AC 3.2 exige case-insensitive explícito).
+  - **Forma del prefijo:** `path.toLowerCase().startsWith("scripts/vscripts/")`. El prefijo
+    termina en `/`, por lo que `scripts/vscripts/ai/bar.nut` (subdir más profundo) CUENTA
+    (está bajo el prefijo), y `scripts/vscripts_notdir/foo.nut` NO cuenta. Un `.nut` fuera
+    del prefijo (`scripts/foo.nut`, `materials/vscripts/foo.nut`, `vscripts/foo.nut`) NO
+    cuenta (AC 3.3).
+  - **Extensión:** `endsWith(".nut")` (ya en minúsculas). Un archivo bajo el prefijo que no
+    sea `.nut` (p. ej. `scripts/vscripts/readme.txt`) NO cuenta: deben cumplirse AMBAS.
+  - **`./` líder opcional:** se recorta un único `./` inicial si está presente antes de
+    evaluar el prefijo, contemplando que `vpk l` PODRÍA emitir paths con un prefijo relativo.
+    NO se resuelve `../` ni se colapsan segmentos (los paths de `vpk l` son relativos a la raíz
+    del VPK, sin navegación hacia arriba).
+  - **Separador `/`:** se asume `/` (formato interno del VPK, garantizado por `VpkTool.list`);
+    no se normalizan `\`.
+Un `.nut` fuera del prefijo NUNCA afecta la clasificación; basta UN `.nut` bajo el prefijo.
+La clasificación NO inspecciona `addoninfo.txt` ni el flag `addonContent_Script` (AC 3.4);
+solo mira el listado de paths.
+**Estructura:** se separó un NÚCLEO PURO (`classifyVScriptPaths(paths): boolean` +
+`isVScriptPath(path): boolean`) de la orquestación async (`VScriptDetector.classify`, que
+llama a `VpkTool.list` y, ante fallo/exit ≠ 0, envuelve en try/catch y clasifica como
+VScript_Addon `listing-failed` POR PRECAUCIÓN, AC 3.5). El núcleo puro es property-testeable
+sin mocks (habilita la tarea 7.2, Property 5).
+**A revisar contra un VPK real con vscripts:** la contemplación del `./` líder NO se verificó
+empíricamente en esta subtarea; queda como suposición sobre la forma de los paths de `vpk l`.
+El resto (separador `/`, casing arbitrario) es coherente con la validación end-to-end previa.
+**Impacto:** `src/main/domain/vscript-detector.ts` y `src/main/domain/index.ts` (barrel), sus
+unit tests `test/vscript-detector.test.ts` (tarea 7.1) y el property test de la tarea 7.2.
+Consumido luego por la capa IPC (tarea 20) y la política de inclusión del Active_Set (tarea 8).
+
+---
+
 ## Plantilla para entradas futuras
 
 ```

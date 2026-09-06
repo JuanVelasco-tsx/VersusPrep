@@ -107,7 +107,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - fast-check con FS mockeado, mínimo 100 iteraciones; cover = ruta de `<id>.jpg` si existe, `null` si no
 
 - [ ] 7. VScriptDetector (Requirement 3)
-  - [ ] 7.1 Implementar la clasificación VScript a partir del listado del VPK
+  - [x] 7.1 Implementar la clasificación VScript a partir del listado del VPK
     - Usa `VpkTool.list`; clasifica como VScript_Addon si y solo si hay un path con prefijo `scripts/vscripts/` (case-insensitive) y extensión `.nut` (case-insensitive); ignora `.nut` fuera de ese prefijo; **nunca** usa el flag `addonContent_Script`; si `vpk l` falla, clasifica como VScript_Addon por precaución
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
