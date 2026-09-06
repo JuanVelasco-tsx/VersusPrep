@@ -226,6 +226,23 @@ MergeEngine (tarea 11).
 
 ---
 
+### [2026-09-06] AddonScanner: FS propia, addoninfo vía VpkTool y extractor ad-hoc (Tarea 6.1)
+**Qué:** Se implementó el escaneo de la Workshop_Folder (`AddonScanner`, Requirement 2, AC 2.1–2.6) en `src/main/domain/addon-scanner.ts`, con el extractor de metadata en `src/main/domain/addoninfo-extract.ts`. Tres decisiones de arquitectura tomadas por el usuario y aplicadas:
+
+  - **Decisión 1 — Interfaz de FS PROPIA (`AddonFileSystem`), no reutilizar la de la sección 5.** `AddonScanner` define su propio contrato de FS inyectable (`listEntries` con `DirEntry {name, isDirectory}` para distinguir archivo de subdir, `exists`, `readTextFile`, `ensureDir`) en vez de depender del `FileSystemProbe` de PathDetector, que en esta rama (`addon-scanner`, salida de main) NO está mergeado. **Motivo:** CONTRIBUTING.md exige que cada rama parta de main actualizada y el checkpoint de la tarea 9 agrupa deliberadamente las secciones 6+7+8; mergear PathDetector antes de tiempo solo para evitar la duplicación rompería esa disciplina de ramas. La duplicación de un contrato de FS chico es un costo ACEPTADO conscientemente: aún no hay suficientes consumidores (PathDetector, AddonScanner y probablemente VScriptDetector en la sección 7) como para saber qué forma debería tener una interfaz de FS común. **A revisar:** unificar las interfaces de FS una vez existan PathDetector + AddonScanner + VScriptDetector (prioridad MENOR que la unificación de parsers, ver abajo).
+
+  - **Decisión 2 — Lectura de `addoninfo.txt` vía `VpkTool` (extracción selectiva a dir temporal), NO lectura de disco directa.** El `addoninfo.txt` vive DENTRO del `<id>.vpk`. Flujo: (1) `vpkTool.list(vpkPath, id)` → localizar el path interno cuyo basename es `addoninfo.txt` (case-insensitive); si no aparece → `info: null` sin extraer; (2) `vpkTool.extract(vpkPath, [ese path], destDir, id)` extrae SOLO ese archivo a un `destDir` temporal por addon (se asegura el dir con `ensureDir`); (3) leer con el FS inyectado y parsear con el extractor ad-hoc. `VpkTool` se INYECTA por constructor (igual que `CommandRunner`/`vpkExe` en `VpkTool`); se reusa tal cual el `VpkTool` de main.
+
+  - **Decisión 3 — Extractor AD-HOC (Opción A2), NO un parser KeyValues propio.** En vez de duplicar el parser KeyValues general (que vive en la rama `path-detector` sin mergear), se escribió un extractor acotado best-effort que reconoce SOLO las 3 claves de nivel superior necesarias. **Motivo:** duplicar un ALGORITMO de parseo es más riesgoso (divergencia) que duplicar un contrato de FS. **Nota de prioridad:** cuando se mergee la sección 5, reconciliar los DOS parsers (ad-hoc vs. KeyValues) tiene PRIORIDAD MÁS ALTA que unificar las interfaces de FS.
+
+**Claves confirmadas (NO asumidas):** dentro del bloque `"AddonInfo"`, título = `addontitle`, autor = `addonauthor`, descripción = `addonDescription`, confirmadas contra la convención de L4D2 (wiki de Valve + addons reales). Existen `addonversion`, `addonSteamAppID`, etc. que se IGNORAN. **Casing variable:** en addons reales el casing varía (`addontitle`/`addonTitle`, `addonauthor`/`addonAuthor`, …) → comparación de claves CASE-INSENSITIVE. Los VALORES aparecen con o sin comillas (se maneja ambos) y puede haber comentarios `//` en la misma línea (se ignora lo que sigue a `//` fuera de comillas).
+
+**Degradación best-effort (AC 2.5, confirmado):** toda la fase de metadata (list, extract, lectura, parseo) va envuelta en try/catch por-addon: cualquier fallo —addoninfo ausente del listado, `vpk l`/`vpk x` con exit ≠ 0 (`VpkToolError`), error de lectura, texto malformado— degrada a `info: null` SIN abortar ni omitir el addon. El addon SIEMPRE se lista con `id`, `vpkPath` y `coverPath` correctos. Campo faltante en el addoninfo → propiedad OMITIDA (no `undefined`, por `exactOptionalPropertyTypes`); bloque ausente / malformado / ningún campo reconocido → `null`. El extractor NUNCA lanza.
+**Motivo:** cerrar la tarea 6.1 respetando la disciplina de ramas y dejando registro de por qué se duplican deliberadamente el contrato de FS y el parser.
+**Impacto:** `src/main/domain/addon-scanner.ts`, `src/main/domain/addoninfo-extract.ts`, el barrel `index.ts` (exporta `AddonScanner`, `AddonFileSystem`, `DirEntry`, `extractAddonInfo`) y `test/addon-scanner.test.ts`. Condiciona la sección 7 (VScriptDetector, otro consumidor de FS/VpkTool) y los property tests 6.2/6.3 (commits posteriores).
+
+---
+
 ## Plantilla para entradas futuras
 
 ```

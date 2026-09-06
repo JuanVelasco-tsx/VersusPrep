@@ -75,3 +75,13 @@ export type {
   VpkOperation,
   VpkToolErrorInit,
 } from "./vpk-tool.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 2 — AddonScanner): escaneo de la Workshop_Folder.
+// Exporta la clase `AddonScanner`, su interfaz de FS PROPIA (`AddonFileSystem`,
+// `DirEntry`) inyectable para tests, y el extractor ad-hoc de `addoninfo.txt`
+// (`extractAddonInfo`), expuesto para poder testearlo aislado (tarea 6.1).
+// ---------------------------------------------------------------------------
+export { AddonScanner } from "./addon-scanner.js";
+export type { AddonFileSystem, DirEntry } from "./addon-scanner.js";
+export { extractAddonInfo } from "./addoninfo-extract.js";

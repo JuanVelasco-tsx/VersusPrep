@@ -92,7 +92,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - fast-check con FS mockeado, mínimo 100 iteraciones; solo se persisten rutas verificadas, y toda ruta requerida inexistente se marca faltante
 
 - [ ] 6. AddonScanner (Requirement 2)
-  - [ ] 6.1 Implementar el escaneo de la Workshop_Folder
+  - [x] 6.1 Implementar el escaneo de la Workshop_Folder
     - Incluye solo `.vpk` de nivel superior (ignora subdirectorios y otras extensiones); trata `<id>.vpk` como Addon `<id>`; asocia `<id>.jpg` como Addon_Cover si existe (`null` si no); lectura opcional de `addoninfo.txt` interno que no bloquea el escaneo; FS inyectado
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
