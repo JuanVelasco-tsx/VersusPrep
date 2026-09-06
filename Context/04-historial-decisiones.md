@@ -305,6 +305,29 @@ Consumido luego por la capa IPC (tarea 20) y la política de inclusión del Acti
 
 ---
 
+### [2026-09-06] NOTA DE PROCESO: método fiable para medir contadores de no-vacuidad de property tests
+**Qué:** La captura del output de vitest por consola falla de forma recurrente en
+este entorno de shell (observado tanto con la Property 2 del PathDetector como con
+la Property 5 del VScriptDetector): el stdout/stderr no se recupera de manera
+confiable, así que no se puede leer un `console.log` de contadores desde la corrida.
+**Método verificado para medir contadores de no-vacuidad:** escribir los contadores
+a un archivo con `node:fs` (`writeFileSync`) en una ruta fija DENTRO del test
+(temporalmente, SIN commitear el `writeFileSync` ni el import), correr el test una
+sola vez, y leer ese archivo directamente con una herramienta de lectura de archivos.
+NO depender de la captura de consola. Después de medir, RESTAURAR el test (quitar el
+`writeFileSync` y el import temporal) y borrar el archivo temporal antes de commitear.
+Este es el método a usar para futuros hardenings de property tests que necesiten
+afirmar no-vacuidad.
+**Medición concreta (Property 5, VScriptDetector):** los valores de no-vacuidad se
+midieron con este método sobre el ARCHIVO COMMITEADO
+`test/vscript-detector.property.test.ts` (no una réplica): en 100 iteraciones se
+observó `positiveCount=65`, `negativeCount=35`, `trickyCount=61`. El comentario de
+no-vacuidad del test se actualizó con esos valores reales.
+**Impacto:** `test/vscript-detector.property.test.ts` (comentario de Property 5) y todo
+property test futuro con aserciones de no-vacuidad (p. ej. Property 6, tarea 8.2).
+
+---
+
 ## Plantilla para entradas futuras
 
 ```

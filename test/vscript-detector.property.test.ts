@@ -237,9 +237,11 @@ test(propertyName(5, "Clasificación VScript a partir del listado real"), async 
   );
 
   // NO-VACUIDAD: el conjunto generado ejercitó de verdad los tres escenarios.
-  // Valores observados en 100 iteraciones (sin sesgo adicional): positiveCount≈56,
-  // negativeCount≈44, trickyCount≈62. Los pesos leves de `itemArb` (A y D
-  // favorecidas) bastan para mantener los tres holgadamente > 0.
+  // Valores medidos DIRECTAMENTE del test commiteado (vía writeFileSync a un
+  // archivo, ver la nota de proceso del 2026-09-06 en
+  // Context/04-historial-decisiones.md) en 100 iteraciones: positiveCount=65,
+  // negativeCount=35, trickyCount=61. Los tres holgadamente > 0. Los pesos leves
+  // de `itemArb` (A y D favorecidas) bastan para mantener los tres > 0.
   expect(positiveCount).toBeGreaterThan(0);
   expect(negativeCount).toBeGreaterThan(0);
   expect(trickyCount).toBeGreaterThan(0);
