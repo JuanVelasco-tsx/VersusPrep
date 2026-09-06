@@ -60,12 +60,12 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - Verifica invocación correcta de argumentos, propagación de exit codes como error tipado y wiring de filtrado/batching; sin tocar `vpk.exe` real
     - _Requirements: 6.1, 6.3, 6.12_
 
-- [ ]* 3. VpkTool: test de integración con `vpk.exe` real (requiere el binario)
-  - [ ]* 3.1 Crear fixtures de VPK de prueba reales, incluyendo uno de >200 archivos
+- [x]* 3. VpkTool: test de integración con `vpk.exe` real (requiere el binario)
+  - [x]* 3.1 Crear fixtures de VPK de prueba reales, incluyendo uno de >200 archivos
     - Generar/incluir VPKs de prueba en `test/fixtures/vpk/`; uno debe contener **más de 200 archivos** para confirmar que el batching evita el fallo `exit -1` de pasar cientos de argumentos de una vez
     - _Requirements: 6.4, 6.5_
 
-  - [ ]* 3.2 Escribir test de integración de `VpkTool` contra `vpk.exe`
+  - [x]* 3.2 Escribir test de integración de `VpkTool` contra `vpk.exe`
     - Ejecuta `list` → `extract` (por lotes) → `pack` sobre los fixtures reales; verifica que la extracción del fixture de >200 archivos completa sin `exit -1` y que todos los archivos se extraen; se ejecuta solo si el binario `vpk.exe` está disponible
     - _Requirements: 6.1, 6.3, 6.4, 6.5, 6.8, 6.12_
 
