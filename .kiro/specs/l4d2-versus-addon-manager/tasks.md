@@ -96,7 +96,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - Incluye solo `.vpk` de nivel superior (ignora subdirectorios y otras extensiones); trata `<id>.vpk` como Addon `<id>`; asocia `<id>.jpg` como Addon_Cover si existe (`null` si no); lectura opcional de `addoninfo.txt` interno que no bloquea el escaneo; FS inyectado
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-  - [ ]* 6.2 Escribir property test del contenido del escaneo
+  - [x]* 6.2 Escribir property test del contenido del escaneo
     - **Feature: l4d2-versus-addon-manager, Property 3: El escaneo incluye exactamente los `.vpk` de nivel superior**
     - **Validates: Requirements 2.1, 2.2, 2.3**
     - fast-check con FS mockeado, mínimo 100 iteraciones, generando mezclas arbitrarias de `.vpk`, `.jpg`, otras extensiones y subdirectorios
