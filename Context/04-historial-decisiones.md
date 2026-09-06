@@ -78,6 +78,154 @@ Log de cambios de rumbo, correcciones de terminología y decisiones importantes 
 
 ---
 
+### [2026-09-05] Decisiones de comportamiento inferidas para filterVpkNoise (Tarea 2.1)
+**Qué:** El AC 6.2 y la Property 8 solo especifican: descartar las líneas que
+**comienzan con** `CDynamicFunction:`, `FS:` o `Using`, y conservar el resto
+**sin alterarlas**. Al implementar `filterVpkNoise` (tarea 2.1) hubo que decidir
+cuatro detalles de comportamiento que el spec NO especifica:
+  - **Sensible a mayúsculas.** Los prefijos se comparan tal cual (`FS:` sí, `fs:` no).
+    El spec los enumera literales sin decir case-insensitive. Nota: para VScript
+    (Property 5) el spec Sí pide case-insensitive explícito, así que aquí el
+    silencio se interpreta como sensible a mayúsculas.
+  - **Sin `trim`.** "Comienza con" = prefijo literal al inicio EXACTO de la línea;
+    una línea "  FS: ..." con espacios iniciales se CONSERVA (no comienza con el
+    prefijo de forma literal).
+  - **Fin de línea.** Se soporta `\n` y `\r\n`; se normaliza un `\r` colgante al
+    final de cada línea antes de evaluar el prefijo y se elimina de las líneas
+    devueltas.
+  - **Línea final vacía.** Un salto de línea terminal produce una última cadena
+    vacía que se DESCARTA; las líneas vacías intermedias se CONSERVAN; stdout vacío
+    devuelve arreglo vacío.
+**Motivo:** el requisito es a nivel de "línea" pero no define tokenización de
+líneas ni casing; fijar estos criterios ahora los hace deterministas y permite
+escribir el property test de la tarea 2.2 sin ambigüedad.
+**A revisar:** si al integrar con `vpk.exe` real (tarea 3) se observa que el binario
+emite los prefijos con otro casing o con indentación, habrá que revisitar las
+decisiones de casing y `trim`.
+**Impacto:** `src/main/domain/vpk-noise-filter.ts` (tarea 2.1) y el property test de
+la tarea 2.2. Consumido luego por `VpkTool.list()` (tarea 2.7).
+
+---
+
+### [2026-09-05] Modelo de costo de la línea de comando en batchInternalPaths (Tarea 2.3)
+**Qué:** El AC 6.4 exige que "la longitud total de la línea de comando de cada
+invocación (ejecutable, VPK y todos los paths) no exceda un límite seguro", pero
+NO define QUÉ caracteres se cuentan ni cómo. Al implementar `batchInternalPaths`
+(tarea 2.3) se fijó un modelo de costo CONSERVADOR y explícito:
+
+    costo(lote) = len("<executableName> x <vpkPath>") + Σ (1 + len(path))
+
+  - `overheadBase` = longitud del prefijo fijo `"<executableName> x <vpkPath>"`:
+    nombre del ejecutable (por defecto `vpk.exe`, NO la ruta absoluta) + espacio +
+    subcomando `x` + espacio + ruta del VPK.
+  - Por cada path se suma `1 + len(path)`: el `1` es el espacio separador que
+    precede al argumento; `len(path)` es el path tal cual (no se traducen
+    separadores; eso es la tarea 2.5).
+  - Límite por defecto `DEFAULT_MAX_COMMAND_LENGTH = 6000`, sobreescribible por opción.
+**Limitación conocida (IMPORTANTE):** el modelo NO modela el QUOTING/escaping que
+el SO aplicaría a paths con espacios o caracteres especiales (añadiría comillas y,
+por tanto, más caracteres por argumento). Se ASUME que el margen entre el límite
+usado (6000) y el máximo real de Windows (~8191 para `cmd`) es suficiente para
+absorber ese overhead, y que la invocación sin shell (argumentos como array, ver
+diseño VpkTool) reduce el problema. Esa suposición NO está verificada empíricamente.
+**Verificado (Tarea 3) — caveat de quoting/espacios: CONFIRMADO que NO es problema.**
+El test de integración `test/vpk-tool.integration.test.ts` incluye un fixture con
+paths internos CON ESPACIOS (p. ej. `materials/some model file.vmt`) y se ejecutó
+contra el `vpk.exe` real. Resultado: la extracción de esos paths funciona sin error
+y el archivo con espacios queda en disco en la ubicación esperada. Motivo: el
+`CommandRunner` real (`ChildProcessCommandRunner`, tarea 3) usa `execFile` SIN shell,
+por lo que cada path se pasa como argumento LITERAL a `vpk.exe` sin quoting de shell.
+El overhead de comillas que el modelo de costo no cuenta NO aparece (no hay shell que
+las añada), así que el caveat de quoting queda cerrado: no empuja por encima del
+límite y no reproduce el fallo. NO fue necesario bajar el margen ni modelar el quoting.
+
+**HALLAZGO INESPERADO Y MÁS GRAVE (Tarea 3) — el límite real de `vpk.exe` es por
+CANTIDAD de argumentos, NO por longitud de la línea de comando.** Al extraer el
+fixture grande (260 archivos, paths cortos con línea total ~6.6k chars) se observó
+que `vpk.exe` CRASHEA cuando recibe demasiados argumentos de path de una sola vez,
+INDEPENDIENTEMENTE de la longitud total: el umbral está entre 70 (OK) y 80 (crash);
+72-79 argumentos ya crashean. El crash NO es el `exit -1` supuesto, sino
+`exit 0xC0000409` (`STATUS_STACK_BUFFER_OVERRUN`; `-1073740791` con signo o
+`3221226505` sin signo) y extrae 0 archivos. Como `batchInternalPaths` (2.3) SOLO
+limita por CARACTERES (~6000) y `VpkTool.extract` (2.7) lo invoca con los defaults
+(sin opción de cantidad), produce lotes de >70 paths que igual crashean. El test de
+integración DOCUMENTA este bug (la extracción de los 260 paths de golpe falla con
+`VpkToolError`) y DEMUESTRA la corrección (partiendo manualmente en lotes de 64
+paths, la extracción de los mismos 260 completa y todos los archivos quedan en disco).
+**Corrección APLICADA (opción B):** se agregó a `batchInternalPaths` (2.3) un SEGUNDO
+límite por CANTIDAD de paths por lote (`DEFAULT_MAX_BATCH_SIZE = 50`, configurable vía
+`options.maxBatchSize`), que se aplica SIMULTÁNEAMENTE con el de longitud: en cada lote
+se respetan AMBAS restricciones y el que primero se alcance corta el lote. Un path
+individual que excede por sí solo cualquiera de los dos límites sigue yendo en su
+propio lote. El property test 2.4 (Property 9) se extendió con la aserción de cantidad
+(`batch.length <= maxBatchSize`). `VpkTool.extract` (2.7) usa los defaults, así que quedó
+corregido automáticamente. NOTA sobre el umbral: se observó empíricamente que 64
+argumentos funcionan (exit 0, extrae todo) y ~72-79 crashean, en ESTA versión del
+`vpk.exe`. 50 es un MARGEN CONSERVADOR elegido por nosotros, NO un límite documentado
+por Valve; si en el futuro se usa una versión distinta de `vpk.exe` conviene RE-VERIFICAR
+el umbral (el test de integración de la tarea 3 sirve para eso).
+**Impacto:** `src/main/domain/vpk-batch.ts` (tarea 2.3) y su property test 2.4 (modelo de
+costo vía `commandLengthForBatch`), `VpkTool.extract()` (tarea 2.7), el test de integración
+`test/vpk-tool.integration.test.ts` (tarea 3, que ya deja el hallazgo verificado) y el
+futuro `MergeEngine` (tarea 11).
+
+---
+
+### [2026-09-05] Traducción de separadores: literal "\\" en vez de path.sep (Tarea 2.5)
+**Qué:** En `internalPathToDiskPath` (tarea 2.5) la traducción de separadores usa
+el literal `DISK_SEPARATOR = "\\"` (backslash de Windows), NO `path.sep` del módulo
+`path` de Node. Es una decisión deliberada, no un descuido.
+**Motivo:** `path.sep` depende de la PLATAFORMA DE EJECUCIÓN: vale `\\` en
+Windows pero `/` en Linux/macOS. La Property 10 (AC 6.6), en cambio, exige la
+traducción `/` -> `\\` como REGLA FIJA del formato de destino (paths de disco de
+Windows, que es la plataforma primaria del proyecto), independiente de en qué SO
+corra el proceso o el CI. Usar `path.sep` haría que la traducción "no hiciera nada"
+en Linux/macOS (donde `path.sep === "/"`), produciendo un path de salida idéntico al
+de entrada.
+**Advertencia explícita:** si alguien "simplifica" esto a `path.sep` en el futuro,
+ROMPE la Property 10 en cualquier corrida de CI que NO sea Windows (el test
+fallaría porque la salida no tendría `\\`). El literal `"\\"` es intencional y no
+debe reemplazarse por `path.sep`.
+**Impacto:** `src/main/domain/vpk-path.ts` (tarea 2.5) y su property test (tarea 2.6).
+
+---
+
+### [2026-09-05] Forma de CommandRunner y VpkToolError (Tarea 2.7)
+**Qué:** La tarea 2.7 introdujo dos tipos nuevos que el spec no fija (no están en
+los 12 tipos de la tarea 1): la interfaz inyectable `CommandRunner` (+ `CommandResult`)
+y el error tipado `VpkToolError`. Decisiones de forma tomadas:
+
+  - **`CommandRunner.run()` RESUELVE (no rechaza) para CUALQUIER exit code**, y solo
+    rechaza la promesa si el proceso NO pudo siquiera lanzarse (p. ej. ejecutable
+    inexistente). Motivo: la responsabilidad de decidir QUÉ exit code es "éxito"
+    queda en `VpkTool` (método privado `#assertSuccess`, criterio `exitCode === 0`),
+    NO en el runner. Así el runner es un transporte neutro (devuelve exit + stdout +
+    stderr) y el dominio concentra la política de éxito/fallo en un solo lugar.
+    ADVERTENCIA: una implementación real del runner (tarea 3) que "auto-rechace"
+    ante exit ≠ 0 (p. ej. usar `execFile` con su rechazo por código ≠ 0 sin
+    capturarlo) ROMPERÍA este contrato: `VpkTool` nunca vería el `CommandResult`
+    y no podría envolver el fallo como `VpkToolError` tipado con el addon. El runner
+    real DEBE capturar el exit ≠ 0 y resolver con el `CommandResult` correspondiente.
+
+  - **`addonId` es parámetro de CADA método** (`list/extract/pack`), NO del
+    constructor. Motivo: una sola instancia de `VpkTool` (mismo `vpk.exe` +
+    runner) opera sobre MÚLTIPLES addons en el flujo de MergeEngine (tarea 11);
+    pasar el addonId por método permite reutilizar la instancia a través de todos
+    los addons en vez de construir una por addon. El `vpkExe` y el runner, en
+    cambio, sí van en el constructor (dependencias estables de la instancia).
+
+  - **`list/extract/pack` NO usan `internalPathToDiskPath` (2.5).** Los argumentos
+    que recibe `vpk.exe` van SIEMPRE con `/` (formato interno del VPK); la
+    traducción a `\\` es responsabilidad de QUIEN ESCRIBE EN DISCO (MergeEngine,
+    tarea 11, al crear subdirectorios de destino), no de `VpkTool`. Por eso
+    `vpk-tool.ts` ni siquiera importa `internalPathToDiskPath`.
+
+**Impacto:** `src/main/domain/vpk-tool.ts` (tarea 2.7), sus unit tests (2.8), la
+implementación real del runner + integración (tarea 3), y el consumo desde
+MergeEngine (tarea 11).
+
+---
+
 ## Plantilla para entradas futuras
 
 ```

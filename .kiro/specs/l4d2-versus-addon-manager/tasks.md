@@ -25,47 +25,47 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
   - _Requirements: base para 1-9_
 
 - [ ] 2. VpkTool: wrapper de `vpk.exe` (lógica con mocks)
-  - [ ] 2.1 Implementar el filtrado de ruido de la salida de `vpk.exe`
+  - [x] 2.1 Implementar el filtrado de ruido de la salida de `vpk.exe`
     - Función pura que descarta líneas de stdout que comienzan con `CDynamicFunction:`, `FS:` o `Using`, conservando el resto sin alterarlas; usada por `list()`
     - _Requirements: 6.2_
 
-  - [ ]* 2.2 Escribir property test del filtrado de ruido
+  - [x]* 2.2 Escribir property test del filtrado de ruido
     - **Feature: l4d2-versus-addon-manager, Property 8: Filtrado del ruido de la VPK_Tool**
     - **Validates: Requirements 6.2**
     - fast-check, mínimo 100 iteraciones, generando stdout con mezcla arbitraria de líneas de ruido y líneas válidas
 
-  - [ ] 2.3 Implementar el batching por longitud de línea de comando
+  - [x] 2.3 Implementar el batching por longitud de línea de comando
     - Función pura de particionado de `internalPaths` en lotes tales que la longitud total (`vpk.exe` + vpk + paths) no exceda un límite seguro (~6000, margen por debajo de ~8191); un path que por sí solo excede el límite queda en lote individual
     - _Requirements: 6.4, 6.5_
 
-  - [ ]* 2.4 Escribir property test del batching
+  - [x]* 2.4 Escribir property test del batching
     - **Feature: l4d2-versus-addon-manager, Property 9: Batching por longitud de línea de comando sin pérdida de archivos**
     - **Validates: Requirements 6.4, 6.5**
     - fast-check, mínimo 100 iteraciones; verifica (a) límite por lote, (b) unión = entrada sin omisiones ni duplicados, (c) path sobredimensionado en lote individual
 
-  - [ ] 2.5 Implementar la traducción de separadores de path
+  - [x] 2.5 Implementar la traducción de separadores de path
     - Función pura que deriva el path de destino en disco (`\`) a partir del path interno del VPK (`/`), preservando la interpretación interna con `/`
     - _Requirements: 6.6_
 
-  - [ ]* 2.6 Escribir property test de separadores de path
+  - [x]* 2.6 Escribir property test de separadores de path
     - **Feature: l4d2-versus-addon-manager, Property 10: Coherencia de separadores de path**
     - **Validates: Requirements 6.6**
     - fast-check, mínimo 100 iteraciones
 
-  - [ ] 2.7 Implementar `VpkTool` (`list`, `extract`, `pack`) sobre un ejecutor inyectable
+  - [x] 2.7 Implementar `VpkTool` (`list`, `extract`, `pack`) sobre un ejecutor inyectable
     - Ejecuta `vpk l`/`vpk x`/`vpk <carpeta>` vía un `CommandRunner` inyectado (`execFile`/`spawn`, argumentos como array, sin shell); `list` aplica el filtrado (2.1), `extract` usa el batching (2.3) y crea `destDir` como working directory; cualquier exit distinto de éxito se propaga como error tipado que identifica el addon
     - _Requirements: 6.1, 6.3, 6.12_
 
-  - [ ]* 2.8 Escribir unit tests de `VpkTool` con ejecutor mockeado
+  - [x]* 2.8 Escribir unit tests de `VpkTool` con ejecutor mockeado
     - Verifica invocación correcta de argumentos, propagación de exit codes como error tipado y wiring de filtrado/batching; sin tocar `vpk.exe` real
     - _Requirements: 6.1, 6.3, 6.12_
 
-- [ ]* 3. VpkTool: test de integración con `vpk.exe` real (requiere el binario)
-  - [ ]* 3.1 Crear fixtures de VPK de prueba reales, incluyendo uno de >200 archivos
+- [x]* 3. VpkTool: test de integración con `vpk.exe` real (requiere el binario)
+  - [x]* 3.1 Crear fixtures de VPK de prueba reales, incluyendo uno de >200 archivos
     - Generar/incluir VPKs de prueba en `test/fixtures/vpk/`; uno debe contener **más de 200 archivos** para confirmar que el batching evita el fallo `exit -1` de pasar cientos de argumentos de una vez
     - _Requirements: 6.4, 6.5_
 
-  - [ ]* 3.2 Escribir test de integración de `VpkTool` contra `vpk.exe`
+  - [x]* 3.2 Escribir test de integración de `VpkTool` contra `vpk.exe`
     - Ejecuta `list` → `extract` (por lotes) → `pack` sobre los fixtures reales; verifica que la extracción del fixture de >200 archivos completa sin `exit -1` y que todos los archivos se extraen; se ejecuta solo si el binario `vpk.exe` está disponible
     - _Requirements: 6.1, 6.3, 6.4, 6.5, 6.8, 6.12_
 
