@@ -43,7 +43,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - **Validates: Requirements 6.4, 6.5**
     - fast-check, mínimo 100 iteraciones; verifica (a) límite por lote, (b) unión = entrada sin omisiones ni duplicados, (c) path sobredimensionado en lote individual
 
-  - [ ] 2.5 Implementar la traducción de separadores de path
+  - [x] 2.5 Implementar la traducción de separadores de path
     - Función pura que deriva el path de destino en disco (`\`) a partir del path interno del VPK (`/`), preservando la interpretación interna con `/`
     - _Requirements: 6.6_
 

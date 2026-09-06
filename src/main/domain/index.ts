@@ -46,3 +46,16 @@ export {
   commandOverheadPrefix,
 } from "./vpk-batch.js";
 export type { BatchInternalPathsOptions } from "./vpk-batch.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 6.6 — VpkTool): traducción del separador de path interno
+// del VPK (`/`) al separador de disco de Windows (`\`). Igual que el filtrado y
+// el batching, es código de runtime (no solo tipos) porque MergeEngine (tarea
+// 11) lo consumirá desde el dominio para construir los paths de destino al
+// escribir los archivos extraídos.
+// ---------------------------------------------------------------------------
+export {
+  VPK_INTERNAL_SEPARATOR,
+  DISK_SEPARATOR,
+  internalPathToDiskPath,
+} from "./vpk-path.js";
