@@ -107,6 +107,38 @@ la tarea 2.2. Consumido luego por `VpkTool.list()` (tarea 2.7).
 
 ---
 
+### [2026-09-05] Modelo de costo de la línea de comando en batchInternalPaths (Tarea 2.3)
+**Qué:** El AC 6.4 exige que "la longitud total de la línea de comando de cada
+invocación (ejecutable, VPK y todos los paths) no exceda un límite seguro", pero
+NO define QUÉ caracteres se cuentan ni cómo. Al implementar `batchInternalPaths`
+(tarea 2.3) se fijó un modelo de costo CONSERVADOR y explícito:
+
+    costo(lote) = len("<executableName> x <vpkPath>") + Σ (1 + len(path))
+
+  - `overheadBase` = longitud del prefijo fijo `"<executableName> x <vpkPath>"`:
+    nombre del ejecutable (por defecto `vpk.exe`, NO la ruta absoluta) + espacio +
+    subcomando `x` + espacio + ruta del VPK.
+  - Por cada path se suma `1 + len(path)`: el `1` es el espacio separador que
+    precede al argumento; `len(path)` es el path tal cual (no se traducen
+    separadores; eso es la tarea 2.5).
+  - Límite por defecto `DEFAULT_MAX_COMMAND_LENGTH = 6000`, sobreescribible por opción.
+**Limitación conocida (IMPORTANTE):** el modelo NO modela el QUOTING/escaping que
+el SO aplicaría a paths con espacios o caracteres especiales (añadiría comillas y,
+por tanto, más caracteres por argumento). Se ASUME que el margen entre el límite
+usado (6000) y el máximo real de Windows (~8191 para `cmd`) es suficiente para
+absorber ese overhead, y que la invocación sin shell (argumentos como array, ver
+diseño VpkTool) reduce el problema. Esa suposición NO está verificada empíricamente.
+**A verificar (Tarea 3):** confirmar con un fixture de integración que incluya paths
+de VPK CON ESPACIOS (y, si aplica, otros caracteres que fuercen quoting) que la
+extracción real por lotes no excede el límite del SO ni reproduce el fallo `exit -1`.
+Si se observa que el quoting empuja por encima del límite, habrá que (a) bajar el
+margen por defecto o (b) incorporar el costo del quoting al modelo.
+**Impacto:** `src/main/domain/vpk-batch.ts` (tarea 2.3), el property test 2.4 (que
+razona sobre el MISMO modelo vía `commandLengthForBatch`), y el test de integración
+de la tarea 3. Consumido por `VpkTool.extract()` (tarea 2.7).
+
+---
+
 ## Plantilla para entradas futuras
 
 ```
