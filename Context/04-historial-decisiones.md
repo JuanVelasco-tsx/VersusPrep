@@ -139,6 +139,25 @@ de la tarea 3. Consumido por `VpkTool.extract()` (tarea 2.7).
 
 ---
 
+### [2026-09-05] Traducción de separadores: literal "\\" en vez de path.sep (Tarea 2.5)
+**Qué:** En `internalPathToDiskPath` (tarea 2.5) la traducción de separadores usa
+el literal `DISK_SEPARATOR = "\\"` (backslash de Windows), NO `path.sep` del módulo
+`path` de Node. Es una decisión deliberada, no un descuido.
+**Motivo:** `path.sep` depende de la PLATAFORMA DE EJECUCIÓN: vale `\\` en
+Windows pero `/` en Linux/macOS. La Property 10 (AC 6.6), en cambio, exige la
+traducción `/` -> `\\` como REGLA FIJA del formato de destino (paths de disco de
+Windows, que es la plataforma primaria del proyecto), independiente de en qué SO
+corra el proceso o el CI. Usar `path.sep` haría que la traducción "no hiciera nada"
+en Linux/macOS (donde `path.sep === "/"`), produciendo un path de salida idéntico al
+de entrada.
+**Advertencia explícita:** si alguien "simplifica" esto a `path.sep` en el futuro,
+ROMPE la Property 10 en cualquier corrida de CI que NO sea Windows (el test
+fallaría porque la salida no tendría `\\`). El literal `"\\"` es intencional y no
+debe reemplazarse por `path.sep`.
+**Impacto:** `src/main/domain/vpk-path.ts` (tarea 2.5) y su property test (tarea 2.6).
+
+---
+
 ## Plantilla para entradas futuras
 
 ```
