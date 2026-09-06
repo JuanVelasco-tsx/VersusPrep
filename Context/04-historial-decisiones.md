@@ -288,9 +288,17 @@ solo mira el listado de paths.
 llama a `VpkTool.list` y, ante fallo/exit ≠ 0, envuelve en try/catch y clasifica como
 VScript_Addon `listing-failed` POR PRECAUCIÓN, AC 3.5). El núcleo puro es property-testeable
 sin mocks (habilita la tarea 7.2, Property 5).
-**A revisar contra un VPK real con vscripts:** la contemplación del `./` líder NO se verificó
-empíricamente en esta subtarea; queda como suposición sobre la forma de los paths de `vpk l`.
-El resto (separador `/`, casing arbitrario) es coherente con la validación end-to-end previa.
+**Verificado contra un VPK real con vscripts (CONFIRMADO):** se ejecutó la verificación empírica
+contra un addon REAL con vscripts (id `214630948` de la Workshop) y se CONFIRMÓ que `vpk l` emite
+los paths internos con separador `/`, en minúsculas, con prefijo `scripts/vscripts/` y
+subdirectorios profundos (p. ej. `scripts/vscripts/admin_system/entitygroups/...`), y SIN `./`
+líder. Es decir: lo que antes quedaba "a revisar" pasa a CONFIRMADO — `vpk l` NO emite un `./`
+líder. En consecuencia, la tolerancia al `./` líder en el código se MANTIENE únicamente como
+MARGEN DE SEGURIDAD sin costo real (por si algún caso no cubierto por esta verificación lo
+trajera), NO como deuda ni como suposición abierta pendiente de resolver. Además, el núcleo
+`classifyVScriptPaths`/`isVScriptPath` se corrió sobre esos paths reales y clasificó
+correctamente: hace match dentro del prefijo, los subdirectorios profundos cuentan, un `.nut`
+fuera del prefijo y `materials/vscripts/foo.nut` NO cuentan, y el casing variado cuenta.
 **Impacto:** `src/main/domain/vscript-detector.ts` y `src/main/domain/index.ts` (barrel), sus
 unit tests `test/vscript-detector.test.ts` (tarea 7.1) y el property test de la tarea 7.2.
 Consumido luego por la capa IPC (tarea 20) y la política de inclusión del Active_Set (tarea 8).
