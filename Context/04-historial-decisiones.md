@@ -551,6 +551,128 @@ el estado de la tarea 5.4 (sigue `[x]`).
 **Impacto:** `.gitignore`. Evita commitear estado del tracker y reduce el riesgo de checkboxes desincronizados entre ramas.
 
 ---
+### [2026-09-06] Decisión de rama: `vscript-detector` desde main, ramas hermanas (Opción 1)
+**Qué:** La rama `vscript-detector` (secciones 7-8 del plan) se creó DESDE main
+(commit cd3e009), NO encadenada sobre `addon-scanner`.
+**Motivo:** las secciones 5 (PathDetector), 6 (AddonScanner) y 7-8 (VScript) son
+ramas HERMANAS independientes del plan, no una cadena de dependencias. La sección 7
+solo necesita `VpkTool.list` y el tipo `ScannedAddon`, ambos YA presentes en main.
+Encadenar la sección 7 sobre `addon-scanner` sin necesidad técnica reintroduciría el
+mismo acoplamiento evitable que ya se descartó para la sección 6. Los solapamientos de
+merge que aparezcan en el checkpoint 9 son esperables y preferibles a ramas acopladas
+sin motivo. Coherente con el mapa de ramas de CONTRIBUTING.md (vscript-detector =
+secciones 7-8).
+**Impacto:** organización de ramas; se materializa en el conflicto trivial anotado en
+la entrada siguiente para el checkpoint 9.
+
+---
+
+### [2026-09-06] Aviso para el checkpoint 9: merge del barrel `index.ts` (adición-adición trivial)
+**Qué:** Las tres ramas hermanas (path-detector, addon-scanner, vscript-detector) agregan
+su bloque de exports en el MISMO punto final de `src/main/domain/index.ts` (después del
+bloque de `vpk-tool.js`). Al mergear las tres a main en el checkpoint 9, git marcará un
+conflicto de tipo ADICIÓN-ADICIÓN en esa región.
+**Motivo/naturaleza:** el conflicto es TRIVIAL y NO estructural: se resuelve CONCATENANDO
+los tres bloques. Cada rama exporta símbolos DISTINTOS de módulos DISTINTOS; no hay exports
+duplicados, ni renombres, ni reestructuración. Además, `path-detector` inserta 5 tipos
+nuevos (RequiredPathKey, PathVerification, PathDetectionSource, PathDetectionFailureReason,
+PathDetectionResult) DENTRO del bloque `export type { ... } from "./types.js"` entre
+`LibraryEntry` y `AddonInfo`; `addon-scanner` y `vscript-detector` NO tocan ese bloque, así
+que ahí NO hay conflicto. `vscript-detector` solo AÑADE un bloque nuevo al final (clase
+`VScriptDetector`, `classifyVScriptPaths`, `isVScriptPath`, `VSCRIPTS_PREFIX`,
+`VSCRIPT_EXTENSION`).
+**Impacto:** se deja anotado para no redescubrirlo durante el checkpoint 9 y resolverlo por
+concatenación sin dudar.
+
+---
+
+### [2026-09-06] Decisión de normalización del prefijo/extensión del VScriptDetector (Tarea 7.1)
+**Qué:** En `vscript-detector.ts` (tarea 7.1), el match que decide si un path del listado de
+`vpk l` cuenta como VScript (AC 3.2/3.3) se normaliza así, antes de comparar:
+  - **Case-insensitive** en AMBAS comparaciones: se pasa el path a `toLowerCase()` y se
+    compara contra el prefijo `scripts/vscripts/` y la extensión `.nut` en minúsculas. Así
+    `Scripts/VScripts/Foo.NUT` cuenta (AC 3.2 exige case-insensitive explícito).
+  - **Forma del prefijo:** `path.toLowerCase().startsWith("scripts/vscripts/")`. El prefijo
+    termina en `/`, por lo que `scripts/vscripts/ai/bar.nut` (subdir más profundo) CUENTA
+    (está bajo el prefijo), y `scripts/vscripts_notdir/foo.nut` NO cuenta. Un `.nut` fuera
+    del prefijo (`scripts/foo.nut`, `materials/vscripts/foo.nut`, `vscripts/foo.nut`) NO
+    cuenta (AC 3.3).
+  - **Extensión:** `endsWith(".nut")` (ya en minúsculas). Un archivo bajo el prefijo que no
+    sea `.nut` (p. ej. `scripts/vscripts/readme.txt`) NO cuenta: deben cumplirse AMBAS.
+  - **`./` líder opcional:** se recorta un único `./` inicial si está presente antes de
+    evaluar el prefijo, contemplando que `vpk l` PODRÍA emitir paths con un prefijo relativo.
+    NO se resuelve `../` ni se colapsan segmentos (los paths de `vpk l` son relativos a la raíz
+    del VPK, sin navegación hacia arriba).
+  - **Separador `/`:** se asume `/` (formato interno del VPK, garantizado por `VpkTool.list`);
+    no se normalizan `\`.
+Un `.nut` fuera del prefijo NUNCA afecta la clasificación; basta UN `.nut` bajo el prefijo.
+La clasificación NO inspecciona `addoninfo.txt` ni el flag `addonContent_Script` (AC 3.4);
+solo mira el listado de paths.
+**Estructura:** se separó un NÚCLEO PURO (`classifyVScriptPaths(paths): boolean` +
+`isVScriptPath(path): boolean`) de la orquestación async (`VScriptDetector.classify`, que
+llama a `VpkTool.list` y, ante fallo/exit ≠ 0, envuelve en try/catch y clasifica como
+VScript_Addon `listing-failed` POR PRECAUCIÓN, AC 3.5). El núcleo puro es property-testeable
+sin mocks (habilita la tarea 7.2, Property 5).
+**Verificado contra un VPK real con vscripts (CONFIRMADO):** se ejecutó la verificación empírica
+contra un addon REAL con vscripts (id `214630948` de la Workshop) y se CONFIRMÓ que `vpk l` emite
+los paths internos con separador `/`, en minúsculas, con prefijo `scripts/vscripts/` y
+subdirectorios profundos (p. ej. `scripts/vscripts/admin_system/entitygroups/...`), y SIN `./`
+líder. Es decir: lo que antes quedaba "a revisar" pasa a CONFIRMADO — `vpk l` NO emite un `./`
+líder. En consecuencia, la tolerancia al `./` líder en el código se MANTIENE únicamente como
+MARGEN DE SEGURIDAD sin costo real (por si algún caso no cubierto por esta verificación lo
+trajera), NO como deuda ni como suposición abierta pendiente de resolver. Además, el núcleo
+`classifyVScriptPaths`/`isVScriptPath` se corrió sobre esos paths reales y clasificó
+correctamente: hace match dentro del prefijo, los subdirectorios profundos cuentan, un `.nut`
+fuera del prefijo y `materials/vscripts/foo.nut` NO cuentan, y el casing variado cuenta.
+**Impacto:** `src/main/domain/vscript-detector.ts` y `src/main/domain/index.ts` (barrel), sus
+unit tests `test/vscript-detector.test.ts` (tarea 7.1) y el property test de la tarea 7.2.
+Consumido luego por la capa IPC (tarea 20) y la política de inclusión del Active_Set (tarea 8).
+
+---
+
+### [2026-09-06] NOTA DE PROCESO: método fiable para medir contadores de no-vacuidad de property tests
+**Qué:** La captura del output de vitest por consola falla de forma recurrente en
+este entorno de shell (observado tanto con la Property 2 del PathDetector como con
+la Property 5 del VScriptDetector): el stdout/stderr no se recupera de manera
+confiable, así que no se puede leer un `console.log` de contadores desde la corrida.
+**Método verificado para medir contadores de no-vacuidad:** escribir los contadores
+a un archivo con `node:fs` (`writeFileSync`) en una ruta fija DENTRO del test
+(temporalmente, SIN commitear el `writeFileSync` ni el import), correr el test una
+sola vez, y leer ese archivo directamente con una herramienta de lectura de archivos.
+NO depender de la captura de consola. Después de medir, RESTAURAR el test (quitar el
+`writeFileSync` y el import temporal) y borrar el archivo temporal antes de commitear.
+Este es el método a usar para futuros hardenings de property tests que necesiten
+afirmar no-vacuidad.
+**Medición concreta (Property 5, VScriptDetector):** los valores de no-vacuidad se
+midieron con este método sobre el ARCHIVO COMMITEADO
+`test/vscript-detector.property.test.ts` (no una réplica): en 100 iteraciones se
+observó `positiveCount=65`, `negativeCount=35`, `trickyCount=61`. El comentario de
+no-vacuidad del test se actualizó con esos valores reales.
+**Impacto:** `test/vscript-detector.property.test.ts` (comentario de Property 5) y todo
+property test futuro con aserciones de no-vacuidad (p. ej. Property 6, tarea 8.2).
+
+---
+
+### [2026-09-06] Forma de la política de inclusión del Active_Set (Tarea 8.1)
+**Qué:** `isAllowedInActiveSet` (nuevo módulo `src/main/domain/active-set-policy.ts`)
+se modela como una FUNCIÓN PURA sobre un objeto de dos booleanos
+(`{ isVScriptAddon, forceConfirmed }`), no sobre el `VScriptClassification` completo.
+Lógica = tabla de verdad `permitido = !isVScriptAddon || forceConfirmed`: no-VScript
+siempre permitido; VScript con confirmación explícita permitido (AC 3.8); VScript sin
+confirmación bloqueado por defecto (AC 3.7).
+**Motivo:** la decisión SOLO depende del flag `isVScriptAddon`, no del `reason`
+(`nut-in-vscripts` y `listing-failed` son ambos VScript_Addon a efectos del bloqueo).
+Tomar la clasificación entera acoplaría innecesariamente la función a la forma del
+detector. Se agrega un helper `isVScriptAddonAllowedInput(classification, forceConfirmed)`
+que mapea desde un `VScriptClassification` para el llamador (orquestador/IPC), dejando
+la función núcleo trivialmente property-testeable (tarea 8.2, Property 6).
+**Alcance:** la ADVERTENCIA visual del AC 3.6 es responsabilidad de la UI (tarea 21);
+este módulo solo decide la INCLUSIÓN, no emite mensajes.
+**Impacto:** `src/main/domain/active-set-policy.ts` y su export en `index.ts` (barrel),
+sus unit tests `test/active-set-policy.test.ts` (tarea 8.1) y el property test 8.2
+(Property 6). Consumido luego por el orquestador (tarea 18) y la capa IPC (tarea 20).
+
+---
 
 ## Plantilla para entradas futuras
 

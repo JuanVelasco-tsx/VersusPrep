@@ -131,3 +131,30 @@ export type {
 export { AddonScanner } from "./addon-scanner.js";
 export type { AddonFileSystem, DirEntry } from "./addon-scanner.js";
 export { extractAddonInfo } from "./addoninfo-extract.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 3 — VScriptDetector): clasificación anti-VScript a partir
+// del listado REAL del VPK (`VpkTool.list`), nunca del flag `addonContent_Script`.
+// Se re-exporta código de runtime (la clase orquestadora y el núcleo puro de
+// match) además de sus constantes, para que la capa IPC (tarea 20) y los tests
+// (tareas 7.1/7.2) lo consuman desde el dominio. El núcleo puro se expone
+// aparte para poder testear el match de paths de forma aislada (property 7.2).
+// ---------------------------------------------------------------------------
+export {
+  VSCRIPTS_PREFIX,
+  VSCRIPT_EXTENSION,
+  classifyVScriptPaths,
+  isVScriptPath,
+  VScriptDetector,
+} from "./vscript-detector.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 3 — AC 3.6, 3.7, 3.8): política PURA de inclusión de
+// addons en el Active_Set. Decide si un Addon se incluye según su clasificación
+// VScript y la confirmación explícita de forzado del usuario (bloqueo por
+// defecto de los VScript_Addon salvo forzado). La ADVERTENCIA visual del AC 3.6
+// es responsabilidad de la UI; aquí solo vive la decisión de inclusión. La capa
+// IPC/orquestador (tareas 18/20) y los tests (tareas 8.1/8.2) la consumen.
+// ---------------------------------------------------------------------------
+export { isAllowedInActiveSet, isVScriptAddonAllowedInput } from "./active-set-policy.js";
+export type { ActiveSetInclusionInput } from "./active-set-policy.js";

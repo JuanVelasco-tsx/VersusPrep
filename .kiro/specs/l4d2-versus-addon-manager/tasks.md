@@ -107,21 +107,21 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - fast-check con FS mockeado, mínimo 100 iteraciones; cover = ruta de `<id>.jpg` si existe, `null` si no
 
 - [ ] 7. VScriptDetector (Requirement 3)
-  - [ ] 7.1 Implementar la clasificación VScript a partir del listado del VPK
+  - [x] 7.1 Implementar la clasificación VScript a partir del listado del VPK
     - Usa `VpkTool.list`; clasifica como VScript_Addon si y solo si hay un path con prefijo `scripts/vscripts/` (case-insensitive) y extensión `.nut` (case-insensitive); ignora `.nut` fuera de ese prefijo; **nunca** usa el flag `addonContent_Script`; si `vpk l` falla, clasifica como VScript_Addon por precaución
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-  - [ ]* 7.2 Escribir property test de clasificación VScript
+  - [x]* 7.2 Escribir property test de clasificación VScript
     - **Feature: l4d2-versus-addon-manager, Property 5: Clasificación VScript a partir del listado real**
     - **Validates: Requirements 3.2, 3.3, 3.4**
     - fast-check, mínimo 100 iteraciones, generando listados con paths `.nut` dentro y fuera de `scripts/vscripts/` y variaciones de mayúsculas
 
 - [ ] 8. Reglas de inclusión del Active_Set (Requirement 3.7, 3.8)
-  - [ ] 8.1 Implementar la política de inclusión de addons en el Active_Set
+  - [x] 8.1 Implementar la política de inclusión de addons en el Active_Set
     - Función pura que decide si un Addon forma parte del Active_Set: permitido si no es VScript_Addon, o si es VScript_Addon con confirmación explícita de forzado; bloqueado por defecto en caso contrario
     - _Requirements: 3.6, 3.7, 3.8_
 
-  - [ ]* 8.2 Escribir property test de inclusión bloqueada de VScript_Addon
+  - [x]* 8.2 Escribir property test de inclusión bloqueada de VScript_Addon
     - **Feature: l4d2-versus-addon-manager, Property 6: Inclusión bloqueada de VScript_Addon salvo confirmación explícita**
     - **Validates: Requirements 3.7, 3.8**
     - fast-check, mínimo 100 iteraciones, variando `isVScriptAddon` y la confirmación del usuario
