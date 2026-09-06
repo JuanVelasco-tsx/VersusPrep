@@ -101,7 +101,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - **Validates: Requirements 2.1, 2.2, 2.3**
     - fast-check con FS mockeado, mínimo 100 iteraciones, generando mezclas arbitrarias de `.vpk`, `.jpg`, otras extensiones y subdirectorios
 
-  - [ ]* 6.3 Escribir property test de asociación de Addon_Cover
+  - [x]* 6.3 Escribir property test de asociación de Addon_Cover
     - **Feature: l4d2-versus-addon-manager, Property 4: Asociación correcta de Addon_Cover**
     - **Validates: Requirements 2.4**
     - fast-check con FS mockeado, mínimo 100 iteraciones; cover = ruta de `<id>.jpg` si existe, `null` si no

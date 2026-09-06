@@ -275,3 +275,132 @@ propertyTest(
     },
   ),
 );
+
+// ---------------------------------------------------------------------------
+// Property 4 (Tarea 6.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Feature: l4d2-versus-addon-manager, Property 4: Asociación correcta de
+ * Addon_Cover.
+ *
+ * **Validates: Requirements 2.4**
+ *
+ * ESTRATEGIA DE GENERACIÓN
+ *
+ * Se genera un conjunto de addons `.vpk` de nivel superior con ids ÚNICOS
+ * (`fc.uniqueArray`, misma justificación que en Property 3: en un mismo dir no
+ * pueden coexistir dos archivos con idéntico nombre, y la unicidad hace
+ * inequívoca la asociación cover↔id). A cada addon se le asocia un booleano
+ * `hasCover` arbitrario: si es `true`, se REGISTRA su `<id>.jpg` en
+ * `MockFs.existing` (el cover existe junto al VPK); si es `false`, no se
+ * registra (el cover no existe).
+ *
+ * RUIDO DELIBERADO — para verificar que la existencia de OTROS archivos no
+ * afecta la asociación, se registran además en `MockFs.existing` rutas de:
+ *   - `<otroId>.jpg` de ids que NO son addons (basenames distintos de los ids),
+ *   - archivos con otras extensiones (`<id>.png`, `<id>.txt`) para algunos ids
+ *     de addon SIN su `.jpg` (para confirmar que NO se confunden con el cover).
+ * Nada de este ruido debe cambiar el `coverPath` resuelto por el escáner.
+ *
+ * El runner responde vacío a `vpk l` (info irrelevante, siempre `null`).
+ *
+ * ASERCIONES (esperado computado desde el modelo, fuente independiente):
+ *   - para cada addon con `hasCover=true` → `coverPath` = join Windows de
+ *     WORKSHOP + `<id>.jpg` (misma regla `joinWin`).
+ *   - para cada addon con `hasCover=false` → `coverPath === null`.
+ *   - (refuerzo) cuando `coverPath` no es null, apunta al `<id>.jpg` del PROPIO
+ *     id del addon, no al de otro (con ids únicos, la igualdad exacta lo prueba).
+ */
+
+/** Un addon a generar: baseName único + si su `<id>.jpg` existe. */
+interface CoverSpec {
+  baseName: string;
+  hasCover: boolean;
+}
+
+const coverScenario = fc
+  .uniqueArray(baseNameArb, { minLength: 0, maxLength: 40 })
+  .chain((baseNames) =>
+    fc
+      .tuple(...baseNames.map(() => fc.boolean()))
+      .map((flags): CoverSpec[] =>
+        baseNames.map((baseName, i) => ({
+          baseName,
+          hasCover: flags[i] as boolean,
+        })),
+      ),
+  );
+
+/** baseNames de ruido (para `<otroId>.jpg` que no corresponde a ningún addon). */
+const noiseNamesArb: fc.Arbitrary<string[]> = fc.uniqueArray(baseNameArb, {
+  minLength: 0,
+  maxLength: 10,
+});
+
+propertyTest(
+  4,
+  "Asociación correcta de Addon_Cover",
+  fc.asyncProperty(
+    coverScenario,
+    noiseNamesArb,
+    fc.string({ minLength: 0, maxLength: 30 }),
+    async (specs, noiseNames, workshopSuffix) => {
+      const WORKSHOP = `C:\\ws${workshopSuffix}`;
+
+      const fs = new MockFs();
+
+      // Entradas: un `.vpk` (extensión canónica en minúscula) por addon.
+      fs.entries.set(
+        WORKSHOP,
+        specs.map(({ baseName }) => ({
+          name: `${baseName}.vpk`,
+          isDirectory: false,
+        })),
+      );
+
+      // Registrar los `<id>.jpg` de los addons con hasCover=true.
+      for (const { baseName, hasCover } of specs) {
+        if (hasCover) {
+          fs.existing.add(joinWin(WORKSHOP, `${baseName}.jpg`));
+        }
+      }
+
+      // RUIDO 1: `.jpg` de ids que NO son addons (no debe asociarse a nada).
+      const addonIds = new Set(specs.map((s) => s.baseName));
+      for (const noise of noiseNames) {
+        if (!addonIds.has(noise)) {
+          fs.existing.add(joinWin(WORKSHOP, `${noise}.jpg`));
+        }
+      }
+      // RUIDO 2: otras extensiones para addons SIN cover (no deben contar como cover).
+      for (const { baseName, hasCover } of specs) {
+        if (!hasCover) {
+          fs.existing.add(joinWin(WORKSHOP, `${baseName}.png`));
+          fs.existing.add(joinWin(WORKSHOP, `${baseName}.txt`));
+        }
+      }
+
+      // MODELO: coverPath esperado por id (join Windows de <id>.jpg si hasCover).
+      const expectedCoverById = new Map<string, string | null>(
+        specs.map(({ baseName, hasCover }) => [
+          baseName,
+          hasCover ? joinWin(WORKSHOP, `${baseName}.jpg`) : null,
+        ]),
+      );
+
+      const result = await buildScanner(fs).scan(WORKSHOP);
+
+      if (result.length !== specs.length) return false;
+
+      for (const addon of result) {
+        if (!expectedCoverById.has(addon.id)) return false;
+        const expectedCover = expectedCoverById.get(addon.id) ?? null;
+        // coverPath exacto: ruta del PROPIO <id>.jpg cuando existe, o null.
+        if (addon.coverPath !== expectedCover) return false;
+      }
+
+      return true;
+    },
+  ),
+);
