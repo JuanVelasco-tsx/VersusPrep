@@ -1,3 +1,4 @@
+import { expect, test } from "vitest";
 import fc from "fast-check";
 
 import { AddonScanner, VpkTool } from "../src/main/domain/index.js";
@@ -7,7 +8,7 @@ import type {
   CommandRunner,
   DirEntry,
 } from "../src/main/domain/index.js";
-import { propertyTest } from "./helpers/property.js";
+import { MIN_NUM_RUNS, propertyName } from "./helpers/property.js";
 
 /**
  * Property tests del AddonScanner (Tareas 6.2 y 6.3).
@@ -216,64 +217,106 @@ const toDirEntry = (baseName: string, spec: EntrySpec): DirEntry => {
   }
 };
 
-propertyTest(
-  3,
-  "El escaneo incluye exactamente los `.vpk` de nivel superior",
-  fc.asyncProperty(
-    scenario,
-    fc.string({ minLength: 0, maxLength: 30 }),
-    async (items, workshopSuffix) => {
-      // WORKSHOP arbitrario (con posible separador final) para ejercitar el
-      // recorte de `joinWin`; se ancla en una raíz absoluta Windows.
-      const WORKSHOP = `C:\\ws${workshopSuffix}`;
+/**
+ * NO-VACUIDAD (estilo Property 2 del PathDetector). Como `propertyTest` no
+ * permite ejecutar código tras completar las iteraciones, se registra un
+ * `test()` propio con el nombre canónico (`propertyName(3, ...)`) y numRuns
+ * fijado en `MIN_NUM_RUNS`. Tras `fc.assert(...)` se afirma que los escenarios
+ * NO triviales se ejercieron con frecuencia > 0 en las >=100 iteraciones.
+ * Como la propiedad no falla, fast-check no hace shrinking y cada iteración
+ * incrementa los contadores exactamente una vez.
+ *
+ * Valores observados (medición temporal con MIN_NUM_RUNS=100 iteraciones):
+ *   mixedCount = 60, nonEmptyResultCount = 64, dirVpkNameCount = 62.
+ * Los tres quedan holgadamente > 0 SIN necesidad de sesgar el generador: la
+ * `entrySpecArb` reparte de forma pareja entre `vpk-file`, `other-file`,
+ * `dir-plain` y `dir-vpk-name`, y `uniqueArray` produce listas de tamaño medio
+ * suficiente para mezclar categorías casi siempre. No se ajustó el generador.
+ */
+test(
+  propertyName(3, "El escaneo incluye exactamente los `.vpk` de nivel superior"),
+  async () => {
+    let mixedCount = 0;
+    let nonEmptyResultCount = 0;
+    let dirVpkNameCount = 0;
 
-      const fs = new MockFs();
-      const entries = items.map(({ baseName, spec }) =>
-        toDirEntry(baseName, spec),
-      );
-      fs.entries.set(WORKSHOP, entries);
+    await fc.assert(
+      fc.asyncProperty(
+        scenario,
+        fc.string({ minLength: 0, maxLength: 30 }),
+        async (items, workshopSuffix) => {
+          // WORKSHOP arbitrario (con posible separador final) para ejercitar el
+          // recorte de `joinWin`; se ancla en una raíz absoluta Windows.
+          const WORKSHOP = `C:\\ws${workshopSuffix}`;
 
-      // MODELO: los `.vpk` de nivel superior son SOLO las entradas-archivo cuyo
-      // nombre termina en `.vpk` (case-insensitive). id = baseName; vpkPath =
-      // join Windows del nombre ORIGINAL (con su casing de extensión).
-      const expected = items
-        .filter(({ spec }) => spec.kind === "vpk-file")
-        .map(({ baseName, spec }) => {
-          const casing = (spec as { kind: "vpk-file"; casing: string }).casing;
-          return {
-            id: baseName,
-            vpkPath: joinWin(WORKSHOP, `${baseName}${casing}`),
-          };
-        });
+          const fs = new MockFs();
+          const entries = items.map(({ baseName, spec }) =>
+            toDirEntry(baseName, spec),
+          );
+          fs.entries.set(WORKSHOP, entries);
 
-      const result = await buildScanner(fs).scan(WORKSHOP);
+          // MODELO: los `.vpk` de nivel superior son SOLO las entradas-archivo cuyo
+          // nombre termina en `.vpk` (case-insensitive). id = baseName; vpkPath =
+          // join Windows del nombre ORIGINAL (con su casing de extensión).
+          const expected = items
+            .filter(({ spec }) => spec.kind === "vpk-file")
+            .map(({ baseName, spec }) => {
+              const casing = (spec as { kind: "vpk-file"; casing: string })
+                .casing;
+              return {
+                id: baseName,
+                vpkPath: joinWin(WORKSHOP, `${baseName}${casing}`),
+              };
+            });
 
-      // (d) misma cantidad que archivos .vpk de nivel superior.
-      if (result.length !== expected.length) return false;
+          // Contadores de no-vacuidad (una vez por iteración).
+          const hasTopLevelVpk = items.some(({ spec }) => spec.kind === "vpk-file");
+          const hasNonVpk = items.some(
+            ({ spec }) => spec.kind !== "vpk-file",
+          );
+          if (hasTopLevelVpk && hasNonVpk) mixedCount += 1;
+          if (items.some(({ spec }) => spec.kind === "dir-vpk-name")) {
+            dirVpkNameCount += 1;
+          }
 
-      const expectedById = new Map(expected.map((e) => [e.id, e]));
-      const resultIds = new Set<string>();
+          const result = await buildScanner(fs).scan(WORKSHOP);
 
-      for (const addon of result) {
-        // (b) ningún resultado fuera del conjunto esperado (ni dirs ni otras exts).
-        const exp = expectedById.get(addon.id);
-        if (exp === undefined) return false;
-        // (c) vpkPath = join Windows del nombre original.
-        if (addon.vpkPath !== exp.vpkPath) return false;
-        // ids no repetidos en el resultado.
-        if (resultIds.has(addon.id)) return false;
-        resultIds.add(addon.id);
-      }
+          if (result.length > 0) nonEmptyResultCount += 1;
 
-      // (a) el conjunto de ids devueltos es EXACTAMENTE el esperado (⊇ ya que
-      //     tamaños iguales + ⊆ verificado arriba, pero se comprueba explícito).
-      for (const e of expected) {
-        if (!resultIds.has(e.id)) return false;
-      }
+          // (d) misma cantidad que archivos .vpk de nivel superior.
+          if (result.length !== expected.length) return false;
 
-      return true;
-    },
-  ),
+          const expectedById = new Map(expected.map((e) => [e.id, e]));
+          const resultIds = new Set<string>();
+
+          for (const addon of result) {
+            // (b) ningún resultado fuera del conjunto esperado (ni dirs ni otras exts).
+            const exp = expectedById.get(addon.id);
+            if (exp === undefined) return false;
+            // (c) vpkPath = join Windows del nombre original.
+            if (addon.vpkPath !== exp.vpkPath) return false;
+            // ids no repetidos en el resultado.
+            if (resultIds.has(addon.id)) return false;
+            resultIds.add(addon.id);
+          }
+
+          // (a) el conjunto de ids devueltos es EXACTAMENTE el esperado (⊇ ya que
+          //     tamaños iguales + ⊆ verificado arriba, pero se comprueba explícito).
+          for (const e of expected) {
+            if (!resultIds.has(e.id)) return false;
+          }
+
+          return true;
+        },
+      ),
+      { numRuns: MIN_NUM_RUNS },
+    );
+
+    // No-vacuidad: los escenarios NO triviales se ejercieron con frecuencia > 0.
+    expect(mixedCount).toBeGreaterThan(0);
+    expect(nonEmptyResultCount).toBeGreaterThan(0);
+    expect(dirVpkNameCount).toBeGreaterThan(0);
+  },
 );
 
 // ---------------------------------------------------------------------------
@@ -338,69 +381,95 @@ const noiseNamesArb: fc.Arbitrary<string[]> = fc.uniqueArray(baseNameArb, {
   maxLength: 10,
 });
 
-propertyTest(
-  4,
-  "Asociación correcta de Addon_Cover",
-  fc.asyncProperty(
-    coverScenario,
-    noiseNamesArb,
-    fc.string({ minLength: 0, maxLength: 30 }),
-    async (specs, noiseNames, workshopSuffix) => {
-      const WORKSHOP = `C:\\ws${workshopSuffix}`;
+/**
+ * NO-VACUIDAD (estilo Property 2 del PathDetector). `test()` propio con el
+ * nombre canónico (`propertyName(4, ...)`) y numRuns fijado en `MIN_NUM_RUNS`.
+ * Tras `fc.assert(...)` se afirma que se ejercieron AMBOS casos —al menos un
+ * cover presente y al menos uno ausente— con frecuencia > 0. Como la propiedad
+ * no falla, no hay shrinking y cada iteración cuenta una vez.
+ *
+ * Valores observados (medición temporal con MIN_NUM_RUNS=100 iteraciones):
+ *   withCoverCount = 80, withoutCoverCount = 79.
+ * Ambos quedan holgadamente > 0 SIN sesgar el generador: `fc.boolean()` reparte
+ * `hasCover` ~50/50 y `uniqueArray` produce listas de tamaño medio, así que casi
+ * toda iteración tiene a la vez algún cover presente y algún cover ausente. No
+ * se ajustó el generador.
+ */
+test(propertyName(4, "Asociación correcta de Addon_Cover"), async () => {
+  let withCoverCount = 0;
+  let withoutCoverCount = 0;
 
-      const fs = new MockFs();
+  await fc.assert(
+    fc.asyncProperty(
+      coverScenario,
+      noiseNamesArb,
+      fc.string({ minLength: 0, maxLength: 30 }),
+      async (specs, noiseNames, workshopSuffix) => {
+        const WORKSHOP = `C:\\ws${workshopSuffix}`;
 
-      // Entradas: un `.vpk` (extensión canónica en minúscula) por addon.
-      fs.entries.set(
-        WORKSHOP,
-        specs.map(({ baseName }) => ({
-          name: `${baseName}.vpk`,
-          isDirectory: false,
-        })),
-      );
+        const fs = new MockFs();
 
-      // Registrar los `<id>.jpg` de los addons con hasCover=true.
-      for (const { baseName, hasCover } of specs) {
-        if (hasCover) {
-          fs.existing.add(joinWin(WORKSHOP, `${baseName}.jpg`));
+        // Entradas: un `.vpk` (extensión canónica en minúscula) por addon.
+        fs.entries.set(
+          WORKSHOP,
+          specs.map(({ baseName }) => ({
+            name: `${baseName}.vpk`,
+            isDirectory: false,
+          })),
+        );
+
+        // Registrar los `<id>.jpg` de los addons con hasCover=true.
+        for (const { baseName, hasCover } of specs) {
+          if (hasCover) {
+            fs.existing.add(joinWin(WORKSHOP, `${baseName}.jpg`));
+          }
         }
-      }
 
-      // RUIDO 1: `.jpg` de ids que NO son addons (no debe asociarse a nada).
-      const addonIds = new Set(specs.map((s) => s.baseName));
-      for (const noise of noiseNames) {
-        if (!addonIds.has(noise)) {
-          fs.existing.add(joinWin(WORKSHOP, `${noise}.jpg`));
+        // RUIDO 1: `.jpg` de ids que NO son addons (no debe asociarse a nada).
+        const addonIds = new Set(specs.map((s) => s.baseName));
+        for (const noise of noiseNames) {
+          if (!addonIds.has(noise)) {
+            fs.existing.add(joinWin(WORKSHOP, `${noise}.jpg`));
+          }
         }
-      }
-      // RUIDO 2: otras extensiones para addons SIN cover (no deben contar como cover).
-      for (const { baseName, hasCover } of specs) {
-        if (!hasCover) {
-          fs.existing.add(joinWin(WORKSHOP, `${baseName}.png`));
-          fs.existing.add(joinWin(WORKSHOP, `${baseName}.txt`));
+        // RUIDO 2: otras extensiones para addons SIN cover (no deben contar como cover).
+        for (const { baseName, hasCover } of specs) {
+          if (!hasCover) {
+            fs.existing.add(joinWin(WORKSHOP, `${baseName}.png`));
+            fs.existing.add(joinWin(WORKSHOP, `${baseName}.txt`));
+          }
         }
-      }
 
-      // MODELO: coverPath esperado por id (join Windows de <id>.jpg si hasCover).
-      const expectedCoverById = new Map<string, string | null>(
-        specs.map(({ baseName, hasCover }) => [
-          baseName,
-          hasCover ? joinWin(WORKSHOP, `${baseName}.jpg`) : null,
-        ]),
-      );
+        // MODELO: coverPath esperado por id (join Windows de <id>.jpg si hasCover).
+        const expectedCoverById = new Map<string, string | null>(
+          specs.map(({ baseName, hasCover }) => [
+            baseName,
+            hasCover ? joinWin(WORKSHOP, `${baseName}.jpg`) : null,
+          ]),
+        );
 
-      const result = await buildScanner(fs).scan(WORKSHOP);
+        // Contadores de no-vacuidad (una vez por iteración).
+        if (specs.some(({ hasCover }) => hasCover)) withCoverCount += 1;
+        if (specs.some(({ hasCover }) => !hasCover)) withoutCoverCount += 1;
 
-      if (result.length !== specs.length) return false;
+        const result = await buildScanner(fs).scan(WORKSHOP);
 
-      for (const addon of result) {
-        if (!expectedCoverById.has(addon.id)) return false;
-        const expectedCover = expectedCoverById.get(addon.id) ?? null;
-        // coverPath exacto: ruta del PROPIO <id>.jpg cuando existe, o null.
-        if (addon.coverPath !== expectedCover) return false;
-      }
+        if (result.length !== specs.length) return false;
 
-      return true;
-    },
-  ),
-);
+        for (const addon of result) {
+          if (!expectedCoverById.has(addon.id)) return false;
+          const expectedCover = expectedCoverById.get(addon.id) ?? null;
+          // coverPath exacto: ruta del PROPIO <id>.jpg cuando existe, o null.
+          if (addon.coverPath !== expectedCover) return false;
+        }
+
+        return true;
+      },
+    ),
+    { numRuns: MIN_NUM_RUNS },
+  );
+
+  // No-vacuidad: se ejercieron tanto covers presentes como ausentes.
+  expect(withCoverCount).toBeGreaterThan(0);
+  expect(withoutCoverCount).toBeGreaterThan(0);
+});
