@@ -38,7 +38,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - Función pura de particionado de `internalPaths` en lotes tales que la longitud total (`vpk.exe` + vpk + paths) no exceda un límite seguro (~6000, margen por debajo de ~8191); un path que por sí solo excede el límite queda en lote individual
     - _Requirements: 6.4, 6.5_
 
-  - [ ]* 2.4 Escribir property test del batching
+  - [x]* 2.4 Escribir property test del batching
     - **Feature: l4d2-versus-addon-manager, Property 9: Batching por longitud de línea de comando sin pérdida de archivos**
     - **Validates: Requirements 6.4, 6.5**
     - fast-check, mínimo 100 iteraciones; verifica (a) límite por lote, (b) unión = entrada sin omisiones ni duplicados, (c) path sobredimensionado en lote individual
