@@ -243,6 +243,19 @@ MergeEngine (tarea 11).
 
 ---
 
+### [2026-09-06] Verificación de claves de addoninfo.txt contra un addon REAL (Tarea 6.1)
+**Qué:** La confirmación FINAL de las claves que reconoce el extractor `extractAddonInfo` se hizo contra un **archivo real**, NO solo contra fuentes de comunidad (wiki de Valve + addons de referencia). Se extrajo el `addoninfo.txt` real del addon `121272536` ("Urik Game Menu", autor "Urik") desde la Workshop_Folder real del usuario (`C:\Program Files (x86)\Steam\steamapps\common\left 4 dead 2\left4dead2\addons\workshop\121272536.vpk`) usando el `vpk.exe` real, y se corrió `extractAddonInfo` sobre ese contenido real.
+**Resultado del extractor sobre el archivo real:**
+  `{"title":"Urik Game Menu","author":"Urik","description":"Urik Game Menu v21.0718"}`
+**Hallazgos:**
+  - **Casing `addonAuthor` (con A mayúscula).** Las claves reales de ESE addon fueron `addontitle`, `addonDescription` y **`addonAuthor`** — es decir, el casing del autor NO fue `addonauthor` como sugería la convención dominante de las fuentes de comunidad. Esto **confirma empíricamente** que la decisión de comparar claves **case-insensitive** era necesaria y correcta: un extractor case-sensitive habría perdido el autor.
+  - **Match por TOKEN EXACTO, no por prefijo.** El bloque real contenía muchas otras claves (`vpkname`, `version_template`, `description_template`, `addonAuthorSteamID`, `addonSteamAppID`, etc.). El extractor las ignoró correctamente. En particular, `addonAuthorSteamID` **NO** se confundió con `addonAuthor` porque el match es por token exacto (el primer token completo de la línea, comparado en minúsculas contra el set de claves conocidas), NO por prefijo. Verificado empíricamente.
+  - **Conclusión:** la implementación del extractor (claves + case-insensitive + match exacto) quedó CONFIRMADA contra un archivo real; NO hizo falta ajustar nada en el código.
+**Nota de versionado:** el `addoninfo.txt` real NO se versiona en el repo (términos de uso de contenido de Workshop), mismo criterio que los fixtures binarios de vpk (ver `.gitignore` / `test/fixtures/README.md`).
+**Impacto:** ninguno en código (`addoninfo-extract.ts` sin cambios). Cierra la duda abierta en la entrada de la Tarea 6.1 sobre el casing de `addonauthor`.
+
+---
+
 ## Plantilla para entradas futuras
 
 ```
