@@ -187,3 +187,16 @@ export type {
   ResolvedWinner,
   ResolvedMerge,
 } from "./collision-core.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 6 — MergeEngine, Tarea 11.1): núcleo de la fusión.
+// Orquesta el flujo list → crear subdirectorios → extraer por lotes (vía
+// VpkTool) → fusionar "el último gana" (delegando en CollisionResolver) →
+// empaquetar `pak01_dir.vpk` (AC 6.3, 6.7, 6.8, 6.12). Deja propagar el
+// `VpkToolError` (ya identifica el addon) para abortar ante un exit ≠ éxito.
+// Expone la clase orquestadora y su contrato de FS PROPIO inyectable
+// (`MergeFileSystem`, solo `ensureDir`) para testear sin disco real. El
+// orquestador (tarea 18) y los unit tests (11.2) lo consumen desde el dominio.
+// ---------------------------------------------------------------------------
+export { MergeEngine } from "./merge-engine.js";
+export type { MergeFileSystem } from "./merge-engine.js";
