@@ -143,12 +143,12 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - **Validates: Requirements 6.7, 7.1, 7.2**
     - fast-check, mínimo 100 iteraciones, generando conjuntos de addons con contenidos colisionantes y Priority_Orders arbitrarios; verifica determinismo y ganador correcto
 
-- [ ] 11. MergeEngine (Requirement 6, núcleo de fusión)
-  - [ ] 11.1 Implementar el flujo de fusión list → crear dirs → extraer por lotes → fusionar → empaquetar
+- [x] 11. MergeEngine (Requirement 6, núcleo de fusión)
+  - [x] 11.1 Implementar el flujo de fusión list → crear dirs → extraer por lotes → fusionar → empaquetar
     - `merge` recibe addons en Priority_Order ascendente; por addon: `VpkTool.list` → crear subdirectorios → `VpkTool.extract` por lotes; delega en `CollisionResolver.mergeInto` la fusión a `pak01_dir/`; `VpkTool.pack(pak01_dir)` genera `pak01_dir.vpk`; aborta e informa el addon que falló si una extracción devuelve exit distinto de éxito
     - _Requirements: 6.3, 6.7, 6.8, 6.12_
 
-  - [ ]* 11.2 Escribir unit tests del MergeEngine con VpkTool/FS mockeados
+  - [x]* 11.2 Escribir unit tests del MergeEngine con VpkTool/FS mockeados
     - Verifica el orden del flujo, la creación de subdirectorios previa a la extracción, la generación del `pak01_dir.vpk` y el aborto con identificación del addon ante fallo de extracción
     - _Requirements: 6.3, 6.8, 6.12_
 
