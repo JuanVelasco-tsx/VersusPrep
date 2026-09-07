@@ -1,4 +1,4 @@
-﻿# Pendientes y Vacíos Técnicos
+# Pendientes y Vacíos Técnicos
 
 Lista viva. Actualizar a medida que se resuelvan o aparezcan nuevas preguntas.
 
@@ -90,3 +90,8 @@ Steam puede re-verificar integridad y pisar cambios manuales sin avisar. Detecta
 
 ### P-12 - Frontend: React vs Angular
 Ambos conocidos por el desarrollador. Pendiente de elección. No afecta la arquitectura del núcleo.
+
+---
+
+### P-14 - Limpieza del workDir tras un abort de MergeEngine
+Si `MergeEngine.merge()` aborta a mitad (un `VpkToolError` en `list`/`extract` de algún addon corta el flujo), los directorios/archivos ya creados bajo `<workDir>\extract` y `pak01_dir` NO se limpian hoy. Queda como responsabilidad futura del orquestador (Tarea 18) o de quien invoque MergeEngine; el núcleo de fusión no lo resuelve. Documentado también en el encabezado de `merge-engine.ts` (DECISIÓN 4).
