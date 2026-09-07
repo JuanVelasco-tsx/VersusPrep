@@ -158,3 +158,32 @@ export {
 // ---------------------------------------------------------------------------
 export { isAllowedInActiveSet, isVScriptAddonAllowedInput } from "./active-set-policy.js";
 export type { ActiveSetInclusionInput } from "./active-set-policy.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 7 — CollisionResolver, Tarea 10.1): fusión del contenido
+// extraído con la política "el último del Priority_Order gana", copiando en
+// orden ascendente y sobrescribiendo en colisión. Registra las File_Collision
+// en el MergeReport (contributors + winner). Expone la clase orquestadora y su
+// contrato de FS PROPIO inyectable (`CollisionFileSystem`, `WalkedFile`) para
+// testear sin disco real. MergeEngine (tarea 11) y los tests (10.1/10.3) lo
+// consumen desde el dominio.
+// ---------------------------------------------------------------------------
+export { CollisionResolver } from "./collision-resolver.js";
+export type { CollisionFileSystem, WalkedFile } from "./collision-resolver.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 6.7, 7.1, 7.2 — CollisionResolver, Tarea 10.2): NÚCLEO
+// PURO de la resolución de colisiones. Dada, por addon, la lista de paths que
+// aporta en Priority_Order ASCENDENTE, `resolveMerge` decide de forma
+// determinista y SIN I/O el ganador de cada path (el último del Priority_Order)
+// y arma las File_Collision del MergeReport. `CollisionResolver.mergeInto`
+// (10.1) delega aquí la decisión; se re-exporta la normalización de clave
+// (`toCollisionKey`) que ambos comparten. El property test (Tarea 10.3,
+// Property 11) consume este núcleo para verificar determinismo y "el último gana".
+// ---------------------------------------------------------------------------
+export { resolveMerge, toCollisionKey } from "./collision-core.js";
+export type {
+  AddonContribution,
+  ResolvedWinner,
+  ResolvedMerge,
+} from "./collision-core.js";
