@@ -674,6 +674,22 @@ sus unit tests `test/active-set-policy.test.ts` (tarea 8.1) y el property test 8
 
 ---
 
+### [2026-09-06] Fix: chequeo de exhaustividad de REQUIRED_KEYS era vacuo (test path-detector)
+**Qué:** En `test/path-detector.property.test.ts` el chequeo de exhaustividad agregado en el hardening de la tarea 5.4 (commit 05f4401) no cumplía su función: usaba `Object.fromEntries(...) as Record<RequiredPathKey, true>` y luego un `satisfies Record<RequiredPathKey, true>`. El `as` forzaba el tipo del valor y el `satisfies` lo comparaba contra ese mismo tipo ya forzado, así que SIEMPRE pasaba aunque `REQUIRED_KEYS` estuviera incompleto.
+**Decisión:** `REQUIRED_KEYS` pasa a ser una TUPLA literal (`as const satisfies readonly RequiredPathKey[]`) y el chequeo se reemplaza por un assert puramente a nivel de tipos (`type AssertExhaustive<Keys> = [RequiredPathKey] extends [Keys[number]] ? true : never`), SIN ningún `as`. Si el union `RequiredPathKey` crece y la tupla no se actualiza, el assert resuelve a `never` y el typecheck falla.
+**Evidencia:** al quitar temporalmente una entrada de la tupla, `npm run typecheck` falla con `TS2322: Type 'true' is not assignable to type 'never'` en `_requiredKeysExhaustive`, confirmando que la comprobación ya no es vacua. Con la tupla completa, typecheck pasa y la suite sigue 76/76.
+**Motivo:** un cast anula la verificación; el tipo objetivo debe derivarse de la tupla literal, no de un `as`.
+
+---
+
+### [2026-09-06] Normalización del ÁRBOL COMPLETO de salida en CollisionResolver (Tarea 10 — documentación)
+**Qué:** En `collision-resolver.ts`, `mergeInto` construye el `destPath` físico de CADA archivo a partir de la clave normalizada por `toCollisionKey` (minúsculas + separador `/`, luego `\` en disco), la MISMA clave con la que el núcleo puro (`collision-core.ts`) agrupa contribuidores y decide el ganador. Consecuencia: TODO el árbol fusionado en `pak01_dir/` queda escrito en minúsculas y con separadores normalizados, NO solo los paths que colisionan entre addons. Un `Materials/Foo.VMT` aportado por un único addon (sin colisión) también termina físicamente como `materials\foo.vmt`. Igualmente, `FileCollision.relativePath` del `MergeReport` reporta la clave normalizada, no el casing original del autor. Esto quedó IMPLÍCITO en la implementación de las tareas 10.1/10.2 y ahora se documenta explícitamente: se agregó la DECISIÓN 4 al encabezado de `collision-resolver.ts` y un comentario en el sitio de construcción de `destPath` dentro de `mergeInto`.
+**Motivo:** la clave canónica debe ser ÚNICA de extremo a extremo — agrupar, decidir ganador y escribir a disco deben usar EXACTAMENTE la misma clave, o el archivo físico podría no coincidir con la ruta bajo la cual se decidió el ganador. Si el destino usara el `relativePath` ORIGINAL sin normalizar, dos addons que aportan el mismo archivo lógico con casing distinto (`Materials/Foo.vmt` vs `materials/foo.vmt`) escribirían a dos rutas de string DISTINTAS: en NTFS (Windows, plataforma primaria, case-insensitive) colapsan igual al mismo archivo, pero en un filesystem CASE-SENSITIVE (Linux/Steam Deck, plataformas secundarias según README.md y design.md) crearían DOS archivos separados y la política "el último gana" dejaría de aplicar. Normalizar el destino hace la fusión determinista en cualquier SO. Escribir en minúsculas es seguro porque el engine de L4D2/Source resuelve las rutas de contenido de forma case-insensitive; el único cambio observable es el casing del árbol de salida. Es a la vez consecuencia de reutilizar una única clave `key` de extremo a extremo (DECISIÓN 2/3) y el comportamiento correcto para case-sensitivity — no un efecto no deseado.
+**Mismo criterio que:** la decisión del literal `"\\"` en `vpk-path.ts` (traducción de separadores como regla fija del formato de destino Windows, no dependiente de la plataforma de ejecución) y el casing case-insensitive del match en `vscript-detector.ts`/`addoninfo-extract.ts`: normalización deliberada del formato de destino/comparación, documentada para que no se lea como accidente.
+**Nota para la Tarea 21 (UI):** el `relativePath` que se muestre al usuario en un aviso de File_Collision estará en MINÚSCULAS y normalizado, NO en el casing original del addon. Queda anotado aquí y en el comentario del código para que no se descubra como sorpresa al implementar esa tarea. Si la UI necesitara el casing original, habría que propagar el `relativePath` crudo por separado (hoy no se conserva; sería alcance de la 21, no un bug de la fusión).
+**Impacto:** solo documentación — `src/main/domain/collision-resolver.ts` (DECISIÓN 4 en el encabezado + comentario en `mergeInto`) y esta entrada del historial. NO se tocó la lógica ni los tests; el comportamiento ya era correcto. `npm test` y `npm run typecheck` siguen verdes.
+
+
 ## Plantilla para entradas futuras
 
 ```
@@ -683,9 +699,3 @@ sus unit tests `test/active-set-policy.test.ts` (tarea 8.1) y el property test 8
 **Alternativas descartadas:** (opcional) qué otras opciones se evaluaron.
 **Impacto:** qué archivos, módulos o decisiones futuras afecta.
 ```
-
-### [2026-09-06] Fix: chequeo de exhaustividad de REQUIRED_KEYS era vacuo (test path-detector)
-**Qué:** En `test/path-detector.property.test.ts` el chequeo de exhaustividad agregado en el hardening de la tarea 5.4 (commit 05f4401) no cumplía su función: usaba `Object.fromEntries(...) as Record<RequiredPathKey, true>` y luego un `satisfies Record<RequiredPathKey, true>`. El `as` forzaba el tipo del valor y el `satisfies` lo comparaba contra ese mismo tipo ya forzado, así que SIEMPRE pasaba aunque `REQUIRED_KEYS` estuviera incompleto.
-**Decisión:** `REQUIRED_KEYS` pasa a ser una TUPLA literal (`as const satisfies readonly RequiredPathKey[]`) y el chequeo se reemplaza por un assert puramente a nivel de tipos (`type AssertExhaustive<Keys> = [RequiredPathKey] extends [Keys[number]] ? true : never`), SIN ningún `as`. Si el union `RequiredPathKey` crece y la tupla no se actualiza, el assert resuelve a `never` y el typecheck falla.
-**Evidencia:** al quitar temporalmente una entrada de la tupla, `npm run typecheck` falla con `TS2322: Type 'true' is not assignable to type 'never'` en `_requiredKeysExhaustive`, confirmando que la comprobación ya no es vacua. Con la tupla completa, typecheck pasa y la suite sigue 76/76.
-**Motivo:** un cast anula la verificación; el tipo objetivo debe derivarse de la tupla literal, no de un `as`.
