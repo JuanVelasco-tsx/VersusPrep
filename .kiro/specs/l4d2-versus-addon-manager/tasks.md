@@ -163,7 +163,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - fast-check con FS mockeado, mínimo 100 iteraciones, sobre secuencias de instalaciones que sobrescriben; verifica backup previo a la sobrescritura y a lo sumo un nivel de backup
 
 - [ ] 13. GameInfoEditor (Requirement 6.10)
-  - [ ] 13.1 Implementar `ensureModsvsFirst` con los tres casos y colapso de duplicados
+  - [x] 13.1 Implementar `ensureModsvsFirst` con los tres casos y colapso de duplicados
     - Parsea `GameInfo > FileSystem > SearchPaths`; Caso A (ausente → insertar primero), Caso B (existe no-primera o múltiple → mover/colapsar a única primera), Caso C (ya primera y única → sin cambios, idempotente); preserva el orden relativo del resto de SearchPaths; núcleo de transformación de texto puro con I/O inyectado
     - _Requirements: 6.10_
 
