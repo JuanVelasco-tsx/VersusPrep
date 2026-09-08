@@ -254,6 +254,33 @@ export interface MergeReport {
 }
 
 // ---------------------------------------------------------------------------
+// Requirement 5 — Backup automatico (BackupManager)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resultado de {@link BackupManager.backupExisting} (Requirement 5; AC 5.1,
+ * 5.2, 5.3).
+ *
+ * DECISION DE FORMA (documentada, ver DECISION 1 en `backup-manager.ts`): union
+ * discriminada por `created`, SIN campo `ok`. Los fallos de la operacion de
+ * backup se propagan SIEMPRE por `throw` (AC 5.2: si la creacion del Backup
+ * falla, el orquestador aborta), por lo que NUNCA hay una rama de "error
+ * controlado" en el retorno. Un campo `ok` seria siempre `true` y no
+ * discriminaria nada, asi que se omite deliberadamente.
+ *
+ *  - `created: true`  — existia un `pak01_dir.vpk` actual y se copio al archivo
+ *    de backup; `backupPath` es la ruta absoluta del backup creado (AC 5.1).
+ *    Si ya habia un backup previo, se sobrescribio (unico nivel, AC 5.3).
+ *  - `created: false` — NO existia un `pak01_dir.vpk` previo (primera
+ *    instalacion); no se creo ningun backup. Esto NO es un fallo: no hay nada
+ *    que respaldar y el orquestador sigue adelante (ver DECISION 2 en
+ *    `backup-manager.ts`).
+ */
+export type BackupResult =
+  | { created: true; backupPath: string }
+  | { created: false };
+
+// ---------------------------------------------------------------------------
 // Requirement 8 — Persistencia del Active_Set (LocalStore)
 // ---------------------------------------------------------------------------
 

@@ -152,12 +152,12 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - Verifica el orden del flujo, la creación de subdirectorios previa a la extracción, la generación del `pak01_dir.vpk` y el aborto con identificación del addon ante fallo de extracción
     - _Requirements: 6.3, 6.8, 6.12_
 
-- [ ] 12. BackupManager (Requirement 5)
-  - [ ] 12.1 Implementar el backup de un único nivel
+- [x] 12. BackupManager (Requirement 5)
+  - [x] 12.1 Implementar el backup de un único nivel
     - `backupExisting` copia el `pak01_dir.vpk` actual de `modsvs/` a la ubicación de backup antes de sobrescribir; si ya existe un backup previo lo sobrescribe (un solo nivel); propaga fallo para que el orquestador aborte; FS inyectado
     - _Requirements: 5.1, 5.2, 5.3_
 
-  - [ ]* 12.2 Escribir property test del backup de un único nivel
+  - [x]* 12.2 Escribir property test del backup de un único nivel
     - **Feature: l4d2-versus-addon-manager, Property 7: Backup previo a toda sobrescritura, con un único nivel**
     - **Validates: Requirements 5.1, 5.3**
     - fast-check con FS mockeado, mínimo 100 iteraciones, sobre secuencias de instalaciones que sobrescriben; verifica backup previo a la sobrescritura y a lo sumo un nivel de backup
