@@ -18,6 +18,7 @@ export type {
   ExtractedRoot,
   FileCollision,
   MergeReport,
+  BackupResult,
   AddonManifestEntry,
   PendingOperation,
   ElevationOutcome,
@@ -200,3 +201,14 @@ export type {
 // ---------------------------------------------------------------------------
 export { MergeEngine } from "./merge-engine.js";
 export type { MergeFileSystem } from "./merge-engine.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 5 — BackupManager, Tarea 12.1): backup de un unico
+// nivel del pak01_dir.vpk en modsvs/ antes de sobrescribir. Propaga el fallo
+// de copia para que el orquestador aborte (AC 5.2); devuelve BackupResult
+// (union por `created`, sin `ok`) para distinguir backup creado vs. primera
+// instalacion sin archivo previo (AC 5.1, 5.3). Expone la clase y su contrato
+// de FS PROPIO inyectable (BackupFileSystem) para testear sin disco real.
+// ---------------------------------------------------------------------------
+export { BackupManager } from "./backup-manager.js";
+export type { BackupFileSystem } from "./backup-manager.js";
