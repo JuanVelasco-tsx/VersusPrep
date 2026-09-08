@@ -281,6 +281,49 @@ export type BackupResult =
   | { created: false };
 
 // ---------------------------------------------------------------------------
+// Requirement 6 — Edición del GameInfo_File (GameInfoEditor)
+// ---------------------------------------------------------------------------
+
+/**
+ * Caso aplicado por {@link GameInfoEditor.ensureModsvsFirst} sobre el bloque
+ * SearchPaths del gameinfo.txt (Requirement 6, AC 6.10). Refina/precisa los tres
+ * casos de design.md:
+ *
+ *  - `inserted`  — Caso A: `Game modsvs` NO existía en SearchPaths; se insertó
+ *    como primera entrada.
+ *  - `moved`     — Caso B: `Game modsvs` existía en posición no-primera y/o con
+ *    múltiples ocurrencias; se movió/colapsó a una única primera entrada.
+ *  - `unchanged` — Caso C: `Game modsvs` ya era la primera y única entrada; no se
+ *    modificó el archivo (operación idempotente).
+ */
+export type GameInfoEditCase = "inserted" | "moved" | "unchanged";
+
+/**
+ * Resultado de {@link GameInfoEditor.ensureModsvsFirst} (Requirement 6, AC 6.10).
+ *
+ * DECISIÓN DE FORMA (documentada, ver DECISIÓN 5 en `game-info-editor.ts`): UNIÓN
+ * DISCRIMINADA REAL por `appliedCase`, SIN campo `ok`, igual que {@link BackupResult}.
+ * Los fallos (por ejemplo, ausencia de un bloque SearchPaths) se propagan SIEMPRE
+ * por `throw` de un `GameInfoEditError`, nunca por una rama de error del retorno;
+ * un campo `ok` sería siempre `true` y no discriminaría nada.
+ *
+ * El discriminante `appliedCase` está ACOPLADO al valor de `changed` a nivel de
+ * tipos, de modo que el compilador garantice la correspondencia: `unchanged` (Caso
+ * C) implica `changed: false` y no hay otra combinación posible; `inserted`/`moved`
+ * (Casos A/B) implican `changed: true`. Así es imposible construir, por ejemplo, un
+ * `{ appliedCase: "unchanged", changed: true }` incoherente.
+ *
+ *  - `appliedCase` dice QUÉ caso se aplicó (`inserted` / `moved` / `unchanged`),
+ *    útil para logs/UI y para verificar idempotencia (una segunda aplicación
+ *    SHALL devolver `unchanged` con `changed: false`).
+ *  - `changed` es `true` si el archivo se modificó (Casos A/B), `false` en el Caso
+ *    C. El orquestador (tarea 18) solo escribe/reporta cuando `changed` es `true`.
+ */
+export type GameInfoEditResult =
+  | { appliedCase: "unchanged"; changed: false }
+  | { appliedCase: "inserted" | "moved"; changed: true };
+
+// ---------------------------------------------------------------------------
 // Requirement 8 — Persistencia del Active_Set (LocalStore)
 // ---------------------------------------------------------------------------
 
