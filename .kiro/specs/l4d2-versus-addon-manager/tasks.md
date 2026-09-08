@@ -167,7 +167,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - Parsea `GameInfo > FileSystem > SearchPaths`; Caso A (ausente → insertar primero), Caso B (existe no-primera o múltiple → mover/colapsar a única primera), Caso C (ya primera y única → sin cambios, idempotente); preserva el orden relativo del resto de SearchPaths; núcleo de transformación de texto puro con I/O inyectado
     - _Requirements: 6.10_
 
-  - [ ]* 13.2 Escribir property test de `Game modsvs` primero, único e idempotente
+  - [x]* 13.2 Escribir property test de `Game modsvs` primero, único e idempotente
     - **Feature: l4d2-versus-addon-manager, Property 12: `Game modsvs` como primer y único SearchPath, de forma idempotente**
     - **Validates: Requirements 6.10**
     - fast-check, mínimo 100 iteraciones, generando bloques SearchPaths con `modsvs` ausente / no-primero / múltiple; verifica primera-y-única, preservación del orden del resto e idempotencia de una segunda aplicación
