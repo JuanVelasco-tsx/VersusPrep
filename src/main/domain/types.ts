@@ -372,21 +372,60 @@ export type ElevationOutcome =
  * Resultado de una operación del MergeOrchestrator (applyActiveSet / addAddon /
  * removeAddon).
  *
- * Decisión de forma (documentada): se usa una unión discriminada por el campo
- * `ok`. En éxito, se expone opcionalmente el `MergeReport` (colisiones) y las
- * entradas finales del Active_Set instalado, útiles para que la UI refleje el
- * resultado. En fallo, se expone un `error` legible y, cuando aplica, el
- * `addonId` que causó el fallo (p. ej. una extracción que devolvió exit ≠ éxito),
- * para trazabilidad y mensajes de usuario precisos (AC 6.12).
+ * DIVERGENCIA CONSCIENTE de `design.md` (mismo formato y criterio que la
+ * DECISIÓN 6 de `merge-engine.ts` y la DECISIÓN 1 de `elevation-service.ts`):
+ *
+ *  - QUÉ PUBLICA design.md: la sección "MergeOrchestrator" describe operaciones
+ *    que terminan en un resultado de ÉXITO o de FALLO (el flujo "notifica el
+ *    resultado al usuario", Req 6.11). En la Tarea 1 se fijó `OperationResult`
+ *    como una unión de DOS ramas discriminada por `ok` (`ok: true` con
+ *    `report?`/`installedManifest?` | `ok: false` con `error`/`addonId?`).
+ *
+ *  - POR QUÉ ESA FORMA NO ALCANZA: la elevación UAC bajo demanda (Req 9.2)
+ *    introduce un TERCER desenlace que no es ni éxito ni fallo. Cuando
+ *    `ElevationService.ensureCanWrite` (proactivo) o `handleWriteFailure`
+ *    (reactivo) resuelven `elevated-handoff`, la operación NO terminó: esta
+ *    instancia (sin privilegios) va a CERRARSE y una instancia elevada nueva va a
+ *    materializar y reportar la operación por su cuenta (Tarea 18.2). Ese estado
+ *    "elevando / handoff" del `ElevationOutcome` no tiene dónde reportarse en una
+ *    unión de solo éxito/fallo: mapearlo a `ok: false` sería MENTIR (no falló) y
+ *    mapearlo a `ok: true` también (no hay `report` ni manifest instalado
+ *    todavía). El orquestador necesita devolver "ni terminó ni falló: se cedió el
+ *    trabajo a la instancia elevada" para que el llamador (IPC/UI, Tarea 20) NO
+ *    muestre éxito ni error y simplemente deje que la instancia elevada continúe.
+ *
+ *  - QUÉ FORMA REAL SE USA: unión discriminada de TRES ramas por un campo `status`
+ *    (`"success" | "failure" | "elevating"`), NO por `ok`. Se ELIMINA el `ok`
+ *    booleano justamente porque un booleano no puede representar tres estados; se usa
+ *    un discriminante de tres literales, replicando el estilo de `ElevationOutcome`
+ *    (unión por `kind`) y de `PathDetectionResult` (unión por `kind`) de este
+ *    mismo módulo. Al no haber HOY ningún consumidor de `OperationResult` (ni el
+ *    MergeOrchestrator ni la capa IPC existían al fijarlo en la Tarea 1), el cambio
+ *    de discriminante no rompe llamadores existentes.
+ *
+ *  - `status: "success"` — la operación completó. Expone opcionalmente el
+ *    `MergeReport` (colisiones, Req 7.1) y el Active_Set instalado, útiles para
+ *    que la UI refleje el resultado. Mismos datos que la antigua rama `ok: true`.
+ *  - `status: "failure"` — fallo DEFINITIVO. Expone un `error` legible y, cuando
+ *    aplica, el `addonId` que causó el fallo (p. ej. una extracción con exit ≠
+ *    éxito, AC 6.12, o un addon candidato ausente del escaneo de la Workshop).
+ *    Mismos datos que la antigua rama `ok: false`.
+ *  - `status: "elevating"` — la operación NO terminó: se disparó la elevación UAC
+ *    (`elevated-handoff`), esta instancia va a cerrarse y una instancia elevada la
+ *    completará y reportará por su cuenta (Tarea 18.2). SIN campos de datos: no hay
+ *    nada que reportar todavía (ni resultado ni error).
  */
 export type OperationResult =
   | {
-      ok: true;
+      status: "success";
       report?: MergeReport;
       installedManifest?: AddonManifestEntry[];
     }
   | {
-      ok: false;
+      status: "failure";
       error: string;
       addonId?: string;
+    }
+  | {
+      status: "elevating";
     };

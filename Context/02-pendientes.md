@@ -96,5 +96,9 @@ Ambos conocidos por el desarrollador. Pendiente de elección. No afecta la arqui
 ### P-14 - Limpieza del workDir tras un abort de MergeEngine
 Si `MergeEngine.merge()` aborta a mitad (un `VpkToolError` en `list`/`extract` de algún addon corta el flujo), los directorios/archivos ya creados bajo `<workDir>\extract` y `pak01_dir` NO se limpian hoy. Queda como responsabilidad futura del orquestador (Tarea 18) o de quien invoque MergeEngine; el núcleo de fusión no lo resuelve. Documentado también en el encabezado de `merge-engine.ts` (DECISIÓN 4).
 
+**RESUELTO (2026-09) en la Sección 18**: MergeOrchestrator limpia el workDir en todos los casos (éxito, fallo definitivo y elevación) vía un `finally` que borra recursivamente el directorio de trabajo que creó por operación.
+
 ### P-15 - Tipo de operación hardcodeado en ElevationService.ensureCanWrite
 `ensureCanWrite(gameRoot, entries)` no recibe el tipo de operación real (`applyActiveSet`/`addAddon`/`removeAddon`) del llamador, así que el camino PROACTIVO construye siempre una `PendingOperation` con `type: "applyActiveSet"` hardcodeado. Cuando la Tarea 18 (MergeOrchestrator) exista y dispare el camino proactivo desde `addAddon` o `removeAddon`, la `PendingOperation` va a reportar el tipo incorrecto a la instancia elevada (el camino REACTIVO no tiene este problema: `handleWriteFailure` recibe el `pending` correcto desde afuera). Queda como responsabilidad de la Tarea 18 decidir si extiende la firma de `ensureCanWrite` con un parámetro de tipo de operación, o si resuelve el problema de otra forma.
+
+**RESUELTO (2026-09) en la Sección 18**: `ensureCanWrite` ahora recibe `operationType: PendingOperation["type"]` explícito del MergeOrchestrator (según ejecute `applyActiveSet`/`addAddon`/`removeAddon`) y construye la `PendingOperation` con ese tipo, en vez de hardcodear `"applyActiveSet"`. Se optó por extender la firma (misma DECISIÓN 1 de divergencia consciente de `elevation-service.ts`).

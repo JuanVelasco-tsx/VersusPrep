@@ -54,9 +54,12 @@
  * `entries: readonly AddonManifestEntry[]`:
  *   - `relaunchElevated(pending, entries)` — persiste `entries` con
  *     `savePendingSession(entries)` ANTES de intentar el relanzo.
- *   - `ensureCanWrite(gameRoot, entries)` y `handleWriteFailure(error, pending,
- *     entries)` — CASCADEA: ambas invocan a `relaunchElevated` internamente
- *     cuando hace falta elevar, así que deben poder pasarle las `entries`.
+ *   - `ensureCanWrite(gameRoot, entries, operationType)` y `handleWriteFailure(error,
+ *     pending, entries)` — CASCADEAN: ambas invocan a `relaunchElevated` internamente
+ *     cuando hace falta elevar, así que deben poder pasarle las `entries`. Además,
+ *     `ensureCanWrite` recibe el `operationType` REAL (P-15, RESUELTO en la Sección 18)
+ *     para construir la `PendingOperation` con el `type` correcto en vez de hardcodear
+ *     `"applyActiveSet"`.
  *
  * `PendingOperation` y `ElevationOutcome` (types.ts) NO cambian: siguen
  * correctos tal cual. La `PendingOperation` sigue llevando solo `type` +
@@ -229,6 +232,7 @@ export interface ElevationService {
   ensureCanWrite(
     gameRoot: string,
     entries: readonly AddonManifestEntry[],
+    operationType: PendingOperation["type"],
   ): Promise<ElevationOutcome>;
   /** Camino REACTIVO. Ver {@link ElevationServiceImpl.handleWriteFailure}. */
   handleWriteFailure(
@@ -301,27 +305,29 @@ export class ElevationServiceImpl implements ElevationService {
    *   2. Si no está elevada y `needsElevation(gameRoot)` es `false`, resuelve
    *      `already-writable` (no hace falta elevar).
    *   3. Si no está elevada y `needsElevation` es `true`, delega en
-   *      `relaunchElevated(pending, entries)` con una PendingOperation de tipo
-   *      `applyActiveSet` (la operación de fusión completa que el orquestador va a
-   *      ejecutar), y devuelve su ElevationOutcome (`elevated-handoff` / `denied`).
+   *      `relaunchElevated(pending, entries)` construyendo la `PendingOperation` con
+   *      el `operationType` REAL que recibe del llamador (no un literal fijo), y
+   *      devuelve su ElevationOutcome (`elevated-handoff` / `denied`).
    *
-   * NOTA (pendiente P-15, ver `Context/02-pendientes.md`): el `type` de la
-   * `PendingOperation` del camino proactivo está HARDCODEADO a `"applyActiveSet"`
-   * porque `ensureCanWrite` no recibe el tipo de operación real del llamador. Si
-   * la Tarea 18 (MergeOrchestrator) dispara este camino desde `addAddon`/
-   * `removeAddon`, la instancia elevada recibiría un tipo incorrecto. Queda como
-   * responsabilidad de la Tarea 18 extender la firma con un parámetro de tipo de
-   * operación o resolverlo de otra forma (el camino REACTIVO no tiene el problema:
-   * `handleWriteFailure` recibe el `pending` correcto desde afuera).
+   * NOTA (pendiente P-15 — RESUELTO en la Sección 18, ver `Context/02-pendientes.md`):
+   * el `type` de la `PendingOperation` del camino proactivo YA NO está hardcodeado.
+   * `ensureCanWrite` recibe `operationType: PendingOperation["type"]` del llamador
+   * (el MergeOrchestrator lo pasa según ejecute `applyActiveSet`/`addAddon`/
+   * `removeAddon`), de modo que la instancia elevada reciba el tipo CORRECTO. El
+   * parámetro se suma con el MISMO criterio de la DECISIÓN 1 (divergencia consciente
+   * de design.md): el documento publica `ensureCanWrite(gameRoot)` sin `entries` ni
+   * `operationType`, pero ambos son datos que el camino proactivo necesita para
+   * construir la `PendingOperation` correcta y persistir el candidato antes de relanzar.
    */
   async ensureCanWrite(
     gameRoot: string,
     entries: readonly AddonManifestEntry[],
+    operationType: PendingOperation["type"],
   ): Promise<ElevationOutcome> {
     if (this.#os.isElevated()) return { kind: "already-writable" };
     if (!(await this.needsElevation(gameRoot))) return { kind: "already-writable" };
     return this.relaunchElevated(
-      { type: "applyActiveSet", resumeHandle: PENDING_SESSION_HANDLE },
+      { type: operationType, resumeHandle: PENDING_SESSION_HANDLE },
       entries,
     );
   }
