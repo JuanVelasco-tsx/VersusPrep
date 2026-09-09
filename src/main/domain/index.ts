@@ -258,3 +258,31 @@ export type { ProcessListProvider } from "./process-guard.js";
 // ---------------------------------------------------------------------------
 export { SqliteLocalStore } from "./local-store.js";
 export type { LocalStore } from "./local-store.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 9.2 — ElevationService, Sección 17): estrategia de
+// elevación UAC bajo demanda. Decide por dos caminos —proactivo (`ensureCanWrite`)
+// y reactivo (`handleWriteFailure`)— si hace falta elevar y, de ser así, persiste
+// el Active_Set candidato vía `LocalStore.savePendingSession` y re-lanza la app
+// con `runas` (la instancia elevada rehidrata del LocalStore, no de la línea de
+// comando). Ambos caminos chequean `isElevated()` primero (elevación una vez por
+// sesión). La lógica de decisión es PURA; los efectos de SO (probe write, relanzo
+// `runas`) viven en el proveedor inyectable `ElevationOsProvider` (SOLO contrato:
+// la implementación real de Windows queda pendiente para la composición, igual que
+// `ProcessListProvider`). Las firmas divergen de design.md sumando `entries`
+// (DECISIÓN 1 del módulo, precedente MergeEngine DECISIÓN 6). Expone la clase
+// `ElevationServiceImpl`, sus helpers/constantes y los tipos del contrato y del
+// proveedor inyectable. El orquestador (tarea 18) lo consume.
+// ---------------------------------------------------------------------------
+export {
+  ElevationServiceImpl,
+  isPermissionError,
+  PROTECTED_PATH_PREFIXES,
+  PERMISSION_ERROR_CODES,
+  PENDING_SESSION_HANDLE,
+} from "./elevation-service.js";
+export type {
+  ElevationService,
+  ElevationOsProvider,
+  RelaunchOutcome,
+} from "./elevation-service.js";
