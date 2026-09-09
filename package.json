@@ -12,7 +12,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "electron:pack": "electron-builder --dir"
+    "electron:pack": "electron-builder --dir",
+    "rebuild:native": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "better-sqlite3": "13.0.3"
