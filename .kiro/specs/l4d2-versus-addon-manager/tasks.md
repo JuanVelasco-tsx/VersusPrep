@@ -181,18 +181,18 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - Casos: juego en ejecución, juego cerrado, y presencia de `hl2.exe` que no debe contar
     - _Requirements: 4.1, 4.2_
 
-- [ ] 15. LocalStore (persistencia; motor a elección)
-  - [ ] 15.1 Definir la interfaz `LocalStore` y elegir el motor de persistencia
+- [x] 15. LocalStore (persistencia; motor a elección)
+  - [x] 15.1 Definir la interfaz `LocalStore` y elegir el motor de persistencia
     - Definir `LocalStore` (`getPaths`/`savePaths`/`getManifest`/`saveManifest`) desacoplada del motor concreto; implementar el motor recomendado **SQLite vía `better-sqlite3`** (con `electron-rebuild`), dejando la puerta abierta a una implementación **JSON plano** alternativa detrás de la misma interfaz; el manifest guarda solo `{ addonId, priorityOrder }`
     - Añadir a la interfaz los métodos de **estado de sesión pendiente**: `savePendingSession(entries)`, `getPendingSession()` y `clearPendingSession()`, que persisten el **Active_Set candidato** (selección + Priority_Order) como fuente de verdad para rehidratar la UI tras un relanzo elevado; el estado se escribe ANTES de relanzar con `runas` y la instancia elevada lo lee al arrancar (ver tareas 17.1 y 18.2)
     - _Requirements: 1.13, 8.1, 8.6, 9.2_
 
-  - [ ]* 15.2 Escribir property test de round-trip del Addon_Manifest
+  - [x]* 15.2 Escribir property test de round-trip del Addon_Manifest
     - **Feature: l4d2-versus-addon-manager, Property 14: Round-trip de persistencia del Addon_Manifest**
     - **Validates: Requirements 8.1, 8.6**
     - fast-check, mínimo 100 iteraciones, contra un store en memoria/temporal; guardar y leer produce el mismo conjunto de entradas
 
-  - [ ]* 15.3 Escribir unit tests del estado de sesión pendiente
+  - [x]* 15.3 Escribir unit tests del estado de sesión pendiente
     - Verifica el ciclo `savePendingSession` → `getPendingSession` → `clearPendingSession` contra un store en memoria/temporal: tras guardar se lee el mismo Active_Set candidato (selección + Priority_Order), y tras limpiar `getPendingSession` devuelve vacío/`null`; cubre el soporte de rehidratación del relanzo elevado
     - _Requirements: 8.6, 9.2_
 
