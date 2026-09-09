@@ -19,6 +19,8 @@ export type {
   FileCollision,
   MergeReport,
   BackupResult,
+  GameInfoEditCase,
+  GameInfoEditResult,
   AddonManifestEntry,
   PendingOperation,
   ElevationOutcome,
@@ -212,6 +214,22 @@ export type { MergeFileSystem } from "./merge-engine.js";
 // ---------------------------------------------------------------------------
 export { BackupManager } from "./backup-manager.js";
 export type { BackupFileSystem } from "./backup-manager.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 6 — GameInfoEditor, Tarea 13.1): garantiza que
+// `Game modsvs` sea la primera y única entrada del bloque SearchPaths del
+// gameinfo.txt (AC 6.10). Transformación POR LÍNEAS que preserva formato,
+// comentarios y EOL; lanza GameInfoEditError si no hay bloque SearchPaths.
+// Expone la clase, su contrato de FS PROPIO inyectable (GameInfoFileSystem),
+// el error tipado y el núcleo puro (ensureModsvsFirstInContent) para testearlo
+// sin disco (Property 12, tarea 13.2). El orquestador (tarea 18) lo consume.
+// ---------------------------------------------------------------------------
+export { GameInfoEditor, GameInfoEditError, ensureModsvsFirstInContent } from "./game-info-editor.js";
+export type {
+  GameInfoFileSystem,
+  GameInfoEditOutcome,
+  GameInfoEditErrorReason,
+} from "./game-info-editor.js";
 
 // ---------------------------------------------------------------------------
 // Runtime (Requirement 4 — ProcessGuard, Tarea 14.1): deteccion del proceso
