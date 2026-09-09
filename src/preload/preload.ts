@@ -1,0 +1,43 @@
+import { contextBridge, ipcRenderer } from "electron";
+
+import { IPC_CHANNELS } from "../main/app/ipc-contract.js";
+import type { L4d2Api, ResumeState } from "../main/app/ipc-contract.js";
+import type {
+  AddonManifestEntry,
+  MergeProgressEvent,
+  OperationResult,
+  PathDetectionResult,
+  ScannedAddon,
+  VScriptClassification,
+} from "../main/domain/index.js";
+
+const api: L4d2Api = {
+  detectPaths: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.detectPaths) as Promise<PathDetectionResult>,
+  scanAddons: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.scanAddons) as Promise<ScannedAddon[]>,
+  classifyVScript: (addons) =>
+    ipcRenderer.invoke(IPC_CHANNELS.classifyVScript, addons) as Promise<
+      VScriptClassification[]
+    >,
+  getActiveSet: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.getActiveSet) as Promise<AddonManifestEntry[]>,
+  applyActiveSet: (entries) =>
+    ipcRenderer.invoke(IPC_CHANNELS.applyActiveSet, entries) as Promise<OperationResult>,
+  addAddon: (addonId, priorityOrder) =>
+    ipcRenderer.invoke(IPC_CHANNELS.addAddon, addonId, priorityOrder) as Promise<
+      OperationResult
+    >,
+  removeAddon: (addonId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.removeAddon, addonId) as Promise<OperationResult>,
+  getResumeState: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.getResumeState) as Promise<ResumeState | null>,
+  onProgress: (listener) => {
+    const handler = (_event: unknown, payload: MergeProgressEvent): void =>
+      listener(payload);
+    ipcRenderer.on(IPC_CHANNELS.mergeProgress, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.mergeProgress, handler);
+  },
+};
+
+contextBridge.exposeInMainWorld("l4d2Api", api);
