@@ -1,4 +1,4 @@
-﻿/**
+/**
  * LocalStore — persistencia del Active_Set y las rutas verificadas (Sección 15,
  * Requirement 8; AC 1.13, 8.1, 8.6; soporte de rehidratación del relanzo elevado
  * del Requirement 9.2).
@@ -78,10 +78,9 @@
  *     PROPIA tabla, para que el candidato pendiente y el instalado no se pisen:
  *     mientras hay una sesión pendiente, el manifest instalado sigue reflejando lo
  *     realmente aplicado. `savePendingSession` reemplaza la lista entera en una
- *     transacción; `clearPendingSession` la vacía; `getPendingSession` devuelve
- *     `null` cuando no hay NINGUNA fila (distinguiendo "no hay sesión pendiente" de
- *     "sesión pendiente vacía"; en esta implementación ambas colapsan a `null`
- *     porque una sesión candidata vacía no aporta nada que rehidratar).
+ *     transacción; `clearPendingSession` la vacía; la DISTINCIÓN entre "no hay
+ *     sesión" y "sesión activa vacía" NO se infiere de la cantidad de filas, sino
+ *     de un flag de estado explícito (ver DECISIÓN 5).
  *
  * ---------------------------------------------------------------------------
  * DECISIÓN 4 — Semántica de `savePaths(paths: Partial<GamePaths>)`: MERGE parcial
@@ -96,8 +95,43 @@
  * AUSENTES conservan su valor previo (vía `COALESCE(nuevo, actual)`). Guardar
  * `{ steamPath }` no borra el `gameRoot` guardado antes. Esto también permite ir
  * acumulando rutas a medida que se resuelven, hasta que `getPaths()` pueda
- * devolver un `GamePaths` completo. `getPaths()`/`getPendingSession()` devuelven
- * `null` en la primera ejecución (sin nada guardado todavía).
+ * devolver un `GamePaths` completo. `getPaths()` devuelve `null` en la primera
+ * ejecución (sin nada guardado todavía).
+ *
+ * ---------------------------------------------------------------------------
+ * DECISIÓN 5 — `getPendingSession()` distingue `null` (no hay sesión) de `[]`
+ * (sesión activa cuyo Active_Set candidato es vacío), vía un FLAG DE ESTADO
+ * explícito, NO por la cantidad de filas de `pending_session`.
+ *
+ * El problema: contar filas NO alcanza para distinguir dos situaciones
+ * semánticamente distintas que ambas dejan `pending_session` sin filas:
+ *   - NUNCA se guardó una sesión (o se limpió con `clearPendingSession`): no hay
+ *     nada que rehidratar tras un relanzo elevado.
+ *   - Se guardó a propósito una sesión con Active_Set candidato VACÍO. Caso real:
+ *     `MergeOrchestrator.removeAddon` sobre un Active_Set de tamaño 1 deja el
+ *     candidato en `[]` justo antes de un relanzo elevado; la instancia elevada
+ *     DEBE rehidratar ese "vacío intencional" (aplicar un Active_Set vacío), no
+ *     interpretarlo como "no había sesión".
+ *
+ * Solución: una tabla de estado de UNA sola fila `pending_session_state
+ * (id INTEGER PRIMARY KEY CHECK (id = 1), active INTEGER NOT NULL DEFAULT 0)`
+ * que rastrea si hay una sesión pendiente ACTIVA, independiente de cuántas filas
+ * tenga `pending_session`. Se eligió una tabla aparte (en vez de un flag en
+ * `paths`) para no acoplar el ciclo de vida de la sesión pendiente al de las
+ * rutas: son estados ortogonales (puede haber sesión pendiente sin rutas aún
+ * completas, y viceversa) y mezclarlos en `paths` obligaría a que la fila de
+ * rutas exista para poder marcar una sesión activa.
+ *
+ * Semántica observable resultante de `getPendingSession()`:
+ *   - `null`  = no hay Active_Set candidato para rehidratar (nunca se guardó, o
+ *               se limpió). `active = 0`.
+ *   - `[]`    = hay una sesión ACTIVA y el Active_Set candidato es efectivamente
+ *               vacío (el usuario quitó el último addon antes de relanzar). `active = 1`
+ *               y `pending_session` sin filas.
+ *   - lista con entradas = el Active_Set candidato tal cual se guardó. `active = 1`.
+ *
+ * `savePendingSession(entries)` marca `active = 1` SIEMPRE (incluso con `entries`
+ * vacío); `clearPendingSession()` marca `active = 0` y vacía las filas.
  */
 
 import type { Database } from "better-sqlite3";
@@ -120,11 +154,20 @@ export interface LocalStore {
   getManifest(): AddonManifestEntry[];
   /** Reemplaza el Active_Set instalado entero (transacción). */
   saveManifest(entries: AddonManifestEntry[]): void;
-  /** Persiste el Active_Set CANDIDATO del relanzo elevado (transacción). */
+  /**
+   * Persiste el Active_Set CANDIDATO del relanzo elevado (transacción) y marca la
+   * sesión pendiente como ACTIVA. Vale incluso con `entries` vacío: guardar `[]`
+   * deja una sesión activa cuyo candidato es vacío (ver DECISIÓN 5).
+   */
   savePendingSession(entries: AddonManifestEntry[]): void;
-  /** Active_Set candidato pendiente, o `null` si no hay ninguno. */
+  /**
+   * Active_Set candidato pendiente (ver DECISIÓN 5):
+   *  - `null` si no hay sesión activa (nunca se guardó, o se limpió).
+   *  - `[]` si hay sesión activa con candidato vacío (p. ej. se quitó el último addon).
+   *  - la lista de entradas tal cual se guardó, en Priority_Order ascendente.
+   */
   getPendingSession(): AddonManifestEntry[] | null;
-  /** Vacía el estado de sesión pendiente. */
+  /** Vacía el estado de sesión pendiente y lo marca como INACTIVO. */
   clearPendingSession(): void;
 }
 
@@ -146,7 +189,7 @@ type AssertPathKeysExhaustive<Keys extends readonly (keyof GamePaths)[]> =
 const _pathKeysExhaustive: AssertPathKeysExhaustive<typeof GAME_PATH_KEYS> = true;
 void _pathKeysExhaustive;
 
-/** DDL idempotente: crea las tres tablas si no existen (ver DECISIÓN 3). */
+/** DDL idempotente: crea las cuatro tablas si no existen (ver DECISIONES 3 y 5). */
 const SCHEMA_DDL = `
 CREATE TABLE IF NOT EXISTS paths (
   id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -165,6 +208,10 @@ CREATE TABLE IF NOT EXISTS manifest (
 CREATE TABLE IF NOT EXISTS pending_session (
   addonId TEXT PRIMARY KEY,
   priorityOrder INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS pending_session_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  active INTEGER NOT NULL DEFAULT 0
 );
 `;
 
@@ -231,18 +278,53 @@ export class SqliteLocalStore implements LocalStore {
   }
 
   savePendingSession(entries: AddonManifestEntry[]): void {
-    this.#replaceEntries("pending_session", entries);
+    // Reemplaza las filas del candidato y marca la sesión como ACTIVA en la MISMA
+    // transacción (atómico): filas + flag no pueden quedar desincronizados. Vale
+    // con `entries` vacío -> sesión activa con candidato [] (ver DECISIÓN 5).
+    const del = this.#db.prepare("DELETE FROM pending_session");
+    const ins = this.#db.prepare(
+      "INSERT INTO pending_session (addonId, priorityOrder) VALUES (@addonId, @priorityOrder)",
+    );
+    const setActive = this.#db.prepare(
+      "INSERT INTO pending_session_state (id, active) VALUES (1, 1) ON CONFLICT(id) DO UPDATE SET active = 1",
+    );
+    const tx = this.#db.transaction((rows: AddonManifestEntry[]) => {
+      del.run();
+      for (const row of rows) ins.run(row);
+      setActive.run();
+    });
+    tx(entries);
   }
 
   getPendingSession(): AddonManifestEntry[] | null {
-    const entries = this.#readEntries("pending_session");
-    // null cuando no hay ninguna fila: distingue "sin sesión pendiente" del caso
-    // ordinario. Una sesión candidata vacía no aporta nada que rehidratar.
-    return entries.length === 0 ? null : entries;
+    // El flag de estado —NO la cantidad de filas— decide null vs []: null si no
+    // hay sesión activa; si la hay, se devuelven las filas tal cual (que pueden
+    // ser [] cuando el candidato es intencionalmente vacío). Ver DECISIÓN 5.
+    if (!this.#isPendingSessionActive()) return null;
+    return this.#readEntries("pending_session");
   }
 
   clearPendingSession(): void {
-    this.#db.prepare("DELETE FROM pending_session").run();
+    // Vacía el candidato y marca la sesión como INACTIVA, en la misma transacción.
+    const del = this.#db.prepare("DELETE FROM pending_session");
+    const setInactive = this.#db.prepare(
+      "INSERT INTO pending_session_state (id, active) VALUES (1, 0) ON CONFLICT(id) DO UPDATE SET active = 0",
+    );
+    const tx = this.#db.transaction(() => {
+      del.run();
+      setInactive.run();
+    });
+    tx();
+  }
+
+  /** `true` si hay una sesión pendiente ACTIVA (flag de estado; ver DECISIÓN 5). */
+  #isPendingSessionActive(): boolean {
+    const row = this.#db
+      .prepare<[], { active: number }>(
+        "SELECT active FROM pending_session_state WHERE id = 1",
+      )
+      .get();
+    return row !== undefined && row.active === 1;
   }
 
   /** Lee una tabla de entradas (manifest | pending_session) ordenada por priorityOrder ascendente. */
