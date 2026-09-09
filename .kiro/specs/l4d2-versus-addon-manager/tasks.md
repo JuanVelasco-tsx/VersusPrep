@@ -216,26 +216,26 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - **Validates: Requirements 9.2**
     - fast-check con ejecutor/FS mockeado, mínimo 100 iteraciones, variando el `code` del error (`EACCES`/`EPERM` vs `ENOENT`), el resultado del intento de elevación (aceptado/denied/falla) y el éxito de la escritura reintentada; error no-permisos no dispara elevación
 
-- [ ] 18. MergeOrchestrator (capa de aplicación; Requisitos 4, 5, 6, 8)
-  - [ ] 18.1 Implementar `applyActiveSet`, `addAddon` y `removeAddon` con el orden garantizado
+- [x] 18. MergeOrchestrator (capa de aplicación; Requisitos 4, 5, 6, 8)
+  - [x] 18.1 Implementar `applyActiveSet`, `addAddon` y `removeAddon` con el orden garantizado
     - Secuencia: `ProcessGuard.isGameRunning` (abortar si corre) → resolver Active_Set + Priority_Order (add/remove = fusión completa desde cero) → `ElevationService.ensureCanWrite` (proactivo) → `BackupManager.backupExisting` (abortar si falla) → `MergeEngine.merge` → instalar en `modsvs/` → `GameInfoEditor.ensureModsvsFirst` → `LocalStore.saveManifest` → notificar resultado; las escrituras de los pasos de backup/instalación/gameinfo van envueltas para invocar `ElevationService.handleWriteFailure` (reactivo) ante `EACCES`/`EPERM` y reintentar en la instancia elevada
     - _Requirements: 4.1, 4.2, 5.1, 5.2, 6.9, 6.11, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 9.2_
 
-  - [ ] 18.2 Implementar el arranque de la instancia elevada que ejecuta la PendingOperation
+  - [x] 18.2 Implementar el arranque de la instancia elevada que ejecuta la PendingOperation
     - Al arrancar, si hay una `PendingOperation` transferida (mínima: `type` + `resumeHandle`), la instancia elevada **REHIDRATA** el estado leyendo `LocalStore.getPendingSession()` (NO de los argumentos), reconstruyendo la vista (lista, selección, Priority_Order, Activos) desde el LocalStore + re-escaneo para que la transición sea **transparente**
     - Luego **materializa** la operación (backup → merge → instalar → gameinfo → manifest) reconstruyendo add/remove desde los VPK originales; al terminar **limpia** el estado con `LocalStore.clearPendingSession()` y reporta el resultado
     - _Requirements: 8.3, 8.4, 8.5, 9.2_
 
-  - [ ]* 18.3 Escribir property test de equivalencia add/remove ↔ fusión completa
+  - [x]* 18.3 Escribir property test de equivalencia add/remove ↔ fusión completa
     - **Feature: l4d2-versus-addon-manager, Property 13: Agregar o quitar equivale a una fusión completa desde cero**
     - **Validates: Requirements 8.3, 8.4, 8.5**
     - fast-check con MergeEngine/FS mockeados, mínimo 100 iteraciones; el resultado de add/remove es idéntico a la fusión completa directa del Active_Set final
 
-  - [ ]* 18.4 Escribir unit tests del orden y precondiciones del orquestador
+  - [x]* 18.4 Escribir unit tests del orden y precondiciones del orquestador
     - Verifica aborto si el juego corre, aborto si el backup falla, orden backup→merge→instalar→gameinfo→manifest, y disparo de `handleWriteFailure` ante `EACCES`/`EPERM` con reintento
     - _Requirements: 4.1, 4.2, 5.2, 6.9, 6.11, 8.6_
 
-- [ ] 19. Checkpoint - Asegurar que el núcleo del proceso main y su orquestador pasan todos los tests
+- [x] 19. Checkpoint - Asegurar que el núcleo del proceso main y su orquestador pasan todos los tests
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 20. Capa IPC / preload tipada

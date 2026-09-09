@@ -187,7 +187,7 @@ describe("ElevationService.ensureCanWrite", () => {
     const os = new MockOsProvider({ elevated: true });
     const store = new MockStore();
     const service = new ElevationServiceImpl(os, store);
-    const outcome = await service.ensureCanWrite("C:\\Program Files (x86)\\Steam", ENTRIES);
+    const outcome = await service.ensureCanWrite("C:\\Program Files (x86)\\Steam", ENTRIES, "applyActiveSet");
     expect(outcome).toEqual({ kind: "already-writable" });
     expect(os.probeCalls).toBe(0);
     expect(os.relaunchCalls).toBe(0);
@@ -198,7 +198,7 @@ describe("ElevationService.ensureCanWrite", () => {
     const os = new MockOsProvider({ elevated: false, probeResult: true });
     const store = new MockStore();
     const service = new ElevationServiceImpl(os, store);
-    const outcome = await service.ensureCanWrite("D:\\SteamLibrary", ENTRIES);
+    const outcome = await service.ensureCanWrite("D:\\SteamLibrary", ENTRIES, "applyActiveSet");
     expect(outcome).toEqual({ kind: "already-writable" });
     expect(os.relaunchCalls).toBe(0);
     expect(store.events).toEqual([]);
@@ -208,7 +208,7 @@ describe("ElevationService.ensureCanWrite", () => {
     const os = new MockOsProvider({ elevated: false, relaunchResult: "launched" });
     const store = new MockStore();
     const service = new ElevationServiceImpl(os, store);
-    const outcome = await service.ensureCanWrite("C:\\Program Files (x86)\\Steam", ENTRIES);
+    const outcome = await service.ensureCanWrite("C:\\Program Files (x86)\\Steam", ENTRIES, "applyActiveSet");
     expect(outcome).toEqual({ kind: "elevated-handoff" });
     expect(os.relaunchCalls).toBe(1);
     expect(store.savedEntries).toEqual(ENTRIES);
@@ -218,7 +218,7 @@ describe("ElevationService.ensureCanWrite", () => {
     const os = new MockOsProvider({ elevated: false, relaunchResult: "cancelled" });
     const store = new MockStore();
     const service = new ElevationServiceImpl(os, store);
-    const outcome = await service.ensureCanWrite("C:\\Program Files (x86)\\Steam", ENTRIES);
+    const outcome = await service.ensureCanWrite("C:\\Program Files (x86)\\Steam", ENTRIES, "applyActiveSet");
     expect(outcome.kind).toBe("denied");
     expect(os.relaunchCalls).toBe(1);
   });
@@ -312,14 +312,14 @@ describe("ElevationService — elevación una vez por sesión", () => {
     const store = new MockStore();
     const os1 = new MockOsProvider({ elevated: false, relaunchResult: "launched" });
     const service1 = new ElevationServiceImpl(os1, store);
-    const first = await service1.ensureCanWrite("C:\\Program Files (x86)\\Steam", ENTRIES);
+    const first = await service1.ensureCanWrite("C:\\Program Files (x86)\\Steam", ENTRIES, "applyActiveSet");
     expect(first).toEqual({ kind: "elevated-handoff" });
     expect(os1.relaunchCalls).toBe(1);
 
     // 2ª operación: ya en la instancia elevada -> escribe directo, NO relanza.
     const os2 = new MockOsProvider({ elevated: true });
     const service2 = new ElevationServiceImpl(os2, store);
-    const second = await service2.ensureCanWrite("C:\\Program Files (x86)\\Steam", ENTRIES);
+    const second = await service2.ensureCanWrite("C:\\Program Files (x86)\\Steam", ENTRIES, "applyActiveSet");
     expect(second).toEqual({ kind: "already-writable" });
     expect(os2.relaunchCalls).toBe(0);
     expect(os2.probeCalls).toBe(0);

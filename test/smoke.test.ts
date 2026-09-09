@@ -37,14 +37,14 @@ describe("Andamiaje: tipos de dominio importables", () => {
 
     const manifest: AddonManifestEntry[] = [{ addonId: addon.id, priorityOrder: 0 }];
 
-    const success: OperationResult = { ok: true, installedManifest: manifest };
-    const failure: OperationResult = { ok: false, error: "algo falló", addonId: addon.id };
+    const success: OperationResult = { status: "success", installedManifest: manifest };
+    const failure: OperationResult = { status: "failure", error: "algo falló", addonId: addon.id };
     const outcome: ElevationOutcome = { kind: "already-writable" };
 
     expect(addon.id).toBe("123456");
     expect(manifest[0]?.priorityOrder).toBe(0);
-    expect(success.ok).toBe(true);
-    expect(failure.ok).toBe(false);
+    expect(success.status).toBe("success");
+    expect(failure.status).toBe("failure");
     expect(outcome.kind).toBe("already-writable");
   });
 });

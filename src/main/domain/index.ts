@@ -286,3 +286,20 @@ export type {
   ElevationOsProvider,
   RelaunchOutcome,
 } from "./elevation-service.js";
+// ---------------------------------------------------------------------------
+// Runtime (Requisitos 4, 5, 6, 8, 9.2 — MergeOrchestrator, Sección 18): capa de
+// APLICACIÓN que coordina el flujo completo (ProcessGuard -> resolver Active_Set
+// -> ElevationService proactivo -> backup -> merge -> instalar en modsvs/ ->
+// gameinfo -> saveManifest -> notificar), con manejo REACTIVO de EACCES/EPERM vía
+// ElevationService.handleWriteFailure y limpieza del workDir en todos los casos
+// (resuelve P-14). Implementa applyActiveSet/addAddon/removeAddon (18.1) y el
+// resume de la instancia elevada (18.2). Expone la clase `MergeOrchestrator`, su
+// contrato de FS PROPIO inyectable (`MergeOrchestratorFileSystem`) y el tipo de
+// dependencias inyectadas (`MergeOrchestratorDeps`). La capa IPC (Tarea 20) lo
+// consume.
+// ---------------------------------------------------------------------------
+export { MergeOrchestrator } from "./merge-orchestrator.js";
+export type {
+  MergeOrchestratorFileSystem,
+  MergeOrchestratorDeps,
+} from "./merge-orchestrator.js";
