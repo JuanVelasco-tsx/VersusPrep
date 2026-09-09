@@ -243,3 +243,18 @@ export type {
 // ---------------------------------------------------------------------------
 export { GAME_PROCESS_NAME, ProcessGuard } from "./process-guard.js";
 export type { ProcessListProvider } from "./process-guard.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 8 — LocalStore, Sección 15): persistencia del Active_Set
+// y las rutas verificadas sobre SQLite (`better-sqlite3`), con la `Database`
+// inyectada por constructor (patrón `CommandRunner`/`*FileSystem`). Persiste las
+// GamePaths (AC 1.13, merge parcial), el Addon_Manifest instalado (AC 8.1, 8.6,
+// solo `{ addonId, priorityOrder }`) y el ESTADO DE SESIÓN PENDIENTE del relanzo
+// elevado (savePendingSession/getPendingSession/clearPendingSession, AC 9.2);
+// esta sección solo implementa el ciclo de vida de ese estado, no su consumo
+// (eso es la tarea 17 / ElevationService). Expone la interfaz `LocalStore`
+// desacoplada del motor y la implementación `SqliteLocalStore`. El orquestador
+// (tarea 18), ElevationService (tarea 17) y la capa IPC (tarea 20) la consumen.
+// ---------------------------------------------------------------------------
+export { SqliteLocalStore } from "./local-store.js";
+export type { LocalStore } from "./local-store.js";
