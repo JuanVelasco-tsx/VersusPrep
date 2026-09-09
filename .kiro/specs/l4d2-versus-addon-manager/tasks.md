@@ -172,12 +172,12 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - **Validates: Requirements 6.10**
     - fast-check, mínimo 100 iteraciones, generando bloques SearchPaths con `modsvs` ausente / no-primero / múltiple; verifica primera-y-única, preservación del orden del resto e idempotencia de una segunda aplicación
 
-- [ ] 14. ProcessGuard (Requirement 4)
-  - [ ] 14.1 Implementar la detección del proceso `left4dead2.exe`
+- [x] 14. ProcessGuard (Requirement 4)
+  - [x] 14.1 Implementar la detección del proceso `left4dead2.exe`
     - `isGameRunning` busca específicamente `left4dead2.exe` (no `hl2.exe`) vía un proveedor de lista de procesos inyectable
     - _Requirements: 4.1_
 
-  - [ ]* 14.2 Escribir unit tests de ProcessGuard con proveedor de procesos mockeado
+  - [x]* 14.2 Escribir unit tests de ProcessGuard con proveedor de procesos mockeado
     - Casos: juego en ejecución, juego cerrado, y presencia de `hl2.exe` que no debe contar
     - _Requirements: 4.1, 4.2_
 
