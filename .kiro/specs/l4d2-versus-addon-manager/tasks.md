@@ -196,7 +196,7 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - Verifica el ciclo `savePendingSession` → `getPendingSession` → `clearPendingSession` contra un store en memoria/temporal: tras guardar se lee el mismo Active_Set candidato (selección + Priority_Order), y tras limpiar `getPendingSession` devuelve vacío/`null`; cubre el soporte de rehidratación del relanzo elevado
     - _Requirements: 8.6, 9.2_
 
-- [ ] 16. Checkpoint - Asegurar que los tests de fusión, backup, gameinfo y persistencia pasan
+- [x] 16. Checkpoint - Asegurar que los tests de fusión, backup, gameinfo y persistencia pasan
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 17. ElevationService (Requirement 9.2, elevación UAC bajo demanda)
