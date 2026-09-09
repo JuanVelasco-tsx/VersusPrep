@@ -1,4 +1,4 @@
-﻿import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import Database from "better-sqlite3";
 import type { Database as DatabaseType } from "better-sqlite3";
 
@@ -73,9 +73,25 @@ describe("LocalStore — estado de sesión pendiente (Tarea 15.3, AC 9.2)", () =
     expect(store.getPendingSession()).toEqual(nuevo);
   });
 
-  test("savePendingSession([]) deja getPendingSession en null (candidato vacío)", () => {
+  test("savePendingSession([]) deja getPendingSession en [] (sesión activa, candidato vacío)", () => {
+    // Nueva semántica (DECISIÓN 5): guardar [] a propósito NO es lo mismo que no
+    // haber sesión. Representa un Active_Set candidato intencionalmente vacío (el
+    // usuario quitó el último addon antes de relanzar elevado, p. ej.
+    // MergeOrchestrator.removeAddon sobre un Active_Set de tamaño 1).
     store.savePendingSession(CANDIDATE);
     store.savePendingSession([]);
+    expect(store.getPendingSession()).toEqual([]);
+  });
+
+  test("savePendingSession([]) directo (sin sesión previa) -> [] (no null)", () => {
+    store.savePendingSession([]);
+    expect(store.getPendingSession()).toEqual([]);
+  });
+
+  test("savePendingSession([]) luego clearPendingSession() -> null", () => {
+    store.savePendingSession([]);
+    expect(store.getPendingSession()).toEqual([]);
+    store.clearPendingSession();
     expect(store.getPendingSession()).toBeNull();
   });
 
