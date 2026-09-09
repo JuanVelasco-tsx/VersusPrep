@@ -45,6 +45,17 @@
  * estructura en un archivo del juego con layout inesperado es riesgoso y no lo
  * avala el diseño. Se falla explícito y el orquestador (tarea 18) informa (mismo
  * criterio de "propagar por throw" que BackupManager, Sección 12).
+ *
+ * CAVEAT (mismo estilo que el CAVEAT de la DECISIÓN 3): `firstToken` captura el
+ * PRIMER bloque de texto sin espacios de la línea. Si el archivo trajera la clave
+ * y la llave PEGADAS sin espacio (p. ej. `SearchPaths{`, todo junto en una línea),
+ * `firstToken` devolvería `"searchpaths{"` en vez de `"searchpaths"`, y la línea NO
+ * se reconocería como la clave SearchPaths: el resultado sería un
+ * `GameInfoEditError` con `reason: "missing-search-paths"` sobre un archivo que en
+ * realidad SÍ tiene el bloque. Esto es ACEPTABLE por el mismo criterio que el resto
+ * de la DECISIÓN 1: se asume el formato real ya confirmado del gameinfo.txt (que
+ * siempre trae `SearchPaths` y `{` en líneas SEPARADAS), no cualquier variante
+ * posible del formato KeyValues.
  * ---------------------------------------------------------------------------
  * DECISIÓN 2 — Transformación POR LÍNEAS, no round-trip vía el parser KeyValues.
  *
@@ -443,6 +454,17 @@ export function ensureModsvsFirstInContent(content: string): GameInfoEditOutcome
   if (modsvsIndices.length === 0) {
     // Caso A — no existe: insertar como primera entrada Game (o al inicio del
     // contenido del bloque si no hay ninguna línea Game).
+    //
+    // CAVEAT (mismo estilo que el CAVEAT de la DECISIÓN 3): si el bloque SearchPaths
+    // apareciera COLAPSADO en una sola línea (la `{` y la `}` en la misma línea que
+    // la clave, sin ninguna entrada `Game` en medio, es decir `openIndex ===
+    // closeIndex`), este Caso A insertaría la línea `Game modsvs` en
+    // `block.openIndex + 1`, que queda DESPUÉS de la línea de cierre del bloque, no
+    // dentro de él: la entrada terminaría FUERA del bloque SearchPaths. Esto es
+    // ACEPTABLE por el mismo motivo que la DECISIÓN 1: se asume el formato real ya
+    // confirmado del gameinfo.txt, que siempre trae el bloque en MÚLTIPLES líneas
+    // (clave, apertura `{`, entradas `Game`, cierre `}`, cada una en su propia
+    // línea), no un bloque colapsado en una sola línea.
     const insertAt = firstGameIndex === -1 ? block.openIndex + 1 : firstGameIndex;
     const next = segments.slice();
     next.splice(insertAt, 0, canonical);
