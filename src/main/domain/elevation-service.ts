@@ -304,6 +304,15 @@ export class ElevationServiceImpl implements ElevationService {
    *      `relaunchElevated(pending, entries)` con una PendingOperation de tipo
    *      `applyActiveSet` (la operación de fusión completa que el orquestador va a
    *      ejecutar), y devuelve su ElevationOutcome (`elevated-handoff` / `denied`).
+   *
+   * NOTA (pendiente P-15, ver `Context/02-pendientes.md`): el `type` de la
+   * `PendingOperation` del camino proactivo está HARDCODEADO a `"applyActiveSet"`
+   * porque `ensureCanWrite` no recibe el tipo de operación real del llamador. Si
+   * la Tarea 18 (MergeOrchestrator) dispara este camino desde `addAddon`/
+   * `removeAddon`, la instancia elevada recibiría un tipo incorrecto. Queda como
+   * responsabilidad de la Tarea 18 extender la firma con un parámetro de tipo de
+   * operación o resolverlo de otra forma (el camino REACTIVO no tiene el problema:
+   * `handleWriteFailure` recibe el `pending` correcto desde afuera).
    */
   async ensureCanWrite(
     gameRoot: string,
