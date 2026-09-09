@@ -230,3 +230,16 @@ export type {
   GameInfoEditOutcome,
   GameInfoEditErrorReason,
 } from "./game-info-editor.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Requirement 4 — ProcessGuard, Tarea 14.1): deteccion del proceso
+// `left4dead2.exe` (NO `hl2.exe`) para que el orquestador (tarea 18) aborte e
+// informe si el juego esta corriendo antes de fusionar/instalar (AC 4.1, 4.2).
+// El matching es EXACTO y case-insensitive sobre el basename del nombre de
+// proceso (soporta `\` y `/`). Expone la clase, la constante del nombre buscado
+// y el contrato inyectable `ProcessListProvider` (SOLO interfaz: la enumeracion
+// real de procesos queda pendiente para el orquestador/IPC). El orquestador
+// (tarea 18) y los unit tests (14.2) lo consumen desde el dominio.
+// ---------------------------------------------------------------------------
+export { GAME_PROCESS_NAME, ProcessGuard } from "./process-guard.js";
+export type { ProcessListProvider } from "./process-guard.js";
