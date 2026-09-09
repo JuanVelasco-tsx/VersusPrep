@@ -5,7 +5,7 @@
   "private": true,
   "author": "L4D2 Versus Addon Manager contributors",
   "license": "MIT",
-  "main": "dist/main/main.js",
+  "main": "dist/src/main/main.js",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
