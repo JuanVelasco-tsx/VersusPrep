@@ -251,6 +251,10 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
     - Verifica el ruteo canal→componente, la serialización de resultados/errores y la emisión de progreso
     - _Requirements: 6.11, 8.2_
 
+  - [ ] 20.4 Implementar los adaptadores reales de sistema y el composition root
+    - Adaptadores reales en src/main/data/ para RegistryReader (reg query/winreg), FileSystemProbe (node:fs/promises), ManualPathProvider (dialog.showOpenDialog), ProcessListProvider (tasklist), ElevationOsProvider (runas), Database (better-sqlite3), y los *FileSystem propios de cada componente de dominio; ensamblaje final en main.ts / src/main/app (composition root que instancia todo el dominio y lo inyecta en los handlers IPC de 20.2)
+    - *Requirements: base de composición para 1-9*
+
 - [ ] 21. Capa UI (renderer) — construida sobre el núcleo ya probado
   - [ ]* 21.1 Implementar la lista de addons con Addon_Cover, metadata y marca de VScript
     - Lista con portada y metadata; marca los VScript_Addon con advertencia y bloqueo por defecto, con opción de forzar inclusión mediante confirmación explícita; framework a elección (React recomendado)

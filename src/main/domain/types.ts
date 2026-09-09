@@ -429,3 +429,47 @@ export type OperationResult =
   | {
       status: "elevating";
     };
+
+// ---------------------------------------------------------------------------
+// Capa de aplicación — Progreso de fusión (MergeOrchestrator -> capa IPC)
+// ---------------------------------------------------------------------------
+
+/**
+ * Evento de progreso emitido por el MergeOrchestrator, uno por cada PASO del
+ * flujo de una operación (applyActiveSet / addAddon / removeAddon / resume).
+ *
+ * SEMÁNTICA (canal ADITIVO y OPCIONAL, ver `merge-orchestrator.ts`):
+ *  - Se emite UN evento por paso, SIEMPRE ANTES de iniciar ese paso (no después).
+ *  - NO hay evento en los caminos de fallo temprano ni de elevación: si el juego
+ *    está corriendo, si un addon candidato falta en el escaneo, o si la elevación
+ *    resuelve `elevated-handoff`/`denied`, NO se emite el evento del paso que no
+ *    llegó a ejecutarse. El `OperationResult` final ya comunica esos desenlaces.
+ *  - `"done"` se emite JUSTO ANTES de retornar un `status: "success"` (tras
+ *    persistir el manifest), como señal de operación completada con éxito.
+ *  - En el resume de la instancia elevada NO se emiten `"guard"` (no chequea
+ *    ProcessGuard) ni `"elevation"` (ya está elevada): la secuencia arranca en
+ *    `"scan"`.
+ *
+ * Es un canal de OBSERVABILIDAD puro: no altera el control de flujo ni el
+ * resultado de la operación. La Sección 20 (capa IPC) lo consumirá para traducir
+ * cada evento a `webContents.send` hacia el renderer.
+ */
+export interface MergeProgressEvent {
+  step:
+    | "guard"
+    | "scan"
+    | "elevation"
+    | "backup"
+    | "merge"
+    | "install"
+    | "gameinfo"
+    | "saveManifest"
+    | "done";
+}
+
+/**
+ * Listener opcional de eventos de progreso del MergeOrchestrator. Se inyecta como
+ * dependencia OPCIONAL (`MergeOrchestratorDeps.onProgress`); si no se provee, la
+ * operación se comporta de forma idéntica (el orquestador no emite nada).
+ */
+export type MergeProgressListener = (event: MergeProgressEvent) => void;

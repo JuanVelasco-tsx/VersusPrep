@@ -25,6 +25,8 @@ export type {
   PendingOperation,
   ElevationOutcome,
   OperationResult,
+  MergeProgressEvent,
+  MergeProgressListener,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------

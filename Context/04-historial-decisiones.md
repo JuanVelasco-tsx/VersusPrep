@@ -841,3 +841,31 @@ Se tomaron tres decisiones de implementación no fijadas explícitamente por el 
 **Tests:** en `test/local-store.test.ts` se corrigió la aserción "savePendingSession([]) -> null" (ahora espera `[]`) y se renombró; se agregaron los casos "savePendingSession([]) directo -> []" y "savePendingSession([]) + clearPendingSession() -> null". Los casos "nunca guardado -> null" y "guardar CANDIDATE + clear -> null" ya estaban. El property test (`test/local-store.property.test.ts`, Property 14) NO se tocó: es sobre el round-trip del manifest, no la sesión pendiente.
 
 **Impacto:** `src/main/domain/local-store.ts` (nueva tabla `pending_session_state`, DECISIÓN 5, métodos `savePendingSession`/`getPendingSession`/`clearPendingSession` reescritos con transacciones y helper `#isPendingSessionActive`), `test/local-store.test.ts`. La tarea 17 (ElevationService) y la tarea 18 (MergeOrchestrator) ahora pueden confiar en la distinción `null` vs `[]` al rehidratar. Verificación: `npm run typecheck` limpio y `npm test` en 180/180 (26 archivos; +2 tests nuevos sobre los 178 previos).
+
+### [2026-09-09] Progreso opcional en MergeOrchestrator (`onProgress`) — preparación de la Sección 20 (capa IPC)
+
+**Qué:** Modificación ADITIVA sobre la Sección 18 ya mergeada, en la rama `ipc-preload` desde `main` actualizada. Se agregó un canal de progreso OPCIONAL al `MergeOrchestrator` que emite un evento por cada paso del flujo, SIN cambiar ninguna firma pública existente ni el control de flujo. Es la preparación necesaria para la Sección 20 (capa IPC), que consumirá este listener para traducir cada evento a `webContents.send` hacia el renderer.
+
+**Tipos nuevos (en `types.ts`, sección "Capa de aplicación — Progreso de fusión"):**
+  - `MergeProgressEvent = { step: "guard" | "scan" | "elevation" | "backup" | "merge" | "install" | "gameinfo" | "saveManifest" | "done" }`.
+  - `MergeProgressListener = (event: MergeProgressEvent) => void`.
+  Ambos se re-exportan desde el barrel `index.ts`.
+
+**Semántica (documentada en el JSDoc de `MergeProgressEvent` y en `merge-orchestrator.ts`):**
+  - Se emite UN evento por paso, SIEMPRE ANTES de iniciar ese paso.
+  - NO hay evento en los caminos de fallo temprano (juego corriendo, addon candidato ausente del escaneo) ni de elevación (`elevated-handoff`/`denied`): el paso que no llegó a ejecutarse no emite; el `OperationResult` final ya comunica esos desenlaces.
+  - `"done"` se emite JUSTO ANTES de retornar `status: "success"` (tras `saveManifest`).
+  - En `resumePendingOperation` NO se emiten `"guard"` (no chequea ProcessGuard) ni `"elevation"` (ya está elevada): la secuencia arranca en `"scan"`.
+  - Orden en un éxito de `#runPublic`: `["guard", "scan", "elevation", "backup", "merge", "install", "gameinfo", "saveManifest", "done"]`. Orden en un resume exitoso: `["scan", "backup", "merge", "install", "gameinfo", "saveManifest", "done"]`.
+
+**Cómo (en `merge-orchestrator.ts`):** se sumó `onProgress?: MergeProgressListener` como campo OPCIONAL al FINAL de `MergeOrchestratorDeps`; un campo privado `readonly #onProgress?` asignado en el constructor; y un helper privado `#emit(step)` que hace `this.#onProgress?.({ step })` para no repetir el optional-chaining. Los `#emit` se insertaron ANTES de cada paso, sin tocar el control de flujo. NOTA de tipos: bajo `exactOptionalPropertyTypes`, asignar `deps.onProgress` (que es `Listener | undefined`) directo a la propiedad opcional falla el typecheck; se resolvió con asignación CONDICIONAL en el constructor (`if (deps.onProgress !== undefined) this.#onProgress = deps.onProgress;`), dejando el campo ausente cuando no vino listener (el `#emit` lo trata como no-op).
+
+**Compatibilidad:** ninguna firma pública cambió; `onProgress` es opcional, así que todo consumidor previo (y todos los tests existentes) siguen funcionando sin tocar nada. Los dobles del harness (`test/helpers/orchestrator-doubles.ts`) NO se modificaron: el test de progreso inyecta el listener con spread sobre `h.deps`.
+
+**Tests:** nuevo archivo `test/merge-orchestrator-progress.test.ts` (3 casos): (1) `applyActiveSet` exitoso emite el orden EXACTO de 9 pasos; (2) SIN `onProgress` el comportamiento es idéntico (no emite, no revienta, mismo `OperationResult` y mismo log de operaciones); (3) `resumePendingOperation` emite la secuencia sin `"guard"` ni `"elevation"`.
+
+**Motivo:** desacoplar la observabilidad del progreso del control de flujo, dejando el orquestador listo para que la Sección 20 traduzca los eventos a IPC sin volver a tocar el dominio.
+
+**Alternativas descartadas:** emitir eventos también en los caminos de fallo/elevación (descartado: el `OperationResult` final ya los comunica y un evento de un paso que no se ejecutó sería engañoso); reusar el `log` cronológico del harness como canal de progreso (descartado: ese log registra otras operaciones y es solo de test, no un canal de dominio).
+
+**Impacto:** `src/main/domain/types.ts` (tipos `MergeProgressEvent`/`MergeProgressListener`), `src/main/domain/index.ts` (barrel), `src/main/domain/merge-orchestrator.ts` (`onProgress` en deps, `#onProgress`, `#emit` y las llamadas), `test/merge-orchestrator-progress.test.ts` (nuevo) y `tasks.md` (subtarea nueva 20.4). Condiciona la Tarea 20 (capa IPC), que consumirá `onProgress`. Verificación: `npm run typecheck` limpio y `npm test` en 226/226 (31 archivos; +3 tests nuevos sobre los 223 previos). Pendiente de merge a `main`.
