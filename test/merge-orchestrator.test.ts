@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { MergeOrchestrator } from "../src/main/domain/index.js";
+import { GameInfoEditError, MergeOrchestrator } from "../src/main/domain/index.js";
 import { buildOrchestrator } from "./helpers/orchestrator-doubles.js";
 import type { AddonManifestEntry } from "../src/main/domain/index.js";
 
@@ -132,16 +132,24 @@ describe("MergeOrchestrator — manejo reactivo de EACCES/EPERM en cada paso", (
 describe("MergeOrchestrator — GameInfoEditError no-permisos NO eleva (Req 6.10)", () => {
   test("SearchPaths ausente -> fallo definitivo sin disparar elevación", async () => {
     const h = buildOrchestrator({ scannedIds: SCANNED });
-    // GameInfoEditError se importa indirectamente; simulamos un error con name.
-    const gameInfoErr = Object.assign(new Error("no hay SearchPaths"), {
-      name: "GameInfoEditError",
-      reason: "missing-search-paths" as const,
-    });
+    // Instancia REAL de GameInfoEditError: así el chequeo `err instanceof
+    // GameInfoEditError` de #failureFromError se ejercita de verdad (con un mock
+    // duck-typed, instanceof daría false y el test pasaría por la rama genérica).
+    const gameInfoErr = new GameInfoEditError("missing-search-paths", "no hay SearchPaths");
     h.gameInfo.throwOnEnsure(() => gameInfoErr);
     const orch = new MergeOrchestrator(h.deps);
     const res = await orch.applyActiveSet(ENTRIES);
 
     expect(res.status).toBe("failure");
+    // La rama `instanceof GameInfoEditError` produce este mensaje formateado
+    // ESPECÍFICO (distinto de la rama genérica de #failureFromError).
+    if (res.status === "failure") {
+      expect(res.error).toBe(
+        "No se pudo editar gameinfo.txt (missing-search-paths): no hay SearchPaths",
+      );
+      // No es de permisos: NO se propaga un addonId (esa rama sí lo haría).
+      expect(res.addonId).toBeUndefined();
+    }
     // handleWriteFailure se invoca (el paso está envuelto) pero devuelve
     // already-writable porque el error no es de permisos -> se propaga.
     expect(h.log).toContain("gameinfo");
@@ -214,6 +222,9 @@ describe("MergeOrchestrator — addon candidato ausente del escaneo (DECISIÓN 5
     if (res.status === "failure") expect(res.addonId).toBe("333");
     // Falló al resolver, antes de crear el workDir/backup: no hubo merge.
     expect(h.mergeCalls.length).toBe(0);
+    // CLAVE (FIX 1): la resolución ocurre ANTES de la elevación, así que un addon
+    // faltante NO llega a disparar ensureCanWrite (no hay prompt UAC innecesario).
+    expect(h.log).not.toContain("ensureCanWrite");
   });
 });
 

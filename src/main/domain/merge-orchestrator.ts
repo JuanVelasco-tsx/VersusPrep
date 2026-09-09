@@ -96,6 +96,13 @@
  * general "fail-fast con estado consistente" de design.md (Error Handling): no se
  * puede fusionar un addon cuyo VPK ya no existe, y seguir sin él cambiaría
  * silenciosamente el Active_Set que el usuario pidió.
+ *
+ * La resolución ocurre en `#resolveOrderedAddons` y se invoca ANTES del chequeo de
+ * elevación proactiva (tanto en `#runPublic` como en `resumePendingOperation`),
+ * precisamente para NO disparar un prompt UAC innecesario cuando la operación igual
+ * iba a fallar por un addon faltante: si falta un addon, se corta con el fallo
+ * definitivo sin llegar a `ensureCanWrite`. `#materialize` recibe los
+ * `orderedAddons` ya resueltos como parámetro.
  * ---------------------------------------------------------------------------
  * DECISIÓN 6 — Manejo REACTIVO uniforme de las 3 escrituras en Game_Root
  * (`#writeStep`), traduciendo el `ElevationOutcome` a `OperationResult`.
@@ -273,7 +280,12 @@ export class MergeOrchestrator {
     // elevada. El operationType de resume es "applyActiveSet" (la instancia
     // elevada rehidrata el Active_Set candidato y lo aplica como fusión completa).
     try {
-      return await this.#materialize(pending, "applyActiveSet");
+      // Paso 2 — Resolver ScannedAddon también en el resume (DECISIÓN 5); un addon
+      // ausente del escaneo corta con un fallo definitivo (la sesión igual se
+      // limpia en el finally).
+      const resolved = await this.#resolveOrderedAddons(pending);
+      if (resolved.kind === "outcome") return resolved.result;
+      return await this.#materialize(pending, resolved.addons, "applyActiveSet");
     } finally {
       // El resume no debería producir "elevating" (se salteó el chequeo); en
       // cualquier desenlace (éxito o fallo) se limpia el estado de sesión.
@@ -297,6 +309,12 @@ export class MergeOrchestrator {
       };
     }
 
+    // Paso 2 — Resolver los ScannedAddon ANTES de la elevación (DECISIÓN 5): si un
+    // addon candidato falta, la operación igual iba a fallar, así que se corta acá
+    // para NO disparar un prompt UAC innecesario.
+    const resolved = await this.#resolveOrderedAddons(entries);
+    if (resolved.kind === "outcome") return resolved.result;
+
     // Paso 3 — Elevación PROACTIVA (antes de cualquier escritura). Solo acá; el
     // resume (18.2) la saltea. Pasa el operationType REAL (P-15 resuelto).
     const proactive = await this.#elevation.ensureCanWrite(
@@ -315,40 +333,63 @@ export class MergeOrchestrator {
     }
 
     // proactive.kind === "already-writable" -> se puede escribir; materializar.
-    return this.#materialize(entries, operationType);
+    return this.#materialize(entries, resolved.addons, operationType);
+  }
+
+  /**
+   * Resuelve el Active_Set candidato a `ScannedAddon[]` en Priority_Order
+   * ASCENDENTE (Paso 2, DECISIÓN 5). Escanea la Workshop, mapea cada entry por
+   * `id` y ordena. Si algún `addonId` NO aparece en el escaneo (desuscrito o
+   * borrado), devuelve `{ kind: "outcome" }` con un fallo definitivo que lleva ese
+   * `addonId`. Se llama ANTES de la elevación proactiva para no pedir UAC cuando la
+   * operación igual iba a fallar por un addon faltante.
+   */
+  async #resolveOrderedAddons(
+    entries: readonly AddonManifestEntry[],
+  ): Promise<
+    | { kind: "ok"; addons: ScannedAddon[] }
+    | { kind: "outcome"; result: OperationResult }
+  > {
+    const scanned = await this.#scanner.scan(this.#paths.workshopFolder);
+    const byId = new Map<string, ScannedAddon>(scanned.map((a) => [a.id, a]));
+    const ordered = [...entries].sort((a, b) => a.priorityOrder - b.priorityOrder);
+    const addons: ScannedAddon[] = [];
+    for (const entry of ordered) {
+      const addon = byId.get(entry.addonId);
+      if (addon === undefined) {
+        return {
+          kind: "outcome",
+          result: {
+            status: "failure",
+            error: `El addon ${entry.addonId} no está en la Workshop (¿desuscrito o borrado?). No se puede fusionar.`,
+            addonId: entry.addonId,
+          },
+        };
+      }
+      addons.push(addon);
+    }
+    return { kind: "ok", addons };
   }
 
   /**
    * Materialización COMPARTIDA (usada por los 3 métodos públicos tras pasar la
    * elevación proactiva, y por el resume de 18.2 que la saltea):
-   *   escanear -> resolver ScannedAddon -> backup -> merge -> instalar -> gameinfo
-   *   -> saveManifest. Crea y LIMPIA el workDir (finally, resuelve P-14).
+   *   backup -> merge -> instalar -> gameinfo -> saveManifest. Crea y LIMPIA el
+   *   workDir (finally, resuelve P-14).
    *
-   * NO ejecuta el chequeo de `ProcessGuard` ni la elevación proactiva: eso es del
-   * camino público (`#runPublic`). El resume entra directo acá.
+   * Recibe los `orderedAddons` YA resueltos (por `#resolveOrderedAddons`, invocado
+   * por el llamador antes de la elevación). NO ejecuta el chequeo de `ProcessGuard`,
+   * ni la elevación proactiva, ni el escaneo/resolución: eso es del camino público
+   * (`#runPublic`) o del resume (`resumePendingOperation`).
    */
   async #materialize(
     entries: readonly AddonManifestEntry[],
+    orderedAddons: readonly ScannedAddon[],
     operationType: PendingOperation["type"],
   ): Promise<OperationResult> {
-    // Paso 2 — Resolver los ScannedAddon del Active_Set candidato, en
-    // Priority_Order ASCENDENTE. Un addon ausente del escaneo = fallo (DECISIÓN 5).
-    const scanned = await this.#scanner.scan(this.#paths.workshopFolder);
-    const byId = new Map<string, ScannedAddon>(scanned.map((a) => [a.id, a]));
-    const ordered = [...entries].sort((a, b) => a.priorityOrder - b.priorityOrder);
-    const orderedAddons: ScannedAddon[] = [];
-    for (const entry of ordered) {
-      const addon = byId.get(entry.addonId);
-      if (addon === undefined) {
-        return {
-          status: "failure",
-          error: `El addon ${entry.addonId} no está en la Workshop (¿desuscrito o borrado?). No se puede fusionar.`,
-          addonId: entry.addonId,
-        };
-      }
-      orderedAddons.push(addon);
-    }
-
+    // La resolución de ScannedAddon (Paso 2, DECISIÓN 5) ya la hizo el llamador
+    // (`#runPublic`/`resumePendingOperation`) vía `#resolveOrderedAddons`, ANTES
+    // de la elevación proactiva. Acá se recibe ya resuelta y ordenada.
     const workDir = joinWindowsPath(this.#workRoot, `merge-${Date.now()}-${this.#workSeq++}`);
     try {
       await this.#fs.ensureDir(workDir);
