@@ -199,19 +199,19 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
 - [x] 16. Checkpoint - Asegurar que los tests de fusión, backup, gameinfo y persistencia pasan
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 17. ElevationService (Requirement 9.2, elevación UAC bajo demanda)
-  - [ ] 17.1 Implementar la heurística y los primitivos de elevación
+- [x] 17. ElevationService (Requirement 9.2, elevación UAC bajo demanda)
+  - [x] 17.1 Implementar la heurística y los primitivos de elevación
     - `isProtectedPath` (p. ej. bajo `Program Files`), `isElevated`, `needsElevation` (protegido o probe write que falla), `relaunchElevated` (re-lanza la app con verbo `runas`); SO/relaunch inyectados
     - **Antes de relanzar**, `relaunchElevated` persiste el estado de sesión pendiente vía `LocalStore.savePendingSession(...)` (Active_Set candidato: selección + Priority_Order), de modo que la instancia elevada rehidrate leyéndolo del LocalStore y NO de la línea de comando
     - La instancia sin privilegios se **cierra** una vez lanzada la elevada (**reemplazo total**, no coexisten); la `PendingOperation` transferida por args/archivo es **mínima** (`type` + `resumeHandle`), nunca el Active_Set completo
     - _Requirements: 9.2_
 
-  - [ ] 17.2 Implementar los caminos proactivo y reactivo de decisión de elevación
+  - [x] 17.2 Implementar los caminos proactivo y reactivo de decisión de elevación
     - Tanto `ensureCanWrite` como `handleWriteFailure` chequean `isElevated()` **PRIMERO**: si la instancia actual ya está elevada, proceden a **escribir directo SIN relanzar ni pedir UAC otra vez** (elevación **una vez por sesión**, no por operación). El relanzo `runas` solo ocurre si se necesita elevar Y la instancia actual NO está elevada
     - `ensureCanWrite` (proactivo: si ya `isElevated`, devuelve `already-writable`; si no, y `needsElevation`, dispara relaunch; devuelve `already-writable` / `elevated-handoff` / `denied`) y `handleWriteFailure` (reactivo: ante `EACCES`/`EPERM`, si ya `isElevated` reintenta directo sin relanzar, y si no intenta elevar y reintentar; ante error no-permisos devuelve `already-writable` para que el orquestador propague sin elevar); lógica de decisión pura y aislable
     - _Requirements: 9.2_
 
-  - [ ]* 17.3 Escribir property test del intento de elevación ante fallo de permisos
+  - [x]* 17.3 Escribir property test del intento de elevación ante fallo de permisos
     - **Feature: l4d2-versus-addon-manager, Property 15: Todo fallo de escritura por permisos intenta elevar antes de fallar definitivamente**
     - **Validates: Requirements 9.2**
     - fast-check con ejecutor/FS mockeado, mínimo 100 iteraciones, variando el `code` del error (`EACCES`/`EPERM` vs `ENOENT`), el resultado del intento de elevación (aceptado/denied/falla) y el éxito de la escritura reintentada; error no-permisos no dispara elevación
