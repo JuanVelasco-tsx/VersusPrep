@@ -46,6 +46,20 @@ import { filterVpkNoise } from "./vpk-noise-filter.js";
 export const SUCCESS_EXIT_CODE = 0;
 
 /**
+ * Límite compartido de concurrencia para invocaciones de `vpk.exe` lanzadas
+ * en lote sobre múltiples addons (p. ej. `VScriptDetector.classify` vía
+ * `classifyWithBoundedConcurrency` en `ipc-handlers.ts`, y
+ * `MergeEngine.preview` vía su propio pool de workers). Un ÚNICO valor
+ * compartido (adición de scope de la Sección 21.2, hallazgo de
+ * `/code-review ultra`) para que ambos límites no puedan desincronizarse:
+ * el recurso que protegen es el mismo (cuántos procesos `vpk.exe`
+ * concurrentes tolera razonablemente la máquina del usuario), aunque cada
+ * llamador lo aplique sobre una operación distinta (`list` en ambos casos,
+ * hoy).
+ */
+export const DEFAULT_VPK_CONCURRENCY = 4;
+
+/**
  * Operación de `VpkTool` que originó un error. Se usa como discriminante de
  * {@link VpkToolError.operation} para que el llamador (MergeEngine, tarea 11)
  * sepa en qué fase falló el addon.

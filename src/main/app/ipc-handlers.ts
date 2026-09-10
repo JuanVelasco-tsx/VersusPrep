@@ -12,6 +12,7 @@ import type { IpcMain, WebContents } from "electron";
 
 import { IPC_CHANNELS } from "./ipc-contract.js";
 import type { ResumeState } from "./ipc-contract.js";
+import { DEFAULT_VPK_CONCURRENCY } from "../domain/index.js";
 import type {
   AddonManifestEntry,
   AddonScanner,
@@ -39,13 +40,14 @@ export interface IpcHandlersDeps {
   getResumeState: () => ResumeState | null;
 }
 
-const CLASSIFY_CONCURRENCY = 4;
-
 /**
  * Clasifica una lista de addons con concurrencia ACOTADA (pool de workers),
  * preservando el orden posicional de `addons` en el resultado (escribe por
  * índice, no por orden de finalización). Evita lanzar N `vpk.exe` en paralelo
- * sin límite para Workshops grandes.
+ * sin límite para Workshops grandes. Usa `DEFAULT_VPK_CONCURRENCY`
+ * (`vpk-tool.ts`), compartida con `MergeEngine.preview` (Sección 21.2,
+ * hallazgo de `/code-review ultra`) para que ambos límites no puedan
+ * desincronizarse.
  */
 async function classifyWithBoundedConcurrency(
   vscriptDetector: VScriptDetector,
@@ -63,7 +65,7 @@ async function classifyWithBoundedConcurrency(
       results[index] = await vscriptDetector.classify(addon);
     }
   }
-  const poolSize = Math.min(CLASSIFY_CONCURRENCY, addons.length);
+  const poolSize = Math.min(DEFAULT_VPK_CONCURRENCY, addons.length);
   await Promise.all(Array.from({ length: poolSize }, () => worker()));
   return results;
 }

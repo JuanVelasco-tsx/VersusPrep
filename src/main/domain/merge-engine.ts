@@ -184,6 +184,7 @@ import type {
   UnavailablePreviewAddon,
 } from "./types.js";
 import { DISK_SEPARATOR, internalPathToDiskPath } from "./vpk-path.js";
+import { DEFAULT_VPK_CONCURRENCY } from "./vpk-tool.js";
 import type { VpkTool } from "./vpk-tool.js";
 
 /** Separador de path INTERNO del VPK (`/`), coherente con `vpk-path.ts`. */
@@ -363,24 +364,64 @@ export class MergeEngine {
    * decisión de colisiones. Un `VpkTool.list()` fallido para un addon lo excluye
    * del cálculo (best-effort, DECISIÓN 7) en vez de abortar todo.
    *
+   * Los `list()` corren con CONCURRENCIA ACOTADA (pool de `DEFAULT_VPK_CONCURRENCY`
+   * workers, mismo patrón que `classifyWithBoundedConcurrency` en
+   * `ipc-handlers.ts`, hallazgo de `/code-review` sobre esta sección; la
+   * constante se comparte entre ambos —`vpk-tool.ts`— para que los dos límites
+   * no puedan desincronizarse): cada worker escribe su resultado POR ÍNDICE en
+   * un array pre-dimensionado, nunca por orden de finalización, así que el
+   * orden de `orderedAddons` (Priority_Order ASCENDENTE) se preserva exacto en
+   * `contributions`/`unavailable` sin importar qué `list()` termine primero —
+   * invariante que `resolveMerge` necesita para decidir el ganador de cada
+   * colisión ("el último gana").
+   *
    * @param orderedAddons Addons candidatos en Priority_Order ASCENDENTE (mismo
    *   orden que espera `merge`).
    */
   async preview(orderedAddons: readonly ScannedAddon[]): Promise<MergePreview> {
+    const outcomes: ListOutcome[] = new Array(orderedAddons.length);
+    let cursor = 0;
+    const vpkTool = this.#vpkTool;
+    async function worker(): Promise<void> {
+      for (;;) {
+        const index = cursor++;
+        const addon = orderedAddons[index];
+        // noUncheckedIndexedAccess: addon es ScannedAddon | undefined; el
+        // undefined solo ocurre cuando index salió de rango -> fin del worker.
+        if (addon === undefined) return;
+        try {
+          const relativePaths = await vpkTool.list(addon.vpkPath, addon.id);
+          outcomes[index] = { kind: "ok", addonId: addon.id, relativePaths };
+        } catch (err) {
+          outcomes[index] = {
+            kind: "unavailable",
+            addonId: addon.id,
+            reason: describeListFailure(err),
+          };
+        }
+      }
+    }
+    const poolSize = Math.min(DEFAULT_VPK_CONCURRENCY, orderedAddons.length);
+    await Promise.all(Array.from({ length: poolSize }, () => worker()));
+
     const contributions: AddonContribution[] = [];
     const unavailable: UnavailablePreviewAddon[] = [];
-    for (const addon of orderedAddons) {
-      try {
-        const relativePaths = await this.#vpkTool.list(addon.vpkPath, addon.id);
-        contributions.push({ addonId: addon.id, relativePaths });
-      } catch (err) {
-        unavailable.push({ addonId: addon.id, reason: describeListFailure(err) });
+    for (const outcome of outcomes) {
+      if (outcome.kind === "ok") {
+        contributions.push({ addonId: outcome.addonId, relativePaths: outcome.relativePaths });
+      } else {
+        unavailable.push({ addonId: outcome.addonId, reason: outcome.reason });
       }
     }
     const { winners, report } = resolveMerge(contributions);
     return { report, fileCount: winners.size, unavailable };
   }
 }
+
+/** Resultado posicional de un `VpkTool.list()` dentro del pool de `preview()`. */
+type ListOutcome =
+  | { kind: "ok"; addonId: string; relativePaths: string[] }
+  | { kind: "unavailable"; addonId: string; reason: string };
 
 /** Extrae un mensaje legible de un error de `VpkTool.list()` capturado (DECISIÓN 7). */
 function describeListFailure(err: unknown): string {

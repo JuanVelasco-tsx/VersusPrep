@@ -80,7 +80,7 @@ export {
 // comandos inyectable, y propaga los exit ≠ 0 como `VpkToolError` tipado que
 // identifica el addon. MergeEngine (tarea 11) y los tests (2.8) lo consumen.
 // ---------------------------------------------------------------------------
-export { SUCCESS_EXIT_CODE, VpkTool, VpkToolError } from "./vpk-tool.js";
+export { SUCCESS_EXIT_CODE, DEFAULT_VPK_CONCURRENCY, VpkTool, VpkToolError } from "./vpk-tool.js";
 export type {
   CommandResult,
   CommandRunner,
