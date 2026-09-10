@@ -1,0 +1,21 @@
+{
+  // tsconfig del RENDERER (React + Vite). Hereda del tsconfig base los flags
+  // de estrictez compartidos (strict, noUncheckedIndexedAccess,
+  // exactOptionalPropertyTypes, verbatimModuleSyntax, etc.) y solo sobrescribe
+  // lo que difiere del proceso main: resolucion de modulos de bundler, lib DOM,
+  // JSX de React y noEmit (Vite emite, no tsc). El main/preload siguen bajo
+  // tsconfig.json (NodeNext + tsc).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "moduleResolution": "Bundler",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": [],
+    "noEmit": true
+  },
+  // El base excluye src/renderer (para que el tsc de main no lo agarre); aqui
+  // hay que RESETEAR ese exclude, porque extends lo hereda y anularia el include.
+  "include": ["src/renderer/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -90,10 +90,15 @@ async function bootstrap(): Promise<void> {
         preload: path.join(__dirname, "../preload/preload.js"),
       },
     });
-    // Placeholder: la UI del renderer se construye en la Tarea 21.
-    void mainWindow.loadURL(
-      "data:text/html,<h1>L4D2 Versus Addon Manager</h1><p>Andamiaje inicial.</p>",
-    );
+    // Carga del renderer (Seccion 21). En dev (no empaquetado) apunta al dev
+    // server de Vite con HMR; en prod carga el HTML buildeado por Vite. El
+    // build de Vite emite en dist/renderer/ y main.ts corre desde
+    // dist/src/main/, de ahi el relativo ../../renderer/index.html.
+    if (app.isPackaged) {
+      void mainWindow.loadFile(path.join(__dirname, "../../renderer/index.html"));
+    } else {
+      void mainWindow.loadURL("http://localhost:5173");
+    }
     mainWindow.on("closed", () => {
       mainWindow = null;
     });
