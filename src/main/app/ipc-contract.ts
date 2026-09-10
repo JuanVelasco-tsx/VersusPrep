@@ -8,6 +8,7 @@
  * Import type-only del dominio: no arrastra runtime, solo tipos.
  */
 import type {
+  ActiveSetPreview,
   AddonManifestEntry,
   MergeProgressEvent,
   OperationResult,
@@ -21,6 +22,7 @@ export const IPC_CHANNELS = {
   scanAddons: "addons:scan",
   classifyVScript: "addons:classifyVScript",
   getActiveSet: "activeSet:get",
+  previewActiveSet: "activeSet:preview",
   applyActiveSet: "activeSet:apply",
   addAddon: "activeSet:add",
   removeAddon: "activeSet:remove",
@@ -45,6 +47,12 @@ export interface L4d2Api {
   scanAddons(): Promise<ScannedAddon[]>;
   classifyVScript(addons: ScannedAddon[]): Promise<VScriptClassification[]>;
   getActiveSet(): Promise<AddonManifestEntry[]>;
+  /**
+   * Calcula un preview de SOLO LECTURA de `entries` (colisiones, archivos a
+   * empaquetar): no escribe nada en disco ni dispara elevación UAC (Sección
+   * 21.2, capacidad agregada — ver `Context/04-historial-decisiones.md`).
+   */
+  previewActiveSet(entries: AddonManifestEntry[]): Promise<ActiveSetPreview>;
   applyActiveSet(entries: AddonManifestEntry[]): Promise<OperationResult>;
   addAddon(addonId: string, priorityOrder: number): Promise<OperationResult>;
   removeAddon(addonId: string): Promise<OperationResult>;

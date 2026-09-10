@@ -776,6 +776,14 @@ Esta propiedad es apta para property-based testing porque la decisión de `handl
 
 **Validates: Requirements 9.2**
 
+### Property 16: Preview y apply reportan las mismas colisiones para el mismo Active_Set
+
+> Property agregada POSTERIORMENTE a la formalización inicial de este documento (Sección 21.2, capacidad de preview de solo lectura agregada fuera del scope original de esa tarea — ver `Context/04-historial-decisiones.md`). Las 15 properties anteriores corresponden al diseño original; esta es la única adición.
+
+*Para cualquier* Active_Set candidato (Priority_Order y contenido de VPK por Addon arbitrarios, sin fallos de listado) el `MergeReport` que devuelve `previewActiveSet` SHALL ser idéntico al `MergeReport` que devuelve `applyActiveSet` para ese mismo Active_Set, y el conteo de archivos del preview SHALL coincidir con la cantidad de paths únicos que la fusión real empaqueta.
+
+**Validates:** comportamiento de `MergeOrchestrator.previewActiveSet` frente a `applyActiveSet`; Requirements 6.7, 7.1, 7.2.
+
 ## Error Handling
 
 El manejo de errores se organiza por componente. La regla general del orquestador es **fail-fast con estado consistente**: ante un error en cualquier paso previo a la instalación, se aborta sin tocar los archivos del juego; los cambios sobre `modsvs/` y `gameinfo.txt` solo ocurren tras un backup exitoso.
@@ -812,7 +820,7 @@ El Manager combina **tests unitarios** (ejemplos concretos, casos borde y errore
 ### Enfoque dual
 
 - **Tests unitarios / ejemplo**: fallbacks de detección de rutas (registro ausente, VDF malformado, sin `550`), `vpk l` fallido → VScript por precaución, `left4dead2.exe` corriendo → abortar, backup fallido → abortar, extracción fallida → abortar identificando el addon, decisión de elevación (`needsElevation` sobre rutas protegidas vs. de usuario) y cancelación del UAC → `denied`, y presencia de cada aviso de confianza (Req 9).
-- **Tests de propiedad**: las 15 propiedades de la sección anterior.
+- **Tests de propiedad**: las 16 propiedades de la sección anterior (15 del diseño original más la Property 16, agregada junto con el preview de la Sección 21.2).
 - **Tests de integración**: el wrapper de `vpk.exe` contra VPK de prueba reales y la escritura en un directorio de juego simulado.
 
 ### Property-based testing

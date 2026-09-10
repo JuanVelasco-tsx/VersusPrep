@@ -86,9 +86,14 @@ export function createProgressBroadcaster(
 }
 
 /**
- * Registra los ocho canales `invoke` sobre el `ipcMain` inyectado. NO incluye
+ * Registra los nueve canales `invoke` sobre el `ipcMain` inyectado. NO incluye
  * `merge:onProgress`: ese es un canal push (`webContents.send`), sin `handle`
  * asociado; ver `createProgressBroadcaster`.
+ *
+ * `activeSet:preview` es el ÚNICO canal que NO pasa por `guardedWrite`:
+ * `MergeOrchestrator.previewActiveSet` es de solo lectura (ver DECISIÓN 7 en
+ * `merge-orchestrator.ts`) y no compite por `operationInFlight` con
+ * apply/add/remove.
  */
 export function registerIpcHandlers(
   ipcMain: Pick<IpcMain, "handle">,
@@ -146,6 +151,12 @@ export function registerIpcHandlers(
   );
 
   ipcMain.handle(IPC_CHANNELS.getActiveSet, () => deps.localStore.getManifest());
+
+  ipcMain.handle(
+    IPC_CHANNELS.previewActiveSet,
+    async (_event, entries: AddonManifestEntry[]) =>
+      deps.mergeOrchestrator.previewActiveSet(entries),
+  );
 
   ipcMain.handle(
     IPC_CHANNELS.applyActiveSet,

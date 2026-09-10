@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import { IPC_CHANNELS } from "../main/app/ipc-contract.js";
 import type { L4d2Api, ResumeState } from "../main/app/ipc-contract.js";
 import type {
+  ActiveSetPreview,
   AddonManifestEntry,
   MergeProgressEvent,
   OperationResult,
@@ -22,6 +23,8 @@ const api: L4d2Api = {
     >,
   getActiveSet: () =>
     ipcRenderer.invoke(IPC_CHANNELS.getActiveSet) as Promise<AddonManifestEntry[]>,
+  previewActiveSet: (entries) =>
+    ipcRenderer.invoke(IPC_CHANNELS.previewActiveSet, entries) as Promise<ActiveSetPreview>,
   applyActiveSet: (entries) =>
     ipcRenderer.invoke(IPC_CHANNELS.applyActiveSet, entries) as Promise<OperationResult>,
   addAddon: (addonId, priorityOrder) =>

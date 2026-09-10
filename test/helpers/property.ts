@@ -48,7 +48,8 @@ export function propertyName(propertyNumber: number, title: string): string {
  * Registra un test de Vitest que ejecuta una propiedad de fast-check con el
  * nombre canónico y un mínimo de 100 iteraciones.
  *
- * @param propertyNumber Número de propiedad del diseño (1..15).
+ * @param propertyNumber Número de propiedad del diseño (1..16; la 16 es una
+ *   adición posterior fuera del scope original, ver `Context/04-historial-decisiones.md`).
  * @param title Título legible de la propiedad.
  * @param property La `IProperty`/`IAsyncProperty` construida con `fc.property`/`fc.asyncProperty`.
  * @param params Parámetros opcionales de `fc.assert`; `numRuns` se eleva a >= 100.

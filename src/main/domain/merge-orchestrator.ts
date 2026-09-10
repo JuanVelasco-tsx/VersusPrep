@@ -123,6 +123,42 @@
  * `resumeHandle` fijo `PENDING_SESSION_HANDLE` (mismo criterio que `ensureCanWrite`
  * en `elevation-service.ts`).
  * ---------------------------------------------------------------------------
+ * DECISIÓN 7 — `previewActiveSet`: capacidad AGREGADA fuera del scope original
+ * de la Tarea 21.2 (ver `Context/04-historial-decisiones.md`), NO pasa por
+ * `guardedWrite`/`operationInFlight` (el guard de la capa IPC, `ipc-handlers.ts`)
+ * ni por `ProcessGuard`/`ElevationService`.
+ *
+ * `previewActiveSet` hace EXACTAMENTE dos cosas de I/O, ambas de LECTURA pura
+ * sobre la Workshop_Folder — un SUBCONJUNTO estricto de lo que `applyActiveSet`
+ * YA hace, en los mismos Pasos 1-2, ANTES de escribir nada:
+ *   1. `#resolveOrderedAddons` -> `AddonScanner.scan(workshopFolder)` ->
+ *      `FileSystem.listEntries` (lectura del directorio; `addon-scanner.ts`,
+ *      método `scan`).
+ *   2. `MergeEngine.preview` -> `VpkTool.list(vpkPath, addonId)` -> `vpk l <vpk>`
+ *      (lee el índice del VPK; NO lo modifica).
+ *
+ * Se confirmó LEYENDO el código que NINGUNA operación de `applyActiveSet`
+ * escribe jamás en la Workshop_Folder, así que un `applyActiveSet` en curso y un
+ * `previewActiveSet` concurrente NUNCA compiten por una escritura (dos lecturas
+ * concurrentes del mismo directorio/VPK son seguras):
+ *   - `AddonScanner.scan` solo LEE `workshopFolder` (`listEntries`, y arma
+ *     `vpkPath`/`coverPath` para lecturas, `addon-scanner.ts` método `scan`).
+ *     Cuando extrae `addoninfo.txt` (`#readAddonInfoSafely`), el destino es
+ *     `this.#tempDir` — un directorio TEMPORAL PROPIO del scanner, NUNCA la
+ *     Workshop_Folder.
+ *   - `MergeEngine.merge()` extrae cada addon a `<workDir>\extract\<addonId>`
+ *     (`#extractAddon`), donde `workDir` es el directorio temporal ÚNICO por
+ *     operación que crea `#materialize` bajo `workRoot` — nunca dentro de la
+ *     Workshop_Folder.
+ *   - Las ÚNICAS escrituras reales de `applyActiveSet` en el Game_Root son
+ *     backup/instalar (`paths.modsvsFolder`) y `gameinfo.txt`
+ *     (`paths.gameInfoFile`, ver `#materialize`) — ambas rutas de `GamePaths`
+ *     DISTINTAS y hermanas de `workshopFolder`, nunca la Workshop_Folder misma.
+ *
+ * Por eso `previewActiveSet` no necesita el guard de escrituras: no escribe
+ * nada que ese guard proteja, y sus únicas dos lecturas son un prefijo exacto de
+ * lecturas que `applyActiveSet` de todas formas hace primero.
+ * ---------------------------------------------------------------------------
  */
 
 import type { BackupManager } from "./backup-manager.js";
@@ -135,6 +171,7 @@ import type { ProcessGuard } from "./process-guard.js";
 import type { LocalStore } from "./local-store.js";
 import type { AddonScanner } from "./addon-scanner.js";
 import type {
+  ActiveSetPreview,
   AddonManifestEntry,
   ElevationOutcome,
   GamePaths,
@@ -280,6 +317,31 @@ export class MergeOrchestrator {
     const current = this.#store.getManifest();
     const next = current.filter((e) => e.addonId !== addonId);
     return this.#runPublic(next, "removeAddon");
+  }
+
+  /**
+   * Calcula un {@link ActiveSetPreview} de SOLO LECTURA para `entries`: NO
+   * escribe nada en disco, NO dispara elevación UAC (ver DECISIÓN 7). Reutiliza
+   * `#resolveOrderedAddons` (el mismo Paso 2 que usan `#runPublic` y
+   * `resumePendingOperation`) para resolver los `ScannedAddon` candidatos, y
+   * delega el cálculo de colisiones en `MergeEngine.preview`.
+   */
+  async previewActiveSet(entries: readonly AddonManifestEntry[]): Promise<ActiveSetPreview> {
+    const resolved = await this.#resolveOrderedAddons(entries);
+    if (resolved.kind === "outcome") {
+      const { result } = resolved;
+      // #resolveOrderedAddons SOLO produce este "outcome" para el caso de un
+      // addonId ausente del escaneo (ver su documentación): status "failure"
+      // con addonId SIEMPRE presente. Esta rama es la única alcanzable acá.
+      if (result.status !== "failure" || result.addonId === undefined) {
+        throw new Error(
+          "Invariante violada: #resolveOrderedAddons devolvió un outcome inesperado para previewActiveSet.",
+        );
+      }
+      return { kind: "addon-missing", addonId: result.addonId };
+    }
+    const preview = await this.#merge.preview(resolved.addons);
+    return { kind: "ready", ...preview };
   }
 
   /**

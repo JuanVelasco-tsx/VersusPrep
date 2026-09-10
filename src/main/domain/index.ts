@@ -25,6 +25,9 @@ export type {
   PendingOperation,
   ElevationOutcome,
   OperationResult,
+  UnavailablePreviewAddon,
+  MergePreview,
+  ActiveSetPreview,
   MergeProgressEvent,
   MergeProgressListener,
 } from "./types.js";

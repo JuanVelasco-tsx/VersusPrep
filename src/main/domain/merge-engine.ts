@@ -144,10 +144,45 @@
  * `VpkToolError` de esa fase identifique claramente el empaquetado del paquete
  * fusionado y no atribuya el fallo a un addon inexistente.
  * ---------------------------------------------------------------------------
+ * DECISIÓN 7 — `preview()`: capacidad AGREGADA fuera del scope original (Sección
+ * 21.2 de tasks.md, ver `Context/04-historial-decisiones.md`), NO parte del
+ * diseño de la Tarea 11.
+ *
+ * `preview(orderedAddons)` calcula el `MergeReport` de colisiones SIN escribir
+ * NADA en disco: solo llama `VpkTool.list()` por addon (lectura pura del índice
+ * del VPK, la MISMA llamada que ya hace la Fase 1 de `merge()` antes de
+ * extraer) y delega en `resolveMerge()` (núcleo puro de `collision-core.ts`,
+ * Property 11) la decisión de ganador/colisión. NO usa `MergeFileSystem` (no
+ * crea ningún directorio) NI `CollisionResolver` (no copia ningún archivo): esas
+ * dos dependencias del constructor quedan sin invocar en este camino.
+ *
+ * FALLOS PARCIALES — BEST-EFFORT por addon, DIVERGENCIA CONSCIENTE respecto de
+ * `merge()`. `merge()` ABORTA la fusión completa ante el primer `VpkToolError`
+ * de `list`/`extract` (DECISIÓN 4: el error ya identifica el addon y la fusión
+ * real no puede continuar sin ese contenido). `preview()`, en cambio, EXCLUYE
+ * el addon fallido del cálculo (se agrega a `unavailable` con su motivo) y
+ * SIGUE calculando con el resto, mismo criterio best-effort que
+ * `AddonScanner#readAddonInfoSafely` usa para la metadata (un addon roto no le
+ * quita al usuario la info de los demás). Motivo: el preview es un dato ASESOR
+ * para decidir si aplicar, no la última barrera — si el VPK está realmente
+ * corrupto, `applyActiveSet` va a abortar igual (y con precisión, vía
+ * `VpkToolError.addonId`) cuando de verdad intente extraerlo; bloquear TODO el
+ * preview por ese addon le ocultaría al usuario las colisiones de los addons
+ * sanos justo cuando más las necesita (antes de decidir aplicar).
+ * ---------------------------------------------------------------------------
  */
 
 import type { CollisionResolver } from "./collision-resolver.js";
-import type { ExtractedRoot, GamePaths, MergeReport, ScannedAddon } from "./types.js";
+import { resolveMerge } from "./collision-core.js";
+import type { AddonContribution } from "./collision-core.js";
+import type {
+  ExtractedRoot,
+  GamePaths,
+  MergePreview,
+  MergeReport,
+  ScannedAddon,
+  UnavailablePreviewAddon,
+} from "./types.js";
 import { DISK_SEPARATOR, internalPathToDiskPath } from "./vpk-path.js";
 import type { VpkTool } from "./vpk-tool.js";
 
@@ -320,4 +355,34 @@ export class MergeEngine {
     }
     return [...uniqueInternalDirs].map(internalPathToDiskPath);
   }
+
+  /**
+   * Calcula el `MergeReport` de `orderedAddons` de forma de SOLO LECTURA (ver
+   * DECISIÓN 7): lista cada VPK con `VpkTool.list()` (sin extraer ni empaquetar,
+   * sin `MergeFileSystem` ni `CollisionResolver`) y delega en `resolveMerge` la
+   * decisión de colisiones. Un `VpkTool.list()` fallido para un addon lo excluye
+   * del cálculo (best-effort, DECISIÓN 7) en vez de abortar todo.
+   *
+   * @param orderedAddons Addons candidatos en Priority_Order ASCENDENTE (mismo
+   *   orden que espera `merge`).
+   */
+  async preview(orderedAddons: readonly ScannedAddon[]): Promise<MergePreview> {
+    const contributions: AddonContribution[] = [];
+    const unavailable: UnavailablePreviewAddon[] = [];
+    for (const addon of orderedAddons) {
+      try {
+        const relativePaths = await this.#vpkTool.list(addon.vpkPath, addon.id);
+        contributions.push({ addonId: addon.id, relativePaths });
+      } catch (err) {
+        unavailable.push({ addonId: addon.id, reason: describeListFailure(err) });
+      }
+    }
+    const { winners, report } = resolveMerge(contributions);
+    return { report, fileCount: winners.size, unavailable };
+  }
+}
+
+/** Extrae un mensaje legible de un error de `VpkTool.list()` capturado (DECISIÓN 7). */
+function describeListFailure(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

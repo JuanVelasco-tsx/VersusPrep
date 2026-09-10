@@ -431,6 +431,62 @@ export type OperationResult =
     };
 
 // ---------------------------------------------------------------------------
+// Capa de aplicación — Preview de solo lectura del Active_Set (Sección 21.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Un addon del Active_Set candidato cuyo `VpkTool.list()` falló durante el
+ * cálculo del preview (VPK corrupto, exit ≠ éxito, u otro error del
+ * `CommandRunner`). Ver DECISIÓN 7 en `merge-engine.ts` sobre por qué esto NO
+ * aborta el preview completo (a diferencia de `merge()`, que sí aborta ante el
+ * mismo fallo).
+ */
+export interface UnavailablePreviewAddon {
+  addonId: string;
+  /** Motivo legible del fallo (mensaje del error capturado). */
+  reason: string;
+}
+
+/**
+ * Cálculo de colisiones exitoso para un preview: mismos datos que
+ * `OperationResult.report`, más el conteo total de archivos únicos a empaquetar
+ * y los addons que no se pudieron incluir en el cálculo (ver
+ * {@link UnavailablePreviewAddon}).
+ */
+export interface MergePreview {
+  report: MergeReport;
+  /** Cantidad de paths únicos que se empaquetarían (tamaño del mapa de ganadores). */
+  fileCount: number;
+  /** Addons excluidos best-effort del cálculo. Vacío si ninguno falló. */
+  unavailable: UnavailablePreviewAddon[];
+}
+
+/**
+ * Resultado de {@link MergeOrchestrator.previewActiveSet} (Sección 21.2, capacidad
+ * agregada fuera del scope original de la Tarea 21.2 — ver
+ * `Context/04-historial-decisiones.md`). Cálculo de SOLO LECTURA de cómo
+ * quedaría la fusión de un Active_Set candidato: no escribe nada en disco, no
+ * dispara elevación UAC.
+ *
+ * DIVERGE deliberadamente de `OperationResult` (NO se reutiliza esa unión):
+ * `previewActiveSet` nunca escribe, así que no existe un desenlace `elevating`;
+ * y el único caso "no exitoso" no es un fallo de una operación en curso, sino
+ * una precondición de datos (un `addonId` candidato que ya no está en la
+ * Workshop, igual que detecta `#resolveOrderedAddons` para `applyActiveSet`).
+ * Forzar esos dos casos dentro de `OperationResult` obligaría a mentir con un
+ * `status: "failure"`/`"elevating"` que no describe lo que pasó.
+ *
+ *  - `kind: "ready"` — se pudo calcular el preview (con o sin addons
+ *    `unavailable`, ver {@link MergePreview}).
+ *  - `kind: "addon-missing"` — `addonId` no aparece en el escaneo de la
+ *    Workshop_Folder (desuscrito o borrado); no hay nada que previsualizar
+ *    para ese Active_Set candidato tal cual está.
+ */
+export type ActiveSetPreview =
+  | ({ kind: "ready" } & MergePreview)
+  | { kind: "addon-missing"; addonId: string };
+
+// ---------------------------------------------------------------------------
 // Capa de aplicación — Progreso de fusión (MergeOrchestrator -> capa IPC)
 // ---------------------------------------------------------------------------
 
