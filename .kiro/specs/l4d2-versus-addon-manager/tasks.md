@@ -238,20 +238,20 @@ La **Fase Posterior (Requisitos 10-19)** NO se detalla aquí: queda fuera del MV
 - [x] 19. Checkpoint - Asegurar que el núcleo del proceso main y su orquestador pasan todos los tests
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 20. Capa IPC / preload tipada
-  - [ ] 20.1 Definir los canales IPC tipados y el preload con `contextBridge`
+- [x] 20. Capa IPC / preload tipada
+  - [x] 20.1 Definir los canales IPC tipados y el preload con `contextBridge`
     - Preload expone una API tipada (aislamiento de contexto activado, sin `nodeIntegration`); definir canales para detectar rutas, seleccionar ruta manual, escanear, clasificar VScript, obtener/guardar Active_Set y aplicar/agregar/quitar addons, más eventos de progreso vía `webContents.send`
     - _Requirements: base de exposición para 1, 2, 3, 6, 7, 8, 9_
 
-  - [ ] 20.2 Implementar los handlers `ipcMain.handle` que delegan en dominio/orquestador
+  - [x] 20.2 Implementar los handlers `ipcMain.handle` que delegan en dominio/orquestador
     - Cada canal delega en `PathDetector`, `AddonScanner`, `VScriptDetector` o `MergeOrchestrator`; emite progreso y devuelve resultados/errores tipados al renderer
     - _Requirements: 1.2, 1.10, 2.6, 3.6, 6.11, 8.2_
 
-  - [ ]* 20.3 Escribir unit tests de los handlers IPC con dominio mockeado
+  - [x]* 20.3 Escribir unit tests de los handlers IPC con dominio mockeado
     - Verifica el ruteo canal→componente, la serialización de resultados/errores y la emisión de progreso
     - _Requirements: 6.11, 8.2_
 
-  - [ ] 20.4 Implementar los adaptadores reales de sistema y el composition root
+  - [x] 20.4 Implementar los adaptadores reales de sistema y el composition root
     - Adaptadores reales en src/main/data/ para RegistryReader (reg query/winreg), FileSystemProbe (node:fs/promises), ManualPathProvider (dialog.showOpenDialog), ProcessListProvider (tasklist), ElevationOsProvider (runas), Database (better-sqlite3), y los *FileSystem propios de cada componente de dominio; ensamblaje final en main.ts / src/main/app (composition root que instancia todo el dominio y lo inyecta en los handlers IPC de 20.2)
     - *Requirements: base de composición para 1-9*
 
