@@ -138,6 +138,8 @@ import type {
   AddonManifestEntry,
   ElevationOutcome,
   GamePaths,
+  MergeProgressEvent,
+  MergeProgressListener,
   OperationResult,
   PendingOperation,
   ScannedAddon,
@@ -194,6 +196,13 @@ export interface MergeOrchestratorDeps {
   paths: GamePaths;
   /** Directorio base para los workDir temporales (bajo el prefijo `work/`). */
   workRoot: string;
+  /**
+   * Listener OPCIONAL de progreso (canal aditivo, ver `MergeProgressListener`).
+   * Si no se provee, el orquestador no emite eventos y el comportamiento es
+   * idéntico. La capa IPC (Sección 20) lo usará para reenviar el progreso al
+   * renderer vía `webContents.send`.
+   */
+  onProgress?: MergeProgressListener;
 }
 
 /**
@@ -211,6 +220,8 @@ export class MergeOrchestrator {
   readonly #fs: MergeOrchestratorFileSystem;
   readonly #paths: GamePaths;
   readonly #workRoot: string;
+  /** Listener OPCIONAL de progreso (canal aditivo; ver `MergeProgressListener`). */
+  readonly #onProgress?: MergeProgressListener;
   /** Contador incremental por instancia para la unicidad del workDir (DECISIÓN 3). */
   #workSeq = 0;
 
@@ -225,6 +236,21 @@ export class MergeOrchestrator {
     this.#fs = deps.fs;
     this.#paths = deps.paths;
     this.#workRoot = deps.workRoot;
+    // Asignación condicional: con `exactOptionalPropertyTypes` no se puede asignar
+    // `undefined` explícito a una propiedad opcional. Si no vino listener, el campo
+    // queda ausente (el `#emit` con optional-chaining lo trata como no-op).
+    if (deps.onProgress !== undefined) {
+      this.#onProgress = deps.onProgress;
+    }
+  }
+
+  /**
+   * Emite un evento de progreso ANTES de iniciar el paso indicado. Canal ADITIVO
+   * y opcional: si no hay listener inyectado, es un no-op. No altera el control de
+   * flujo ni el resultado (ver `MergeProgressEvent`).
+   */
+  #emit(step: MergeProgressEvent["step"]): void {
+    this.#onProgress?.({ step });
   }
 
   /**
@@ -283,6 +309,7 @@ export class MergeOrchestrator {
       // Paso 2 — Resolver ScannedAddon también en el resume (DECISIÓN 5); un addon
       // ausente del escaneo corta con un fallo definitivo (la sesión igual se
       // limpia en el finally).
+      this.#emit("scan");
       const resolved = await this.#resolveOrderedAddons(pending);
       if (resolved.kind === "outcome") return resolved.result;
       return await this.#materialize(pending, resolved.addons, "applyActiveSet");
@@ -302,6 +329,7 @@ export class MergeOrchestrator {
     operationType: PendingOperation["type"],
   ): Promise<OperationResult> {
     // Paso 1 — Precondición: el juego no puede estar corriendo (Req 4.1, 4.2).
+    this.#emit("guard");
     if (await this.#processGuard.isGameRunning()) {
       return {
         status: "failure",
@@ -312,11 +340,13 @@ export class MergeOrchestrator {
     // Paso 2 — Resolver los ScannedAddon ANTES de la elevación (DECISIÓN 5): si un
     // addon candidato falta, la operación igual iba a fallar, así que se corta acá
     // para NO disparar un prompt UAC innecesario.
+    this.#emit("scan");
     const resolved = await this.#resolveOrderedAddons(entries);
     if (resolved.kind === "outcome") return resolved.result;
 
     // Paso 3 — Elevación PROACTIVA (antes de cualquier escritura). Solo acá; el
     // resume (18.2) la saltea. Pasa el operationType REAL (P-15 resuelto).
+    this.#emit("elevation");
     const proactive = await this.#elevation.ensureCanWrite(
       this.#paths.gameRoot,
       entries,
@@ -395,6 +425,7 @@ export class MergeOrchestrator {
       await this.#fs.ensureDir(workDir);
 
       // Paso 4 — Backup (escritura en Game_Root -> reactivo).
+      this.#emit("backup");
       const backupResult = await this.#writeStep(entries, operationType, () =>
         this.#backup.backupExisting(this.#paths.modsvsFolder),
       );
@@ -405,6 +436,7 @@ export class MergeOrchestrator {
       // definitivo con el addonId que identifican (Req 6.12). NO va por #writeStep.
       let mergeReport;
       let mergedVpkPath: string;
+      this.#emit("merge");
       try {
         const merged = await this.#merge.merge(orderedAddons, this.#paths, workDir);
         mergedVpkPath = merged.vpkPath;
@@ -416,6 +448,7 @@ export class MergeOrchestrator {
       // Paso 6 — Instalar: copiar el .vpk fusionado a modsvs/ (escritura en
       // Game_Root -> reactivo).
       const installTarget = joinWindowsPath(this.#paths.modsvsFolder, INSTALLED_VPK_NAME);
+      this.#emit("install");
       const installResult = await this.#writeStep(entries, operationType, () =>
         this.#fs.copyFile(mergedVpkPath, installTarget),
       );
@@ -424,6 +457,7 @@ export class MergeOrchestrator {
       // Paso 7 — GameInfo (escritura en Game_Root -> reactivo). Un GameInfoEditError
       // (SearchPaths ausente/malformado) NO es de permisos: handleWriteFailure lo
       // devuelve como already-writable y se propaga como fallo definitivo.
+      this.#emit("gameinfo");
       const gameInfoResult = await this.#writeStep(entries, operationType, () =>
         this.#gameInfo.ensureModsvsFirst(this.#paths.gameInfoFile),
       );
@@ -431,9 +465,11 @@ export class MergeOrchestrator {
 
       // Paso 8 — Persistir el manifest instalado (base local, NO Game_Root: sin
       // manejo reactivo). El Active_Set candidato pasa a ser el instalado.
+      this.#emit("saveManifest");
       this.#store.saveManifest([...entries]);
 
-      // Paso 9 — Éxito.
+      // Paso 9 — Éxito. "done" se emite JUSTO ANTES de retornar el success.
+      this.#emit("done");
       return {
         status: "success",
         report: mergeReport,
