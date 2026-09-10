@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type {
   PathDetectionFailureReason,
@@ -45,7 +45,9 @@ export function AddonList() {
   // disparar un dialogo nativo REAL (ManualPathProvider de produccion, ver
   // path-detector.ts #verifyThenManual) para cada ruta requerida que falte.
   // Sin este guard, StrictMode invoca el efecto dos veces al montar y el
-  // usuario veria el mismo dialogo nativo duplicado.
+  // usuario veria el mismo dialogo nativo duplicado. NOTA: este guard es SOLO
+  // para el montaje; el boton "Reintentar deteccion" (21.3) NO pasa por aca,
+  // llama a runDetection() directo (es una accion explicita del usuario).
   const hasStarted = useRef(false);
 
   // Guard de desmontaje REAL, en un ref APARTE (no una `let` local al mismo
@@ -69,46 +71,56 @@ export function AddonList() {
     };
   }, []);
 
+  // Flujo de deteccion completo (detectPaths -> scanAddons -> classifyVScript),
+  // extraido para poder REUSARLO: lo dispara el efecto de montaje (una sola vez,
+  // via hasStarted) y tambien el boton "Reintentar deteccion" de la rama
+  // needs-manual (21.3, opcion A: reutiliza los dialogos nativos ya existentes
+  // en path-detector.ts, sin construir seleccion manual nueva en el renderer).
+  //
+  // NO necesita un guard `retrying` aparte contra doble-click: al setear
+  // `phase: "detecting-paths"` como PRIMER paso (antes de cualquier await), la
+  // rama needs-manual -y con ella el boton- deja de renderizarse por el propio
+  // chequeo `if (state.phase === "needs-manual")`, asi que el boton no esta
+  // disponible mientras la deteccion esta en curso.
+  const runDetection = useCallback(async (): Promise<void> => {
+    setState({ phase: "detecting-paths" });
+    try {
+      const detection = await window.l4d2Api.detectPaths();
+      if (!isMounted.current) return;
+
+      if (detection.kind === "needs-manual") {
+        setState({ phase: "needs-manual", reason: detection.reason });
+        return;
+      }
+
+      setState({ phase: "scanning-addons" });
+      const addons = await window.l4d2Api.scanAddons();
+      if (!isMounted.current) return;
+
+      // Pinta la lista YA (todas las filas en "pending" de VScript);
+      // classifyVScript resuelve en paralelo y actualiza despues.
+      setState({ phase: "ready", addons, classifications: {} });
+
+      const classifications = await window.l4d2Api.classifyVScript(addons);
+      if (!isMounted.current) return;
+
+      const byId: Record<string, VScriptClassification> = {};
+      for (const classification of classifications) {
+        byId[classification.addonId] = classification;
+      }
+      setState({ phase: "ready", addons, classifications: byId });
+    } catch (error) {
+      if (!isMounted.current) return;
+      const message = error instanceof Error ? error.message : "Error desconocido.";
+      setState({ phase: "error", message });
+    }
+  }, []);
+
   useEffect(() => {
     if (hasStarted.current) return;
     hasStarted.current = true;
-
-    async function load(): Promise<void> {
-      try {
-        const detection = await window.l4d2Api.detectPaths();
-        if (!isMounted.current) return;
-
-        if (detection.kind === "needs-manual") {
-          // 21.3 (seleccion manual) todavia no existe: placeholder simple.
-          setState({ phase: "needs-manual", reason: detection.reason });
-          return;
-        }
-
-        setState({ phase: "scanning-addons" });
-        const addons = await window.l4d2Api.scanAddons();
-        if (!isMounted.current) return;
-
-        // Pinta la lista YA (todas las filas en "pending" de VScript);
-        // classifyVScript resuelve en paralelo y actualiza despues.
-        setState({ phase: "ready", addons, classifications: {} });
-
-        const classifications = await window.l4d2Api.classifyVScript(addons);
-        if (!isMounted.current) return;
-
-        const byId: Record<string, VScriptClassification> = {};
-        for (const classification of classifications) {
-          byId[classification.addonId] = classification;
-        }
-        setState({ phase: "ready", addons, classifications: byId });
-      } catch (error) {
-        if (!isMounted.current) return;
-        const message = error instanceof Error ? error.message : "Error desconocido.";
-        setState({ phase: "error", message });
-      }
-    }
-
-    void load();
-  }, []);
+    void runDetection();
+  }, [runDetection]);
 
   if (state.phase === "detecting-paths") {
     return <p className={styles.message}>Detectando rutas del juego...</p>;
@@ -116,10 +128,19 @@ export function AddonList() {
 
   if (state.phase === "needs-manual") {
     return (
-      <p className={styles.message}>
-        No se pudieron detectar las rutas del juego automaticamente:{" "}
-        {REASON_MESSAGES[state.reason]}
-      </p>
+      <div className={styles.message}>
+        <p>
+          No se pudieron detectar las rutas del juego automáticamente:{" "}
+          {REASON_MESSAGES[state.reason]}
+        </p>
+        <button
+          type="button"
+          className={styles.retryButton}
+          onClick={() => void runDetection()}
+        >
+          Reintentar detección
+        </button>
+      </div>
     );
   }
 

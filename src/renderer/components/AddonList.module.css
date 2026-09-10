@@ -9,3 +9,17 @@
   color: #cfcfcf;
   font-size: 14px;
 }
+.retryButton {
+  margin-top: 12px;
+  font-size: 13px;
+  background: #2a3a4a;
+  color: #cfe0f0;
+  border: 1px solid #3a5a7a;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.retryButton:hover {
+  background: #324a5a;
+}

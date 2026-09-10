@@ -972,3 +972,15 @@ Se tomaron tres decisiones de implementación no fijadas explícitamente por el 
 **Impacto:** `src/main/main.ts` (comentario del handler `protocol.handle("l4d2cover", ...)` documentando la causa raiz + parseo del id desde el pathname; comentario del bloque `registerSchemesAsPrivileged` alineado al formato `l4d2cover://local/<id>`), `src/renderer/components/AddonCover.tsx` (arma `src={``l4d2cover://local/${addonId}``}`). NO se toco `cover-resolver.ts` (recibe el id ya extraido) ni ningun test. Entrada escrita a posteriori: los comentarios de `main.ts` y `AddonCover.tsx` ya referenciaban este historial, pero la entrada faltaba.
 
 **Relacionado:** P-21 en `02-pendientes.md` (el `decodeURIComponent` del pathname no esta envuelto en try/catch y puede lanzar `URIError` ante un `%` mal formado en el nombre de archivo, devolviendo `net::ERR_FAILED` en vez del 400 controlado) sigue abierto y con commit propio pendiente; es un bug distinto de este fix de parseo de host.
+
+---
+
+### [2026-09-10] needs-manual (21.3): el guard contra doble-click no necesita un booleano dedicado
+
+**Que:** el plan (`Context/05-plan-seccion-21-restante.md`, punto 3 de 21.3) preveía sumar un guard "tipo `operationInFlight`" (un `useState<boolean>`) para que un doble-click en el botón "Reintentar detección" no dispare dos veces el flujo de detección mientras el diálogo nativo anterior sigue abierto. Al implementarlo, ese booleano resultó innecesario.
+
+**Por que no hace falta:** `runDetection()` setea `phase: "detecting-paths"` como PRIMER paso, ANTES de cualquier `await`. El botón vive exclusivamente dentro de la rama `if (state.phase === "needs-manual")` del render, así que en cuanto arranca la detección esa rama deja de renderizarse y el botón se DESMONTA (no queda "deshabilitado-pero-visible"). No hay ventana entre el click y el cambio de estado en la que un segundo click pueda entrar: React procesa el `setState` sincronico del handler antes de volver a pintar. El guard contra doble-click es entonces una PROPIEDAD del modelo de estados por `phase`, no un flag aparte.
+
+**Para quien relea el plan:** el punto 3 de 21.3 en `05-plan-seccion-21-restante.md` menciona el guard `operationInFlight` como si fuera a existir en el código. NO existe: no busques un `useState<boolean>` de "retrying"/"detecting" en `AddonList.tsx`. La protección la da la transición de `phase`. Se decidió NO agregar el booleano para no duplicar en estado local algo que el modelo de `phase` ya garantiza.
+
+**Impacto:** `src/renderer/components/AddonList.tsx` (`runDetection` extraída a `useCallback` y reusada por el efecto de montaje y por el botón de la rama needs-manual), `src/renderer/components/AddonList.module.css` (clase `.retryButton`). El guard `hasStarted` del doble-montaje de StrictMode NO cambió y sigue aplicando solo al montaje (el botón llama `runDetection()` directo, sin pasar por `hasStarted`).
