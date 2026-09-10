@@ -1,0 +1,19 @@
+.panel {
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-start;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.message {
+  padding: var(--space-5) 0;
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-base);
+}

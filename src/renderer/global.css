@@ -4,6 +4,56 @@
 
 :root {
   color-scheme: dark;
+
+  /* Tokens de diseno (Seccion 21, paso 1a). Subconjunto MINIMO extraido del
+     mockup Nocturne de Claude Design: paleta oscura, pocos pasos de
+     espaciado/radio y una escala tipografica basica. Puramente aditivo - los
+     *.module.css existentes de 21.1 siguen con sus valores hex sueltos hasta
+     el paso 1b (migracion aparte, ver Context/05-plan-seccion-21-restante.md). */
+
+  /* Paleta */
+  --color-bg: #121212;
+  --color-surface: #1a1a1a;
+  --color-surface-alt: #202020;
+  --color-border: #2a2a2a;
+  --color-text: #e6e6e6;
+  --color-text-muted: #9a9a9a;
+  --color-text-subtle: #cfcfcf;
+  --color-accent: #4a90e2;
+  --color-accent-text: #ffffff;
+  --color-danger: #e07070;
+  --color-danger-bg: #4a2a2a;
+  --color-danger-border: #6a3a3a;
+  --color-danger-text: #e0b0b0;
+  --color-warning: #e0a0a0;
+
+  /* Espaciado */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+
+  /* Radios */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Tipografia */
+  --font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-lg: 18px;
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600;
 }
 
 * {
