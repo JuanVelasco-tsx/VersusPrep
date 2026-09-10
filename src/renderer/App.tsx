@@ -3,5 +3,5 @@
 // implementan despues. El retorno se infiere (React 19 + react-jsx no
 // expone el namespace global JSX; seria React.JSX.Element).
 export function App() {
-  return <h1>L4D2 Versus Addon Manager - renderer OK</h1>;
+  return <img src="l4d2cover://local/3237709870" alt="cover" />;
 }

@@ -305,3 +305,25 @@ export type {
   MergeOrchestratorFileSystem,
   MergeOrchestratorDeps,
 } from "./merge-orchestrator.js";
+
+// ---------------------------------------------------------------------------
+// Runtime (Tarea 21.1, Bloque 1 - Cover_Resolver): logica PURA de resolucion y
+// validacion del path del Addon_Cover para el protocolo custom
+// `l4d2cover://<id>`. Valida el id por patron conservador (defensa capa 1),
+// arma `<workshopFolder>\<id>.jpg`, confirma contencion dentro de la
+// Workshop_Folder (defensa capa 2) y chequea existencia via un `fileExists`
+// inyectado (testeable sin Electron). El wiring de `protocol.handle` vive en
+// main.ts y consume `resolveCoverPath` desde el dominio.
+// ---------------------------------------------------------------------------
+export {
+  COVER_EXTENSION,
+  COVER_ID_PATTERN,
+  isValidCoverId,
+  isWithinBase,
+  resolveCoverPath,
+} from "./cover-resolver.js";
+export type {
+  CoverResolution,
+  CoverResolutionFailure,
+  CoverFileExists,
+} from "./cover-resolver.js";

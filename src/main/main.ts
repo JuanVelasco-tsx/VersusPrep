@@ -20,12 +20,14 @@
 import { spawnSync } from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import Database from "better-sqlite3";
 import type { BrowserWindow } from "electron";
 
 import { ChildProcessCommandRunner } from "./data/child-process-command-runner.js";
+import { pathExists } from "./data/node-fs-helpers.js";
+import { resolveCoverPath } from "./domain/index.js";
 import {
   buildPathIndependentDomain,
   runStartupSequence,
@@ -36,9 +38,21 @@ import { createProgressBroadcaster, registerIpcHandlers } from "./app/ipc-handle
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function bootstrap(): Promise<void> {
-  const { app, BrowserWindow: BrowserWindowCtor, dialog, ipcMain } = await import(
-    "electron"
-  );
+  const { app, BrowserWindow: BrowserWindowCtor, dialog, ipcMain, net, protocol } =
+    await import("electron");
+
+  // Esquema del protocolo custom de covers (Tarea 21.1, Bloque 1). DEBE
+  // registrarse como privileged ANTES de app.whenReady() para que un
+  // <img src="l4d2cover://<id>"> cargue sin friccion desde el origen
+  // http://localhost:5173 (dev) o file:// del build (prod). standard=true da
+  // parsing de URL con host/path; secure + supportFetchAPI lo habilitan bajo
+  // paginas https/http sin que webSecurity lo bloquee.
+  protocol.registerSchemesAsPrivileged([
+    {
+      scheme: "l4d2cover",
+      privileges: { standard: true, secure: true, supportFetchAPI: true },
+    },
+  ]);
 
   await app.whenReady();
 
@@ -52,6 +66,38 @@ async function bootstrap(): Promise<void> {
     dialog,
     spawnSyncFn: { spawnSync },
     db,
+  });
+
+  // Handler del protocolo custom de covers (Tarea 21.1, Bloque 1). Se registra
+  // tras whenReady (protocol.handle exige app ready) y una vez construido `base`
+  // (necesita localStore.getPaths()). La logica pura de validacion+resolucion
+  // vive en resolveCoverPath (dominio); aca solo se cablea el I/O: leer la
+  // Workshop_Folder del store, chequear existencia con el FS real, y traducir el
+  // resultado a Response. Un id invalido, rutas no detectadas o archivo ausente
+  // devuelven una Response de error controlada (nunca un throw que tumbe el
+  // handler). El path resuelto se sirve via net.fetch sobre file:// (patron
+  // moderno de protocol.handle en Electron 44).
+  protocol.handle("l4d2cover", async (request) => {
+    // El <id> va en el PATHNAME (`l4d2cover://local/<id>`), NUNCA en el host.
+    // Host FIJO literal "local" (Context/04-historial-decisiones.md, fix
+    // confirmado via CDP): con el esquema registrado como standard:true, un
+    // host VACIO (`l4d2cover:///<id>`, tres barras) NO sobrevive el parseo de
+    // Chromium para un id numerico - Chromium recupera el host vacio
+    // consumiendo el primer segmento del path como host, y al ser puramente
+    // numerico lo canonicaliza como IPv4 (comprobado con
+    // l4d2cover:///3237709870 -> request.url real
+    // "l4d2cover://192.251.136.46/", pathname vacio, 400 invalid-id). Un host
+    // FIJO no numerico evita esa heuristica por completo. El pathname sigue
+    // siendo la unica fuente del id; NO leer el id del host.
+    const { pathname } = new URL(request.url);
+    const id = decodeURIComponent(pathname.replace(/^\//, ""));
+    const workshopFolder = base.localStore.getPaths()?.workshopFolder ?? null;
+    const resolution = await resolveCoverPath(id, workshopFolder, pathExists);
+    if (!resolution.ok) {
+      const status = resolution.reason === "not-found" ? 404 : 400;
+      return new Response(null, { status });
+    }
+    return net.fetch(pathToFileURL(resolution.absolutePath).href);
   });
 
   let mainWindow: BrowserWindow | null = null;
