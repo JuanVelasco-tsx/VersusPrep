@@ -65,3 +65,7 @@
 .forceButton:hover {
   background: #5a3232;
 }
+.error {
+  font-size: 12px;
+  color: #e07070;
+}

@@ -1,28 +1,52 @@
 import { useState } from "react";
 
-import type { ScannedAddon, VScriptClassification } from "../../main/domain/index.js";
+import type { OperationResult, ScannedAddon, VScriptClassification } from "../../main/domain/index.js";
 import { AddonCover } from "./AddonCover.js";
 import styles from "./AddonRow.module.css";
 
 /**
- * Una fila de la lista de addons (Bloque 2, Tarea 21.1). `classification` es
- * `"pending"` mientras `classifyVScript` todavia no resolvio para este addon -
- * un tercer estado, distinto de "bloqueado" y de "permitido" (AC 3.6-3.8: no
- * se puede advertir ni permitir sobre una clasificacion que no se conoce).
+ * Una fila de la lista de addons (Bloque 2, Tarea 21.1; conexion al backend en
+ * 21.2). `classification` es `"pending"` mientras `classifyVScript` todavia no
+ * resolvio para este addon - un tercer estado, distinto de "bloqueado" y de
+ * "permitido" (AC 3.6-3.8: no se puede advertir ni permitir sobre una
+ * clasificacion que no se conoce).
  *
- * El checkbox "Incluir" y el gate de "Forzar inclusion" son estado EFIMERO de
- * React (useState local a esta fila): no tocan `AddonManifestEntry` ni
- * `LocalStore` - la persistencia real del Active_Set es tarea de 21.2, fuera
- * de alcance de este bloque.
+ * El checkbox "Incluir" mantiene `included` como estado LOCAL para feedback
+ * optimista inmediato, y al cambiar dispara la operacion real contra el backend
+ * (`addAddon`/`removeAddon` del preload). Integracion DESACOPLADA (opcion B, ver
+ * Context/05-plan-seccion-21-restante.md): la fila NO comparte estado con el
+ * panel "Activos" de 21.2; cada uno lee/muta el Active_Set por su cuenta (el
+ * panel refetchea `getActiveSet()` cuando se muestra). El gate de "Forzar
+ * inclusion" (VScript) sigue siendo estado efimero local: solo habilita el
+ * checkbox, no persiste ninguna marca de forzado (AC 3.7/3.8).
+ *
+ * DECISION (priorityOrder de addAddon): `addAddon(addonId, priorityOrder)` exige
+ * un `priorityOrder`, pero esta fila -por el desacople de la opcion B- NO conoce
+ * el Active_Set actual y no puede calcular la posicion real. Se pasa `Date.now()`
+ * como orden monotono creciente: deja el addon recien agregado al FINAL del
+ * Priority_Order (el orquestador ordena ascendente por `priorityOrder`, y hace
+ * UPSERT por addonId, ver MergeOrchestrator DECISION 4). El reordenamiento fino
+ * es responsabilidad del panel de 21.2, no de este checkbox.
  */
 interface AddonRowProps {
   addon: ScannedAddon;
   classification: VScriptClassification | "pending";
 }
 
+/** Traduce un OperationResult no-exitoso a un mensaje corto para la fila. */
+function errorMessageFor(result: OperationResult): string | null {
+  if (result.status === "success") return null;
+  // "elevating": la operacion se cedio a una instancia elevada; el feedback
+  // detallado es de 21.4. Para la fila alcanza con no revertir el checkbox.
+  if (result.status === "elevating") return null;
+  return result.error;
+}
+
 export function AddonRow({ addon, classification }: AddonRowProps) {
   const [forced, setForced] = useState(false);
   const [included, setIncluded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const isPending = classification === "pending";
   const isVScript = classification !== "pending" && classification.isVScriptAddon;
@@ -31,6 +55,35 @@ export function AddonRow({ addon, classification }: AddonRowProps) {
   const info = addon.info;
   const title = info?.title ?? addon.id;
 
+  /**
+   * Aplica el cambio de inclusion con feedback optimista: setea `included` al
+   * valor deseado YA, invoca la IPC correspondiente, y si falla revierte al
+   * valor previo y muestra el error minimo en la fila. `elevating` no se trata
+   * como fallo (no se revierte): la instancia elevada completara la operacion.
+   */
+  const applyInclusion = (next: boolean): void => {
+    const previous = included;
+    setIncluded(next);
+    setError(null);
+    setBusy(true);
+    const call = next
+      ? window.l4d2Api.addAddon(addon.id, Date.now())
+      : window.l4d2Api.removeAddon(addon.id);
+    call
+      .then((result) => {
+        const message = errorMessageFor(result);
+        if (message !== null) {
+          setIncluded(previous);
+          setError(message);
+        }
+      })
+      .catch((err: unknown) => {
+        setIncluded(previous);
+        setError(err instanceof Error ? err.message : "Error desconocido.");
+      })
+      .finally(() => setBusy(false));
+  };
+
   const handleForce = (): void => {
     const confirmed = window.confirm(
       "Este addon usa VScript y es incompatible con Versus_Mode. " +
@@ -38,7 +91,7 @@ export function AddonRow({ addon, classification }: AddonRowProps) {
     );
     if (confirmed) {
       setForced(true);
-      setIncluded(true);
+      applyInclusion(true);
     }
   };
 
@@ -55,14 +108,15 @@ export function AddonRow({ addon, classification }: AddonRowProps) {
           {!isPending && isVScript && "⚠ VScript: incompatible con Versus"}
           {!isPending && !isVScript && "Compatible con Versus"}
         </span>
+        {error !== null && <span className={styles.error}>{error}</span>}
       </div>
       <div className={styles.actions}>
         <label className={styles.includeLabel}>
           <input
             type="checkbox"
             checked={included}
-            disabled={isPending || blocked}
-            onChange={(event) => setIncluded(event.target.checked)}
+            disabled={isPending || blocked || busy}
+            onChange={(event) => applyInclusion(event.target.checked)}
           />
           Incluir
         </label>
