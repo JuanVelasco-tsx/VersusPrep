@@ -43,7 +43,7 @@ async function bootstrap(): Promise<void> {
 
   // Esquema del protocolo custom de covers (Tarea 21.1, Bloque 1). DEBE
   // registrarse como privileged ANTES de app.whenReady() para que un
-  // <img src="l4d2cover://<id>"> cargue sin friccion desde el origen
+  // <img src="l4d2cover://local/<id>"> cargue sin friccion desde el origen
   // http://localhost:5173 (dev) o file:// del build (prod). standard=true da
   // parsing de URL con host/path; secure + supportFetchAPI lo habilitan bajo
   // paginas https/http sin que webSecurity lo bloquee.
