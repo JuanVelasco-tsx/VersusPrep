@@ -62,6 +62,7 @@
  * (AC 2.4) NO dependen del addoninfo.
  */
 
+import { COVER_EXTENSION } from "./addon-cover.js";
 import { extractAddonInfo } from "./addoninfo-extract.js";
 import type { AddonInfo, ScannedAddon } from "./types.js";
 import type { VpkTool } from "./vpk-tool.js";
@@ -70,8 +71,6 @@ import type { VpkTool } from "./vpk-tool.js";
 const ADDONINFO_BASENAME = "addoninfo.txt";
 /** Extensión (con punto) de los archivos de addon. */
 const VPK_EXTENSION = ".vpk";
-/** Extensión (con punto) del archivo de portada. */
-const COVER_EXTENSION = ".jpg";
 
 /**
  * Una entrada de directorio, con su nombre y si es un directorio.

@@ -24,8 +24,7 @@
  */
 import * as path from "node:path";
 
-/** Extension (con punto) del archivo de portada, igual que AddonScanner. */
-export const COVER_EXTENSION = ".jpg";
+import { COVER_EXTENSION } from "./addon-cover.js";
 
 /**
  * Patron conservador de id de Addon_Cover: uno o mas caracteres alfanumericos,

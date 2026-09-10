@@ -307,6 +307,15 @@ export type {
 } from "./merge-orchestrator.js";
 
 // ---------------------------------------------------------------------------
+// Convencion compartida del Addon_Cover (extraida en el refactor que cerro el
+// hallazgo de COVER_EXTENSION duplicado entre AddonScanner y Cover_Resolver -
+// ver Context/04-historial-decisiones.md). Unica fuente de verdad de la
+// extension del archivo de portada; ni addon-scanner.ts ni cover-resolver.ts
+// dependen el uno del otro para esto.
+// ---------------------------------------------------------------------------
+export { COVER_EXTENSION } from "./addon-cover.js";
+
+// ---------------------------------------------------------------------------
 // Runtime (Tarea 21.1, Bloque 1 - Cover_Resolver): logica PURA de resolucion y
 // validacion del path del Addon_Cover para el protocolo custom
 // `l4d2cover://<id>`. Valida el id por patron conservador (defensa capa 1),
@@ -316,7 +325,6 @@ export type {
 // main.ts y consume `resolveCoverPath` desde el dominio.
 // ---------------------------------------------------------------------------
 export {
-  COVER_EXTENSION,
   COVER_ID_PATTERN,
   isValidCoverId,
   isWithinBase,
