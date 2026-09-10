@@ -36,24 +36,22 @@ Fecha: 2026-09-10. Aprobado con decisiones cerradas indicadas abajo. Escrito par
 - **Debounce en `previewActiveSet`:** las llamadas disparadas desde las flechas de reordenamiento (y agregar/quitar) llevan **debounce de 300-400ms**, como mitigación mientras el pendiente P-20 (`previewActiveSet` reescanea toda la Workshop_Folder) sigue sin resolver. Esto no arregla P-20, solo evita spamear el preview en cada click individual mientras el usuario reordena rápido.
 - Copy real de "unavailable" (P-19) y omisión de "Tamaño estimado" (P-18): ya decididos en sesiones previas, solo falta escribir el texto al construir el componente.
 
-**Decisión SIGUE ABIERTA — único bloqueante real para arrancar el sub-paso 5:**
+**Decisión CERRADA — integración de estado con 21.1: opción (b), desacoplada.**
 
-**Integración de estado con 21.1.** El checkbox "Incluir" de `AddonRow.tsx` no llama a `addAddon`/`removeAddon` hoy, es puro `useState` local. Hace falta decidir, **coordinando con Kiro sobre cómo terminó estructurando `AddonList`/`AddonRow`**, entre:
-- **(a) Estado levantado a un padre común** (`App.tsx` o un contenedor nuevo) que tanto la lista de 21.1 como el panel de 21.2 lean/muten, convirtiendo `AddonRow` en componente controlado. **Preferencia si la estructura de Kiro lo permite sin fricción.**
-- **(b) Desacoplado con refetch:** el checkbox de 21.1 dispara `addAddon`/`removeAddon` directo al toque (sin estado compartido) y el panel de 21.2 vuelve a pedir `getActiveSet()` cada vez que se muestra.
+Confirmado por Kiro contra el código real: `AddonRow` sigue siendo `useState` local puro, sin ningún callback hacia un padre. Además, la navegación Biblioteca/Activos es un **toggle mutuamente excluyente** (nunca las dos pantallas visibles a la vez) — esto elimina el riesgo de desincronización que era el motivo principal para preferir la opción (a) (estado levantado): si las dos vistas nunca coexisten en pantalla, no hay un checkbox de 21.1 y una fila de 21.2 mostrando el mismo addon con estados potencialmente distintos al mismo tiempo. Con ese riesgo fuera de la mesa, la opción desacoplada es estrictamente más simple sin costo real de UX.
 
-No se puede elegir en el aire — depende de código que Kiro puede seguir cambiando. Esto es lo primero a resolver (hablando con Kiro / revisando el estado real de 21.1) antes de tocar el sub-paso 5.
+**Qué implica para el sub-paso 5 (abajo):** el checkbox "Incluir" de `AddonRow.tsx` es HOY puramente decorativo (no toca `LocalStore` ni `AddonManifestEntry`, per su propio comentario en el código). El sub-paso 5 tiene que cablearlo a `addAddon`/`removeAddon` reales — al tildarse dispara `addAddon(addon.id, priorityOrder)`, al destildarse dispara `removeAddon(addon.id)` — sin agregar ningún estado compartido con el panel de 21.2; este último simplemente vuelve a pedir `getActiveSet()` cada vez que se muestra (toggle a la pestaña "Activos").
 
 **Componentes a crear:** un contenedor (`ActiveSetPanel`), `PriorityRow` (fila con flechas), `MergeSummaryPanel` (el aside), cada uno con su CSS Module usando los tokens del punto 1.
 
-**Archivos:** nuevos en `src/renderer/components/`; modificación de `App.tsx` (shell de nav con toggle local); modificación de `AddonRow.tsx`/`AddonList.tsx` SOLO si se elige la opción (a) de integración de estado.
+**Archivos:** nuevos en `src/renderer/components/`; modificación de `App.tsx` (shell de nav con toggle local); modificación de `AddonRow.tsx` (cablear el checkbox "Incluir" a `addAddon`/`removeAddon`, ver sub-paso 5). `AddonList.tsx` no debería necesitar cambios más allá de lo que Kiro ya termine ahí, dado que la integración es desacoplada (opción b).
 
 **Tamaño: GRANDE.** Sub-pasos:
 1. `ActiveSetPanel` + `PriorityRow`: cargar Active_Set, reordenar localmente con las flechas (sin preview ni apply todavía). El más chico y aislado.
 2. `MergeSummaryPanel` conectado a `previewActiveSet` (con el debounce de 300-400ms ya decidido).
 3. Cablear "Aplicar"/"Descartar" a `applyActiveSet` (resultado mínimo, ya decidido).
 4. Shell de navegación (toggle Biblioteca/Activos).
-5. Integración real con 21.1 — **bloqueado hasta resolver la decisión abierta de arriba**; probablemente el sub-paso de mayor riesgo de choque con el trabajo paralelo de Kiro.
+5. Cablear el checkbox "Incluir" de `AddonRow.tsx` a `addAddon`/`removeAddon` reales (decisión cerrada arriba: opción b, desacoplada — sin estado compartido con el panel de 21.2). Ya no está bloqueado por ninguna decisión pendiente.
 
 ---
 
@@ -90,10 +88,9 @@ El resto de 21.3 (avisos `sv_pure`, UAC/Program Files, disclaimer fan-made, Smar
 
 ## Orden recomendado para la próxima sesión
 
-1. Resolver la ÚNICA decisión que sigue abierta: integración de estado 21.1↔21.2 (coordinar con Kiro sobre la estructura real de `AddonList`/`AddonRow` en ese momento).
-2. Paso 1a (tokens aditivos en `global.css`) — sin esperar nada, se puede hacer en paralelo a lo anterior.
-3. 21.2 sub-pasos 1-4 (todo lo que no depende de la integración con 21.1); sub-paso 5 recién cuando la decisión del punto 1 esté cerrada.
-4. 1b (migrar módulos de 21.1 a tokens) — cuando Kiro termine su parte.
-5. 21.3 (needs-manual con guard + avisos estáticos, ambos ya sin ambigüedad de scope).
-6. 21.4 (overlay modal de progreso + resume).
-7. Checkpoint 22 (tests + pasada manual con `/run`).
+1. Paso 1a (tokens aditivos en `global.css`) — sin esperar nada.
+2. 21.2 sub-pasos 1-5 en orden (ya no hay ninguna decisión pendiente que bloquee el sub-paso 5 — integración de estado cerrada como opción b, desacoplada).
+3. 1b (migrar módulos de 21.1 a tokens) — cuando Kiro termine su parte.
+4. 21.3 (needs-manual con guard + avisos estáticos, ambos ya sin ambigüedad de scope).
+5. 21.4 (overlay modal de progreso + resume).
+6. Checkpoint 22 (tests + pasada manual con `/run`).
