@@ -36,6 +36,19 @@ L4D2 Versus Addon Manager. El plan de tareas vive en
 > propia: la 1 se hizo/hara en el arranque, y los checkpoints son puntos de
 > revision antes de mergear (ver abajo).
 
+### Adiciones de scope que tocan una seccion ya cerrada
+
+Si mientras se trabaja una seccion (p. ej. 21.2, en la rama `ui`) aparece una
+necesidad real que obliga a tocar codigo de dominio de una seccion ANTERIOR ya
+cerrada y mergeada a `main` (p. ej. agregar un metodo nuevo a
+`MergeOrchestrator`, Seccion 18), esa adicion se documenta y numera bajo la
+seccion de la RAMA que esta haciendo el trabajo AHORA (acá, 21.2), no bajo la
+seccion "dueña" del archivo tocado. Motivo: el commit real cae en la rama
+activa, no en la rama ya mergeada de la seccion cerrada; numerar el checkbox
+ahi separaria el checkbox del commit que realmente lo materializa. Ver
+`Context/04-historial-decisiones.md` (entrada de `previewActiveSet`,
+2026-09-10) para un caso real.
+
 ## Mensajes de commit
 
 Formato:
