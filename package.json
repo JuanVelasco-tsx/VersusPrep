@@ -8,14 +8,15 @@
   "main": "dist/src/main/main.js",
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && vite build --config vite.preload.config.ts",
     "build:renderer": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "dev:renderer": "vite",
     "dev:main": "tsc -p tsconfig.json -w",
-    "dev": "concurrently -k -n vite,electron \"vite\" \"wait-on tcp:5173 && tsc -p tsconfig.json && electron .\"",
+    "dev:preload": "vite build --config vite.preload.config.ts --watch",
+    "dev": "concurrently -k -n vite,preload,electron \"vite\" \"npm:dev:preload\" \"wait-on tcp:5173 dist/src/preload/preload.js && tsc -p tsconfig.json && vite build --config vite.preload.config.ts && electron .\"",
     "electron:pack": "electron-builder --dir",
     "rebuild:native": "electron-rebuild -f -w better-sqlite3"
   },
