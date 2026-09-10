@@ -25,4 +25,5 @@ Jugar Versus con mods activos requiere fusionar manualmente archivos `.vpk` cada
 | `02-pendientes.md` | Preguntas abiertas y vacíos técnicos sin resolver. |
 | `03-glosario.md` | Términos del dominio explicados. |
 | `04-historial-decisiones.md` | Log de cambios de rumbo con fecha y motivo. |
+| `05-plan-seccion-21-restante.md` | Plan de desarrollo para el resto de la Sección 21 (UI 21.2, 21.3, 21.4, checkpoint 22), con decisiones ya cerradas y la única que sigue abierta. |
 | `archive/` | Documentos de diseño originales (v1, v2) para referencia histórica. |
