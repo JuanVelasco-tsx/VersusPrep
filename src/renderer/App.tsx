@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import { ActiveSetPanel } from "./components/ActiveSetPanel.js";
 import { AddonList } from "./components/AddonList.js";
+import { TrustNotices } from "./components/TrustNotices.js";
 import styles from "./App.module.css";
 
 type View = "library" | "active";
@@ -33,6 +34,7 @@ export function App() {
           Activos
         </button>
       </nav>
+      <TrustNotices />
       {view === "library" && <AddonList />}
       {view === "active" && <ActiveSetPanel />}
     </main>
