@@ -1,0 +1,33 @@
+/* Reset y tema base del renderer (Seccion 21, Bloque 2). Global a proposito
+   (no CSS Module): html/body/#root no son "componentes" que modularizar. Los
+   componentes usan CSS Modules (AddonList.module.css, etc.) para el resto. */
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #121212;
+  color: #e6e6e6;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  font-size: 14px;
+}

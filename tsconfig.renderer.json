@@ -16,6 +16,10 @@
   },
   // El base excluye src/renderer (para que el tsc de main no lo agarre); aqui
   // hay que RESETEAR ese exclude, porque extends lo hereda y anularia el include.
-  "include": ["src/renderer/**/*"],
+  // window.d.ts se suma explicitamente: declara `Window.l4d2Api` (global
+  // ambient, sin import en ningun archivo del renderer) y vive en
+  // src/preload/ porque es el preload quien expone esa API - el renderer solo
+  // consume el tipo, no necesita importarlo para que aplique.
+  "include": ["src/renderer/**/*", "src/preload/window.d.ts"],
   "exclude": ["node_modules", "dist"]
 }
