@@ -51,9 +51,21 @@ interface AddonListProps {
    * que el reinicio post-UAC no se sienta como una Biblioteca vacia/en blanco.
    */
   resuming: boolean;
+  /**
+   * (BUG-008, QA V3 jornada 2) `true` si `detectPaths()` ya resolvio `ready`
+   * en ESTA sesion de UI (cache en `App.tsx`, sobrevive al desmontaje de este
+   * componente al cambiar de pestaña). Cuando es `true` al montar, el flujo de
+   * carga se salta el paso de deteccion (que puede disparar dialogos nativos
+   * de seleccion manual) y va directo a `scanAddons()`/`getActiveSet()` - la
+   * causa raiz de BUG-008 era exactamente que este componente remonta en cada
+   * cambio de pestaña y volvia a invocar `detectPaths()` cada vez.
+   */
+  pathsReady: boolean;
+  /** Notifica a `App.tsx` que `detectPaths()` resolvio `ready`, para cachearlo. */
+  onPathsReady: () => void;
 }
 
-export function AddonList({ resuming }: AddonListProps) {
+export function AddonList({ resuming, pathsReady, onPathsReady }: AddonListProps) {
   const [state, setState] = useState<LoadState>({ phase: "detecting-paths" });
 
   // Active_Set persistido completo (BUG-002 parte 2), no solo los ids: se
@@ -118,30 +130,13 @@ export function AddonList({ resuming }: AddonListProps) {
     };
   }, []);
 
-  // Flujo de deteccion completo (detectPaths -> scanAddons+getActiveSet en
-  // paralelo -> classifyVScript), extraido para poder REUSARLO: lo dispara el
-  // efecto de montaje (una sola vez, via hasStarted) y tambien el boton
-  // "Reintentar deteccion" de la rama needs-manual (21.3, opcion A: reutiliza
-  // los dialogos nativos ya existentes en path-detector.ts, sin construir
-  // seleccion manual nueva en el renderer).
-  //
-  // NO necesita un guard `retrying` aparte contra doble-click: al setear
-  // `phase: "detecting-paths"` como PRIMER paso (antes de cualquier await), la
-  // rama needs-manual -y con ella el boton- deja de renderizarse por el propio
-  // chequeo `if (state.phase === "needs-manual")`, asi que el boton no esta
-  // disponible mientras la deteccion esta en curso.
-  const runDetection = useCallback(async (): Promise<void> => {
-    setState({ phase: "detecting-paths" });
+  // Escaneo + Active_Set + clasificacion VScript, extraido de runDetection
+  // (BUG-008) para poder invocarse DIRECTO cuando `pathsReady` ya esta en
+  // cache (sin repetir el paso de `detectPaths()`), ademas de como
+  // continuacion normal de una deteccion recien resuelta.
+  const runScan = useCallback(async (): Promise<void> => {
+    setState({ phase: "scanning-addons" });
     try {
-      const detection = await window.l4d2Api.detectPaths();
-      if (!isMounted.current) return;
-
-      if (detection.kind === "needs-manual") {
-        setState({ phase: "needs-manual", reason: detection.reason });
-        return;
-      }
-
-      setState({ phase: "scanning-addons" });
       // getActiveSet() en paralelo con scanAddons() (BUG-002 parte 2): misma
       // llamada IPC que ActiveSetPanel, para que el checkbox "Incluir" arranque
       // ya sincronizado con lo que el backend tiene persistido, en vez de
@@ -172,11 +167,53 @@ export function AddonList({ resuming }: AddonListProps) {
     }
   }, []);
 
+  // Flujo de deteccion completo (detectPaths -> runScan), extraido para poder
+  // REUSARLO: lo dispara el boton "Reintentar deteccion" de la rama
+  // needs-manual (21.3, opcion A: reutiliza los dialogos nativos ya
+  // existentes en path-detector.ts, sin construir seleccion manual nueva en
+  // el renderer) y, si `pathsReady` todavia no esta en cache, tambien el
+  // efecto de montaje.
+  //
+  // NO necesita un guard `retrying` aparte contra doble-click: al setear
+  // `phase: "detecting-paths"` como PRIMER paso (antes de cualquier await), la
+  // rama needs-manual -y con ella el boton- deja de renderizarse por el propio
+  // chequeo `if (state.phase === "needs-manual")`, asi que el boton no esta
+  // disponible mientras la deteccion esta en curso.
+  const runDetection = useCallback(async (): Promise<void> => {
+    setState({ phase: "detecting-paths" });
+    try {
+      const detection = await window.l4d2Api.detectPaths();
+      if (!isMounted.current) return;
+
+      if (detection.kind === "needs-manual") {
+        setState({ phase: "needs-manual", reason: detection.reason });
+        return;
+      }
+
+      // (BUG-008) Cachea en App.tsx que las rutas ya estan listas, para que un
+      // remontaje futuro de este componente (cada cambio de pestaña) se salte
+      // este paso en vez de volver a invocar detectPaths() - y sus posibles
+      // dialogos nativos de seleccion manual - de nuevo.
+      onPathsReady();
+      await runScan();
+    } catch (error) {
+      if (!isMounted.current) return;
+      const message = error instanceof Error ? error.message : "Error desconocido.";
+      setState({ phase: "error", message });
+    }
+  }, [onPathsReady, runScan]);
+
   useEffect(() => {
     if (hasStarted.current) return;
     hasStarted.current = true;
-    void runDetection();
-  }, [runDetection]);
+    // (BUG-008) Con las rutas ya cacheadas de un mount anterior en esta misma
+    // sesion de UI, se salta detectPaths() por completo.
+    if (pathsReady) {
+      void runScan();
+    } else {
+      void runDetection();
+    }
+  }, [pathsReady, runDetection, runScan]);
 
   const toggleSelect = useCallback((addonId: string, next: boolean): void => {
     setSelected((prev) => {

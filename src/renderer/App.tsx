@@ -23,6 +23,16 @@ export function App() {
   const [view, setView] = useState<View>("library");
   const [resuming, setResuming] = useState<boolean | null>(null);
 
+  // (BUG-008, QA V3 jornada 2) Cache de sesion de UI: una vez que `detectPaths()`
+  // resuelve `ready` (auto o manual) una vez, se recuerda ACA - que sobrevive
+  // a que `AddonList` se desmonte/remonte en cada cambio de pestaña (Biblioteca
+  // <-> Activos son ramas mutuamente excluyentes del JSX de abajo) - para que
+  // `AddonList` no vuelva a invocar `detectPaths()` (con sus dialogos nativos
+  // de seleccion manual si alguna ruta requerida no se puede auto-detectar) en
+  // cada remontaje. Se resetea solo si el usuario pide explicitamente
+  // "Reintentar deteccion" (ver AddonList.tsx, no pasa por este cache).
+  const [pathsReady, setPathsReady] = useState(false);
+
   // BUG-004 parte 2 (backend de Kiro cerrado en 8a7e009, reordenamiento A1):
   // reemplaza la version anterior basada en `getResumeState()` al montar.
   // Ahora `isResuming()` es el HECHO ESTATICO correcto para esto (derivado de
@@ -122,7 +132,13 @@ export function App() {
       <TrustNotices />
       <OperationOverlay />
       {resuming === null && <LoadingIndicator message="Cargando..." />}
-      {resuming !== null && view === "library" && <AddonList resuming={resuming} />}
+      {resuming !== null && view === "library" && (
+        <AddonList
+          resuming={resuming}
+          pathsReady={pathsReady}
+          onPathsReady={() => setPathsReady(true)}
+        />
+      )}
       {resuming !== null && view === "active" && <ActiveSetPanel resuming={resuming} />}
     </main>
   );
