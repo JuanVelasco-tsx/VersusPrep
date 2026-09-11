@@ -295,7 +295,7 @@ const L4D2_DIR = `${GAME_ROOT}\\left4dead2`;
 const WORKSHOP = `${L4D2_DIR}\\addons\\workshop`;
 const VPK_TOOL = `${GAME_ROOT}\\bin\\vpk.exe`;
 const GAMEINFO = `${L4D2_DIR}\\gameinfo.txt`;
-const MODSVS = `${L4D2_DIR}\\modsvs`;
+const MODSVS = `${GAME_ROOT}\\modsvs`;
 const VDF_PATH = `${STEAM}\\steamapps\\libraryfolders.vdf`;
 
 /** VDF cuyo bloque 550 vive en la biblioteca D: (otro disco que Steam en C:). */

@@ -298,7 +298,7 @@ export class PathDetector {
       workshopFolder: joinWindows(left4dead2Dir, WORKSHOP_SUBPATH),
       vpkToolPath: joinWindows(gameRoot, VPK_TOOL_SUBPATH),
       gameInfoFile: joinWindows(left4dead2Dir, GAMEINFO_FILE_NAME),
-      modsvsFolder: joinWindows(left4dead2Dir, MODSVS_SUBDIR),
+      modsvsFolder: joinWindows(gameRoot, MODSVS_SUBDIR),
     };
   }
 
@@ -428,7 +428,7 @@ export class PathDetector {
       workshopFolder: joinWindows(left4dead2Dir, WORKSHOP_SUBPATH),
       vpkToolPath: joinWindows(gameRoot, VPK_TOOL_SUBPATH),
       gameInfoFile: joinWindows(left4dead2Dir, GAMEINFO_FILE_NAME),
-      modsvsFolder: joinWindows(left4dead2Dir, MODSVS_SUBDIR),
+      modsvsFolder: joinWindows(gameRoot, MODSVS_SUBDIR),
     };
     return this.#verifyThenManual(paths, source);
   }

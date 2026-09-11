@@ -517,7 +517,7 @@ El **Active_Set** es el conjunto de addons actualmente fusionados e instalados. 
   pak01_dir/...                # contenido fusionado (aplicada la política de colisiones)
   pak01_dir.vpk                # Merged_Package generado por vpk pack
 ```
-El Merged_Package final se instala en `<left4dead2Dir>\modsvs\pak01_dir.vpk`, con backup del anterior en la misma carpeta (un solo nivel).
+El Merged_Package final se instala en `<gameRoot>\modsvs\pak01_dir.vpk`, con backup del anterior en la misma carpeta (un solo nivel).
 
 ## Diagramas de Secuencia
 
