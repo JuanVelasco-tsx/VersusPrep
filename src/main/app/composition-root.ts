@@ -89,6 +89,15 @@ export interface PathIndependentIo {
   dialog: Pick<Dialog, "showOpenDialog">;
   spawnSyncFn: Pick<typeof import("node:child_process"), "spawnSync">;
   db: Database;
+  /**
+   * Listener de progreso OPCIONAL (BUG-004). Se pasa al `ElevationServiceImpl`
+   * para que emita `{ step: "restarting" }` antes del relanzo `runas`. Es el
+   * broadcaster hacia la ventana (`createProgressBroadcaster`), NO el onProgress
+   * compuesto con el buffer de resume: el evento `restarting` ocurre en la
+   * instancia SIN privilegios (la que va a elevar), cuya ventana está viva; el
+   * buffer de resume solo aplica a la instancia elevada que rehidrata.
+   */
+  onProgress?: MergeProgressListener;
 }
 
 /**
@@ -115,7 +124,7 @@ export function buildPathIndependentDomain(io: PathIndependentIo): PathIndepende
     }),
     processGuard: new ProcessGuard(processListProvider),
     localStore,
-    elevationService: new ElevationServiceImpl(elevationOsProvider, localStore),
+    elevationService: new ElevationServiceImpl(elevationOsProvider, localStore, io.onProgress),
     collisionResolver: new CollisionResolver(new RealCollisionFileSystem()),
     backupManager: new BackupManager(new RealBackupFileSystem()),
     gameInfoEditor: new GameInfoEditor(new RealGameInfoFileSystem()),
@@ -215,7 +224,6 @@ export type StartupOutcome =
   | {
       kind: "ready";
       pathDependent: PathDependentDomain;
-      resumeState: ResumeState | null;
       /**
        * `true` si esta sesion va a necesitar elevacion UAC en la primera
        * escritura protegida (Seccion 21.4/9.2, aviso previo al dialogo nativo).
@@ -227,6 +235,33 @@ export type StartupOutcome =
        * sigue siendo la red de seguridad real si esta heurística se equivoca.
        */
       willNeedElevation: boolean;
+      /**
+       * (BUG-004, A1) HECHO ESTÁTICO: `true` si este proceso arrancó para RESUMIR
+       * una sesión pendiente (derivado de `parseResumeArgs(argv)` + sesión
+       * pendiente en el LocalStore). Es fijo para toda la vida del proceso — NO
+       * un "¿está resumiendo ahora?" mutable —, así que el renderer puede
+       * consultarlo una vez al montar sin ventana de carrera. Si es `true`, el
+       * renderer escucha el progreso en vivo por `onProgress` (el resume se
+       * dispara DESPUÉS de crear la ventana, ver `runResume`) y NO necesita el
+       * replay de `bufferedEvents`; el RESULTADO TERMINAL le sigue llegando por
+       * `readResumeState().result`.
+       */
+      isResuming: boolean;
+      /**
+       * (BUG-004, A1) Dispara el resume de la sesión pendiente. main.ts la invoca
+       * DESPUÉS de crear la ventana (no antes), de modo que el renderer ya esté
+       * montado y suscripto a `onProgress` para recibir el progreso en vivo. Si
+       * `isResuming` es `false`, es un no-op que resuelve de inmediato. Puebla el
+       * estado que `readResumeState` expone.
+       */
+      runResume: () => Promise<void>;
+      /**
+       * (BUG-004, A1) Lee el `ResumeState` actual (buffer + resultado terminal), o
+       * `null` si este proceso no arrancó para resumir. Antes de que `runResume`
+       * complete, `result` es `null` (resume en curso); el renderer relee tras el
+       * evento terminal de `onProgress`. La capa IPC (`getResumeState`) delega acá.
+       */
+      readResumeState: () => ResumeState | null;
     }
   | { kind: "fatal"; message: string };
 
@@ -292,14 +327,63 @@ export async function runStartupSequence(
     onProgress,
   });
 
+  // (BUG-004, A1) `isResuming` es un HECHO ESTÁTICO del arranque: este proceso
+  // arrancó con args de resume Y hay una sesión pendiente en el LocalStore. No
+  // cambia durante la vida del proceso (el renderer lo consulta una vez sin
+  // carrera). NO se resume acá: A1 separa el resume del startup para que main.ts
+  // pueda crear la ventana ANTES (así el renderer recibe el progreso en vivo por
+  // `onProgress`), y recién entonces dispare `runResume()`.
   const pending = parseResumeArgs(io.argv);
-  let resumeState: ResumeState | null = null;
-  if (pending !== null && base.localStore.getPendingSession() !== null) {
-    resumeBufferRef.current = [];
-    const result = await pathDependent.mergeOrchestrator.resumePendingOperation();
-    resumeState = { bufferedEvents: resumeBufferRef.current, result };
-    resumeBufferRef.current = null;
-  }
+  const isResuming = pending !== null && base.localStore.getPendingSession() !== null;
 
-  return { kind: "ready", pathDependent, resumeState, willNeedElevation };
+  // Estado del resume, poblado por `runResume`. Si hay resume pendiente arranca
+  // "en curso" (`result: null`): el contrato de `ResumeState` ya define que un
+  // `result` null con el objeto presente significa "resume en curso, el progreso
+  // llega en vivo por merge:onProgress" (Decisión D2a-i).
+  let resumeState: ResumeState | null = isResuming
+    ? { bufferedEvents: [], result: null }
+    : null;
+
+  const runResume = async (): Promise<void> => {
+    if (!isResuming) return; // no-op: este proceso no arrancó para resumir
+    resumeBufferRef.current = [];
+    try {
+      const result = await pathDependent.mergeOrchestrator.resumePendingOperation();
+      // El buffer queda disponible por compatibilidad del contrato; el renderer
+      // con isResuming escucha en vivo y lo ignora (no hay duplicación porque
+      // elige una sola vía). El RESULTADO TERMINAL vive acá, en `result`.
+      resumeState = { bufferedEvents: resumeBufferRef.current ?? [], result };
+    } catch (error) {
+      // (BUG-004) Excepción INESPERADA del resume (un throw real, no un
+      // OperationResult con status:"failure"). Con A1 el resume corre
+      // no-bloqueante desde main.ts, así que este throw ya NO se propaga por el
+      // await del startup: si no lo capturáramos acá, `resumeState.result`
+      // quedaría en `null` para siempre y el renderer se colgaría en
+      // "Restaurando tu selección..." indefinidamente. Poblamos un resultado
+      // TERMINAL de fallo para que la UI pueda salir del estado de resume con un
+      // mensaje de error en vez de quedar esperando eternamente.
+      resumeState = {
+        bufferedEvents: resumeBufferRef.current ?? [],
+        result: {
+          status: "failure",
+          error:
+            "Error inesperado al restaurar la sesión: " +
+            (error instanceof Error ? error.message : String(error)),
+        },
+      };
+    } finally {
+      resumeBufferRef.current = null;
+    }
+  };
+
+  const readResumeState = (): ResumeState | null => resumeState;
+
+  return {
+    kind: "ready",
+    pathDependent,
+    willNeedElevation,
+    isResuming,
+    runResume,
+    readResumeState,
+  };
 }

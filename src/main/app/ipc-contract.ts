@@ -29,6 +29,8 @@ export const IPC_CHANNELS = {
   getResumeState: "activeSet:resumeState",
   mergeProgress: "merge:onProgress",
   willNeedElevation: "willNeedElevation",
+  isResuming: "activeSet:isResuming",
+  getTitles: "addons:titles",
 } as const;
 
 /**
@@ -65,6 +67,25 @@ export interface L4d2Api {
    * mientras la app corre.
    */
   willNeedElevation(): Promise<boolean>;
+  /**
+   * (BUG-004) `true` si este proceso arrancó para RESUMIR una sesión pendiente
+   * tras un relanzo elevado. HECHO ESTÁTICO fijo para toda la vida del proceso
+   * (derivado de los argumentos de arranque, no de un estado mutable), así que
+   * el renderer puede consultarlo una vez al montar sin ventana de carrera. Si
+   * es `true`, el renderer muestra "Restaurando tu selección..." y escucha el
+   * progreso en vivo por `onProgress`; el resultado terminal llega por
+   * `getResumeState().result`.
+   */
+  isResuming(): Promise<boolean>;
+  /**
+   * (BUG-001) Títulos legibles conocidos por `addonId`, del cache en memoria
+   * poblado por el último `scanAddons()` completo de la sesión. El panel
+   * "Activos" lo consulta para mostrar títulos SIN re-escanear la Workshop; un
+   * `addonId` ausente del mapa se muestra crudo como fallback temporal (nunca se
+   * dispara una extracción de addoninfo en el camino caliente). `{}` si todavía
+   * no corrió ningún escaneo en la sesión.
+   */
+  getTitles(): Promise<Record<string, string>>;
   /** Se suscribe al progreso; devuelve la función de desuscripción. */
   onProgress(listener: (event: MergeProgressEvent) => void): () => void;
 }

@@ -327,20 +327,29 @@ export class MergeOrchestrator {
    * delega el cálculo de colisiones en `MergeEngine.preview`.
    */
   async previewActiveSet(entries: readonly AddonManifestEntry[]): Promise<ActiveSetPreview> {
-    const resolved = await this.#resolveOrderedAddons(entries);
-    if (resolved.kind === "outcome") {
-      const { result } = resolved;
-      // #resolveOrderedAddons SOLO produce este "outcome" para el caso de un
-      // addonId ausente del escaneo (ver su documentación): status "failure"
-      // con addonId SIEMPRE presente. Esta rama es la única alcanzable acá.
-      if (result.status !== "failure" || result.addonId === undefined) {
-        throw new Error(
-          "Invariante violada: #resolveOrderedAddons devolvió un outcome inesperado para previewActiveSet.",
-        );
-      }
-      return { kind: "addon-missing", addonId: result.addonId };
-    }
-    const preview = await this.#merge.preview(resolved.addons);
+    // BUG-001: el preview NO escanea la Workshop completa. `MergeEngine.preview`
+    // solo usa `{ id, vpkPath }` de cada addon (nunca `coverPath`/`info`), y el
+    // `vpkPath` es DERIVABLE del id sin I/O: `<workshopFolder>\<id>.vpk` (misma
+    // convención que `AddonScanner` al armar el vpkPath). Se elimina así el
+    // `AddonScanner.scan()` completo -recorrer cada `.vpk` + extraer addoninfo,
+    // 12-17s con ~73 addons (P-20/P-23)- del camino caliente del preview, que
+    // corre en cada edición del Active_Set. El costo restante es solo el
+    // `VpkTool.list()` por addon CANDIDATO (no toda la Workshop), inherente al
+    // cálculo de colisiones.
+    //
+    // Un addon cuyo `.vpk` derivado no exista (desuscrito/borrado) NO se detecta
+    // acá con un `addon-missing` previo: cae naturalmente en la rama
+    // `unavailable` de `MergeEngine.preview` cuando su `VpkTool.list()` falle
+    // (mismo criterio best-effort de la DECISIÓN 7 / P-19). No se pierde info: el
+    // preview lo reporta como no disponible, que es lo correcto para un dato asesor.
+    const ordered = [...entries].sort((a, b) => a.priorityOrder - b.priorityOrder);
+    const derivedAddons: ScannedAddon[] = ordered.map((entry) => ({
+      id: entry.addonId,
+      vpkPath: joinWindowsPath(this.#paths.workshopFolder, `${entry.addonId}.vpk`),
+      coverPath: null,
+      info: null,
+    }));
+    const preview = await this.#merge.preview(derivedAddons);
     return { kind: "ready", ...preview };
   }
 

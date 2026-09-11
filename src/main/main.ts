@@ -27,7 +27,7 @@ import type { BrowserWindow } from "electron";
 
 import { ChildProcessCommandRunner } from "./data/child-process-command-runner.js";
 import { pathExists } from "./data/node-fs-helpers.js";
-import { resolveCoverPath } from "./domain/index.js";
+import { resolveCoverPath, TitleCache } from "./domain/index.js";
 import {
   buildPathIndependentDomain,
   runStartupSequence,
@@ -61,12 +61,26 @@ async function bootstrap(): Promise<void> {
 
   const commandRunner = new ChildProcessCommandRunner();
 
+  // La ventana y el broadcaster se declaran ANTES de construir el dominio para
+  // poder inyectar el broadcaster al ElevationServiceImpl (BUG-004: emite
+  // `restarting` antes del relanzo). El broadcaster captura `mainWindow` por
+  // closure: aunque acá todavía sea null, para cuando se emita cualquier evento
+  // la ventana ya existe (se crea más abajo, antes del resume).
+  let mainWindow: BrowserWindow | null = null;
+  const broadcaster = createProgressBroadcaster(() => mainWindow?.webContents);
+
   const base = buildPathIndependentDomain({
     commandRunner,
     dialog,
     spawnSyncFn: { spawnSync },
     db,
+    onProgress: broadcaster,
   });
+
+  // (BUG-001) Cache de títulos EN MEMORIA, compartido por el handler de scan
+  // (lo puebla) y el de getTitles (lo lee). Una sola instancia para toda la
+  // sesión; vive lo que vive el proceso.
+  const titleCache = new TitleCache();
 
   // Handler del protocolo custom de covers (Tarea 21.1, Bloque 1). Se registra
   // tras whenReady (protocol.handle exige app ready) y una vez construido `base`
@@ -100,9 +114,6 @@ async function bootstrap(): Promise<void> {
     return net.fetch(pathToFileURL(resolution.absolutePath).href);
   });
 
-  let mainWindow: BrowserWindow | null = null;
-  const broadcaster = createProgressBroadcaster(() => mainWindow?.webContents);
-
   const outcome = await runStartupSequence(base, {
     argv: process.argv,
     commandRunner,
@@ -117,14 +128,13 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
-  // Buffer de resume (D2a-i): lectura de un solo uso; se limpia tras el
-  // primer replay que pida el renderer via activeSet:resumeState.
-  let resumeState: ResumeState | null = outcome.resumeState;
-  const getResumeState = (): ResumeState | null => {
-    const current = resumeState;
-    resumeState = null;
-    return current;
-  };
+  // (BUG-004, A1) El resume ya NO corrió en el startup: se dispara mas abajo,
+  // DESPUES de crear la ventana. `getResumeState` delega en `readResumeState`
+  // del outcome, que devuelve el estado ACTUAL (en curso -> `result: null`;
+  // terminado -> `result` con el OperationResult). Ya NO es "lectura de un solo
+  // uso que limpia": con `isResuming`, el renderer relee para obtener el
+  // resultado terminal tras ver el evento final por `merge:onProgress`.
+  const getResumeState = (): ResumeState | null => outcome.readResumeState();
 
   const createWindow = (): void => {
     mainWindow = new BrowserWindowCtor({
@@ -159,6 +169,8 @@ async function bootstrap(): Promise<void> {
     localStore: base.localStore,
     mergeOrchestrator: outcome.pathDependent.mergeOrchestrator,
     getResumeState,
+    getIsResuming: () => outcome.isResuming,
+    titleCache,
     getWillNeedElevation: () => outcome.willNeedElevation,
     // Handoff de elevación (fix del "reemplazo total, no coexisten" del diseño,
     // ElevationService Decisión 1 / tarea 17.1): cuando una operación resuelve
@@ -167,6 +179,23 @@ async function bootstrap(): Promise<void> {
     // app.exit) para disparar el `before-quit` que cierra limpio la DB de
     // better-sqlite3 (ver el `app.on("before-quit", () => db.close())` de arriba).
     onElevatedHandoff: () => app.quit(),
+  });
+
+  // (BUG-004, A1) Disparar el resume DESPUES de crear la ventana y registrar los
+  // handlers, y SIN await: la ventana ya está viva y el renderer, al montar,
+  // consulta `isResuming` (true) y escucha `merge:onProgress` en vivo, de modo
+  // que ve el progreso del resume con continuidad en vez de una ventana en
+  // blanco mientras se reconstruye. `runResume` es no-op si este proceso no
+  // arrancó para resumir. Un fallo inesperado del resume no debe tumbar el
+  // arranque; se registra (el resultado terminal, éxito o error, ya viaja por
+  // readResumeState()/getResumeState para que la UI lo muestre).
+  void outcome.runResume().catch((error: unknown) => {
+    // Red de seguridad de ÚLTIMO recurso: `runResume` ya captura internamente
+    // las excepciones del resume y las traduce a un resultado terminal de fallo
+    // en `resumeState` (BUG-004), así que este catch normalmente no se alcanza.
+    // Se deja por si algo fuera del try/catch de `runResume` fallara, para no
+    // dejar una promesa rechazada sin manejar.
+    console.error("El resume de la sesión pendiente falló de forma inesperada.", error);
   });
 
   app.on("activate", () => {

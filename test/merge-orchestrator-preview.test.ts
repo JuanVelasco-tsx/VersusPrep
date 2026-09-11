@@ -145,16 +145,29 @@ describe("MergeOrchestrator.previewActiveSet — cálculo de solo lectura", () =
     expect(result).toEqual({ kind: "ready", report: { collisions: [] }, fileCount: 0, unavailable: [] });
   });
 
-  test("addon ausente del escaneo -> kind: addon-missing con ese addonId (mismo criterio que applyActiveSet)", async () => {
+  test("addon con .vpk inexistente (desuscrito/borrado) -> unavailable, NO aborta el preview (BUG-001)", async () => {
+    // BUG-001: previewActiveSet ya NO escanea la Workshop para detectar el
+    // faltante con un `addon-missing` previo — deriva el vpkPath directo
+    // (`<workshopFolder>\<id>.vpk`) y deja que el `VpkTool.list()` de un .vpk
+    // inexistente falle, cayendo en la rama `unavailable` (mismo criterio
+    // best-effort que un VPK corrupto). El addon sano se calcula igual.
     const { orch } = buildPreviewHarness({
-      scannedIds: ["111"],
+      scannedIds: ["111"], // ya irrelevante: el preview no usa el scanner
       listings: { "111": ["materials/a.vmt"] },
+      failing: ["999"], // su .vpk derivado no existe -> list() falla
     });
     const result = await orch.previewActiveSet([
       { addonId: "111", priorityOrder: 0 },
-      { addonId: "999", priorityOrder: 1 }, // desuscrito/borrado: no está en el escaneo
+      { addonId: "999", priorityOrder: 1 }, // desuscrito/borrado
     ]);
-    expect(result).toEqual({ kind: "addon-missing", addonId: "999" });
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") return;
+    expect(result.unavailable).toEqual([
+      { addonId: "999", reason: expect.stringContaining("999") },
+    ]);
+    // El addon sano (111) se calculó igual, sin abortar por el faltante.
+    expect(result.fileCount).toBe(1);
+    expect(result.report.collisions).toEqual([]);
   });
 
   test("VpkTool.list() falla para UN addon -> se excluye best-effort, el resto se calcula igual", async () => {

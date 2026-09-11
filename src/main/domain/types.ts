@@ -478,9 +478,13 @@ export interface MergePreview {
  *
  *  - `kind: "ready"` — se pudo calcular el preview (con o sin addons
  *    `unavailable`, ver {@link MergePreview}).
- *  - `kind: "addon-missing"` — `addonId` no aparece en el escaneo de la
- *    Workshop_Folder (desuscrito o borrado); no hay nada que previsualizar
- *    para ese Active_Set candidato tal cual está.
+ *  - `kind: "addon-missing"` — (OBSOLETO desde BUG-001) NINGÚN productor lo
+ *    emite ya: `previewActiveSet` dejó de escanear la Workshop para detectar
+ *    el faltante y ahora deriva el `vpkPath` directo, dejando que un addon
+ *    desuscrito/borrado caiga en `unavailable` (su `VpkTool.list()` falla). Se
+ *    conserva la variante en el tipo para no forzar un cambio simultáneo en el
+ *    renderer; un consumidor puede quitar su branch de `addon-missing` cuando
+ *    quiera, es inalcanzable. Los faltantes hoy se ven en `MergePreview.unavailable`.
  */
 export type ActiveSetPreview =
   | ({ kind: "ready" } & MergePreview)
@@ -502,6 +506,14 @@ export type ActiveSetPreview =
  *    llegó a ejecutarse. El `OperationResult` final ya comunica esos desenlaces.
  *  - `"done"` se emite JUSTO ANTES de retornar un `status: "success"` (tras
  *    persistir el manifest), como señal de operación completada con éxito.
+ *  - `"restarting"` (BUG-004) lo emite ElevationService JUSTO ANTES del relanzo
+ *    `runas`, cuando una escritura va a elevar y la instancia actual se va a
+ *    cerrar. Es la señal para que la UI del renderer todavía vivo cambie su
+ *    mensaje ("Reiniciando con permisos de administrador...") en vez de quedar
+ *    congelada en el paso anterior antes del cierre. A diferencia del resto de
+ *    los steps (emitidos por el MergeOrchestrator), este lo emite el
+ *    ElevationService por el MISMO canal `onProgress` (el composition root le
+ *    inyecta el mismo broadcaster).
  *  - En el resume de la instancia elevada NO se emiten `"guard"` (no chequea
  *    ProcessGuard) ni `"elevation"` (ya está elevada): la secuencia arranca en
  *    `"scan"`.
@@ -515,6 +527,7 @@ export interface MergeProgressEvent {
     | "guard"
     | "scan"
     | "elevation"
+    | "restarting"
     | "backup"
     | "merge"
     | "install"

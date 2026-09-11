@@ -21,6 +21,7 @@ import type {
   MergeProgressListener,
   PathDetector,
   ScannedAddon,
+  TitleCache,
   VScriptClassification,
   VScriptDetector,
 } from "../domain/index.js";
@@ -45,6 +46,19 @@ export interface IpcHandlersDeps {
    * resuelto, no lo recalcula por invocación.
    */
   getWillNeedElevation: () => boolean;
+  /**
+   * (BUG-004) Accesor al HECHO ESTÁTICO `isResuming` calculado en el arranque
+   * (ver `StartupOutcome.isResuming`, composition-root.ts): `true` si este
+   * proceso arrancó para resumir una sesión pendiente. Fijo para toda la vida
+   * del proceso; el composition root lo cierra sobre el `outcome`.
+   */
+  getIsResuming: () => boolean;
+  /**
+   * (BUG-001) Cache en memoria de títulos id->título. Lo POBLA el handler
+   * `addons:scan` cuando escanea (setMany), y el handler `addons:titles` lo LEE
+   * (snapshot). Compartido por el composition root entre ambos.
+   */
+  titleCache: TitleCache;
   /**
    * Handoff de elevación: se invoca cuando una operación de escritura resuelve
    * `status: "elevating"` (se relanzó una instancia elevada vía UAC). El
@@ -182,7 +196,11 @@ export function registerIpcHandlers(
         "Rutas no detectadas: invocá 'paths:detect' antes de escanear addons.",
       );
     }
-    return deps.addonScanner.scan(paths.workshopFolder);
+    const scanned = await deps.addonScanner.scan(paths.workshopFolder);
+    // (BUG-001) Poblar el cache de títulos con este escaneo, para que el panel
+    // "Activos"/preview resuelvan id->título SIN re-escanear la Workshop.
+    deps.titleCache.setMany(scanned);
+    return scanned;
   });
 
   ipcMain.handle(
@@ -218,4 +236,8 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.getResumeState, () => deps.getResumeState());
 
   ipcMain.handle(IPC_CHANNELS.willNeedElevation, () => deps.getWillNeedElevation());
+
+  ipcMain.handle(IPC_CHANNELS.isResuming, () => deps.getIsResuming());
+
+  ipcMain.handle(IPC_CHANNELS.getTitles, () => deps.titleCache.snapshot());
 }

@@ -5,6 +5,7 @@ import {
   registerIpcHandlers,
 } from "../src/main/app/ipc-handlers.js";
 import { IPC_CHANNELS } from "../src/main/app/ipc-contract.js";
+import { TitleCache } from "../src/main/domain/index.js";
 import type { IpcMain } from "electron";
 import type { IpcHandlersDeps } from "../src/main/app/ipc-handlers.js";
 import type { ResumeState } from "../src/main/app/ipc-contract.js";
@@ -117,6 +118,8 @@ interface Doubles {
   /** Cuenta las invocaciones de onElevatedHandoff (fix del cierre de la instancia sin privilegios). */
   handoffCalls: { count: number };
   willNeedElevationValue: { value: boolean };
+  isResumingValue: { value: boolean };
+  titleCache: TitleCache;
   /** Si esta seteado, applyActiveSet devuelve ESTA promesa (para D4). */
   applyGate: { promise: Promise<OperationResult> } | null;
   /** Doble de classify configurable: por defecto resuelve sincrono. */
@@ -138,6 +141,8 @@ function buildDoubles(): Doubles {
     resumeValue: { value: null },
     handoffCalls: { count: 0 },
     willNeedElevationValue: { value: false },
+    isResumingValue: { value: false },
+    titleCache: new TitleCache(),
     applyGate: null,
     classifyImpl: {
       fn: (addon) => Promise.resolve(classification(addon.id)),
@@ -184,6 +189,8 @@ function buildDoubles(): Doubles {
     } as IpcHandlersDeps["mergeOrchestrator"],
     getResumeState: () => d.resumeValue.value,
     getWillNeedElevation: () => d.willNeedElevationValue.value,
+    getIsResuming: () => d.isResumingValue.value,
+    titleCache: d.titleCache,
     onElevatedHandoff: () => {
       d.handoffCalls.count++;
     },
@@ -298,6 +305,39 @@ describe("IPC — ruteo canal->componente (ocho canales)", () => {
     // true.
     d.willNeedElevationValue.value = true;
     expect(await ipc.invoke(IPC_CHANNELS.willNeedElevation)).toBe(true);
+  });
+
+  test("activeSet:isResuming llama getIsResuming() y devuelve su resultado", async () => {
+    const { ipc, d } = setup();
+    // false (caso por defecto).
+    expect(await ipc.invoke(IPC_CHANNELS.isResuming)).toBe(false);
+    // true.
+    d.isResumingValue.value = true;
+    expect(await ipc.invoke(IPC_CHANNELS.isResuming)).toBe(true);
+  });
+
+  test("addons:scan puebla el TitleCache; addons:titles devuelve el snapshot (BUG-001)", async () => {
+    const { ipc, d } = setup();
+    // Scanner que devuelve addons CON título (el `scanned()` por defecto trae
+    // info:null, que no cachearía nada).
+    d.deps.addonScanner.scan = () =>
+      Promise.resolve([
+        { id: "111", vpkPath: "111.vpk", coverPath: null, info: { title: "Mapa Cool" } },
+        { id: "222", vpkPath: "222.vpk", coverPath: null, info: { title: "Skin Nice" } },
+        { id: "333", vpkPath: "333.vpk", coverPath: null, info: null }, // sin título -> no se cachea
+      ]);
+
+    // Antes de escanear: cache vacío.
+    expect(await ipc.invoke(IPC_CHANNELS.getTitles)).toEqual({});
+
+    await ipc.invoke(IPC_CHANNELS.scanAddons);
+
+    // Tras escanear: solo los que tenían título; 333 (sin título) NO aparece
+    // (el consumidor cae al fallback de id crudo).
+    expect(await ipc.invoke(IPC_CHANNELS.getTitles)).toEqual({
+      "111": "Mapa Cool",
+      "222": "Skin Nice",
+    });
   });
 });
 

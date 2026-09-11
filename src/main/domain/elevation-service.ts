@@ -155,6 +155,7 @@ import type { LocalStore } from "./local-store.js";
 import type {
   AddonManifestEntry,
   ElevationOutcome,
+  MergeProgressListener,
   PendingOperation,
 } from "./types.js";
 
@@ -265,10 +266,26 @@ export function isPermissionError(error: NodeJS.ErrnoException): boolean {
 export class ElevationServiceImpl implements ElevationService {
   readonly #os: ElevationOsProvider;
   readonly #store: LocalStore;
+  /**
+   * Listener OPCIONAL de progreso (BUG-004). Si se inyecta, `relaunchElevated`
+   * emite `{ step: "restarting" }` JUSTO ANTES del relanzo `runas` (y por ende
+   * antes de que esta instancia se cierre), para que la UI del renderer todavía
+   * vivo avise el reinicio en vez de quedar congelada. Se inyecta el MISMO
+   * broadcaster que consume el MergeOrchestrator (composition root), así el
+   * evento viaja por el canal `merge:onProgress` ya existente. Si no se provee,
+   * el servicio se comporta idéntico (no emite nada) — mismo criterio de
+   * opcionalidad que `MergeOrchestratorDeps.onProgress`.
+   */
+  readonly #onProgress: MergeProgressListener | undefined;
 
-  constructor(os: ElevationOsProvider, store: LocalStore) {
+  constructor(
+    os: ElevationOsProvider,
+    store: LocalStore,
+    onProgress?: MergeProgressListener,
+  ) {
     this.#os = os;
     this.#store = store;
+    this.#onProgress = onProgress;
   }
 
   /**
@@ -372,6 +389,13 @@ export class ElevationServiceImpl implements ElevationService {
     // el LocalStore, no desde los args. `entries` puede ser [] (Active_Set
     // candidato intencionalmente vacío; ver DECISIÓN 5 de local-store.ts).
     this.#store.savePendingSession([...entries]);
+    // BUG-004: avisar al renderer todavía vivo JUSTO ANTES del relanzo `runas`
+    // (que dispara el prompt UAC y, tras aceptarse, lleva al cierre de esta
+    // instancia). Emitir acá y no después es deliberado: una vez que `runas`
+    // relanza y la instancia se cierra, ya no hay renderer al que avisarle. El
+    // evento viaja por el mismo canal de progreso; si no hay listener inyectado,
+    // es un no-op.
+    this.#onProgress?.({ step: "restarting" });
     const outcome = await this.#os.relaunchAsAdmin(pending);
     if (outcome === "cancelled") {
       return { kind: "denied", reason: "El usuario canceló el prompt de UAC." };

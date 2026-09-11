@@ -241,7 +241,7 @@ function makeStartupIo(argv: readonly string[] = []): StartupIo {
 }
 
 describe("runStartupSequence", () => {
-  test("(a) detect ready + sin flags de resume -> ready, persiste rutas, resumeState null", async () => {
+  test("(a) detect ready + sin flags de resume -> ready, persiste rutas, isResuming false", async () => {
     const detector = makeFakePathDetector({
       kind: "ready",
       paths: SAMPLE_PATHS,
@@ -265,10 +265,93 @@ describe("runStartupSequence", () => {
     expect(outcome.kind).toBe("ready");
     expect(base.localStore.getPaths()).toEqual(SAMPLE_PATHS);
     if (outcome.kind === "ready") {
-      expect(outcome.resumeState).toBeNull();
+      // (BUG-004, A1) Sin flags de resume: isResuming false, readResumeState null,
+      // y runResume es un no-op que no toca el estado.
+      expect(outcome.isResuming).toBe(false);
+      expect(outcome.readResumeState()).toBeNull();
+      await outcome.runResume();
+      expect(outcome.readResumeState()).toBeNull();
     }
   });
 
+  test("(c) detect ready + flags de resume + sesion pendiente -> isResuming true, resumeState en curso (result null) ANTES de runResume", async () => {
+    const detector = makeFakePathDetector({
+      kind: "ready",
+      paths: SAMPLE_PATHS,
+      verification: {
+        present: {
+          gameRoot: true,
+          workshopFolder: true,
+          vpkToolPath: true,
+          gameInfoFile: true,
+          modsvsFolder: true,
+        },
+        missing: [],
+        allPresent: true,
+      },
+      source: "auto",
+    });
+    const base = makeBaseWith(detector);
+    // Sembrar una sesion pendiente en el LocalStore real (:memory:) para que
+    // isResuming (parseResumeArgs + getPendingSession != null) de true.
+    base.localStore.savePendingSession([{ addonId: "111", priorityOrder: 0 }]);
+
+    const argv = ["--l4d2-resume-type", "applyActiveSet", "--l4d2-resume-handle", "H1"];
+    const outcome = await runStartupSequence(base, makeStartupIo(argv));
+
+    expect(outcome.kind).toBe("ready");
+    if (outcome.kind === "ready") {
+      // HECHO ESTATICO: arranco para resumir.
+      expect(outcome.isResuming).toBe(true);
+      // A1: el resume NO corrio en el startup; el estado esta "en curso"
+      // (result null) hasta que main.ts dispare runResume tras crear la ventana.
+      const state = outcome.readResumeState();
+      expect(state).not.toBeNull();
+      expect(state?.result).toBeNull();
+    }
+  });
+  test("(d) BUG-004: si runResume lanza (scan de Workshop inexistente), readResumeState queda con result failure, NO null", async () => {
+    const detector = makeFakePathDetector({
+      kind: "ready",
+      paths: SAMPLE_PATHS,
+      verification: {
+        present: {
+          gameRoot: true,
+          workshopFolder: true,
+          vpkToolPath: true,
+          gameInfoFile: true,
+          modsvsFolder: true,
+        },
+        missing: [],
+        allPresent: true,
+      },
+      source: "auto",
+    });
+    const base = makeBaseWith(detector);
+    // Sesion pendiente sembrada -> isResuming true. El AddonScanner real va a
+    // intentar leer SAMPLE_PATHS.workshopFolder (ruta ficticia inexistente) y
+    // LANZAR (ENOENT), ejercitando el catch de runResume.
+    base.localStore.savePendingSession([{ addonId: "111", priorityOrder: 0 }]);
+
+    const argv = ["--l4d2-resume-type", "applyActiveSet", "--l4d2-resume-handle", "H1"];
+    const outcome = await runStartupSequence(base, makeStartupIo(argv));
+
+    expect(outcome.kind).toBe("ready");
+    if (outcome.kind === "ready") {
+      expect(outcome.isResuming).toBe(true);
+      // Antes de runResume: en curso (result null).
+      expect(outcome.readResumeState()?.result).toBeNull();
+
+      // runResume NO debe rechazar (el catch interno traga la excepcion).
+      await expect(outcome.runResume()).resolves.toBeUndefined();
+
+      // Tras runResume: resultado TERMINAL de fallo, NO null (el renderer puede
+      // salir de "Restaurando..." con un error en vez de colgarse).
+      const state = outcome.readResumeState();
+      expect(state).not.toBeNull();
+      expect(state?.result?.status).toBe("failure");
+    }
+  });
   test("(b) detect needs-manual -> fatal con reason, no persiste nada", async () => {
     const detector = makeFakePathDetector({
       kind: "needs-manual",

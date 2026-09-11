@@ -37,6 +37,10 @@ const api: L4d2Api = {
     ipcRenderer.invoke(IPC_CHANNELS.getResumeState) as Promise<ResumeState | null>,
   willNeedElevation: () =>
     ipcRenderer.invoke(IPC_CHANNELS.willNeedElevation) as Promise<boolean>,
+  isResuming: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.isResuming) as Promise<boolean>,
+  getTitles: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.getTitles) as Promise<Record<string, string>>,
   onProgress: (listener) => {
     const handler = (_event: unknown, payload: MergeProgressEvent): void =>
       listener(payload);

@@ -241,6 +241,35 @@ describe("ElevationService.relaunchElevated", () => {
     expect(store.savedEntries).toEqual(ENTRIES);
   });
 
+  test("BUG-004: emite `restarting` por onProgress ANTES del relanzo (y tras persistir)", async () => {
+    const store = new MockStore();
+    const os = new OrderTrackingOsProvider(store);
+    // El listener registra el evento en el MISMO log de orden que store/os, para
+    // probar la secuencia relativa: persistir -> avisar restarting -> relanzar.
+    const service = new ElevationServiceImpl(os, store, (event) => {
+      store.events.push("progress:" + event.step);
+    });
+
+    await service.relaunchElevated(PENDING, ENTRIES);
+
+    expect(store.events).toEqual([
+      "savePendingSession",
+      "progress:restarting",
+      "relaunchAsAdmin",
+    ]);
+  });
+
+  test("sin onProgress inyectado, relaunchElevated se comporta igual (no emite, no rompe)", async () => {
+    const store = new MockStore();
+    const os = new OrderTrackingOsProvider(store);
+    const service = new ElevationServiceImpl(os, store); // sin 3er arg
+
+    const outcome = await service.relaunchElevated(PENDING, ENTRIES);
+
+    expect(outcome).toEqual({ kind: "elevated-handoff" });
+    expect(store.events).toEqual(["savePendingSession", "relaunchAsAdmin"]);
+  });
+
   test("persiste incluso con entries vacío (candidato intencionalmente vacío)", async () => {
     const store = new MockStore();
     const os = new MockOsProvider({ relaunchResult: "launched" });

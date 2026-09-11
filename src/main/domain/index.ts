@@ -137,6 +137,7 @@ export type {
 // (`extractAddonInfo`), expuesto para poder testearlo aislado (tarea 6.1).
 // ---------------------------------------------------------------------------
 export { AddonScanner } from "./addon-scanner.js";
+export { TitleCache } from "./title-cache.js";
 export type { AddonFileSystem, DirEntry } from "./addon-scanner.js";
 export { extractAddonInfo } from "./addoninfo-extract.js";
 
