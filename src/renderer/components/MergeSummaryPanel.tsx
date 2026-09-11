@@ -1,4 +1,5 @@
 import type { ApplyState, PreviewState } from "./ActiveSetPanel.js";
+import { LoadingIndicator } from "./LoadingIndicator.js";
 import styles from "./MergeSummaryPanel.module.css";
 
 interface MergeSummaryPanelProps {
@@ -29,9 +30,7 @@ export function MergeSummaryPanel({
       <h2 className={styles.heading}>Resumen de fusion</h2>
       <p className={styles.line}>{entryCount} addon(s) en la cadena.</p>
 
-      {previewState.phase === "loading" && (
-        <p className={styles.message}>Calculando preview...</p>
-      )}
+      {previewState.phase === "loading" && <LoadingIndicator message="Calculando preview..." />}
       {previewState.phase === "error" && (
         <p className={styles.error}>Error de preview: {previewState.message}</p>
       )}

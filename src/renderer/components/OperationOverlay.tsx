@@ -5,8 +5,16 @@ import styles from "./OperationOverlay.module.css";
 
 export type OperationKind = "apply" | "add" | "remove";
 
+/**
+ * `label` en el evento "start" es OPCIONAL y pisa el texto fijo de
+ * `RUNNING_LABELS` para ese `kind` (BUG-002, agregado en lote desde
+ * Biblioteca): "Agregando addon..." no tiene sentido cuando la operacion en
+ * curso son N addons a la vez, y `RUNNING_LABELS` es un `Record` estatico que
+ * no puede llevar el conteo. Los llamadores existentes (apply/add/remove de a
+ * uno) no lo pasan y siguen mostrando el texto fijo de siempre.
+ */
 export type OperationEvent =
-  | { type: "start"; kind: OperationKind }
+  | { type: "start"; kind: OperationKind; label?: string }
   | { type: "result"; kind: OperationKind; result: OperationResult };
 
 type OperationListener = (event: OperationEvent) => void;
@@ -59,7 +67,7 @@ export function getWillNeedElevation(): Promise<boolean> {
 /** Estado local del overlay (union discriminada por `phase`, mismo estilo que el resto de la UI). */
 type OverlayState =
   | { phase: "hidden" }
-  | { phase: "running"; kind: OperationKind }
+  | { phase: "running"; kind: OperationKind; label?: string }
   | { phase: "result"; kind: OperationKind; result: OperationResult };
 
 const RUNNING_LABELS: Record<OperationKind, string> = {
@@ -88,7 +96,11 @@ export function OperationOverlay() {
   useEffect(() => {
     return subscribeOperation((event) => {
       if (event.type === "start") {
-        setState({ phase: "running", kind: event.kind });
+        setState(
+          event.label === undefined
+            ? { phase: "running", kind: event.kind }
+            : { phase: "running", kind: event.kind, label: event.label },
+        );
       } else {
         setState({ phase: "result", kind: event.kind, result: event.result });
       }
@@ -103,7 +115,7 @@ export function OperationOverlay() {
     <div className={styles.backdrop}>
       <div className={styles.modal}>
         {state.phase === "running" && (
-          <p className={styles.message}>{RUNNING_LABELS[state.kind]}</p>
+          <p className={styles.message}>{state.label ?? RUNNING_LABELS[state.kind]}</p>
         )}
 
         {state.phase === "result" && state.result.status === "success" && (

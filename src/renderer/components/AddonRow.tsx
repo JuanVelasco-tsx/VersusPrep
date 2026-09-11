@@ -2,73 +2,73 @@ import { useEffect, useState } from "react";
 
 import type { OperationResult, ScannedAddon, VScriptClassification } from "../../main/domain/index.js";
 import { AddonCover } from "./AddonCover.js";
-import { getWillNeedElevation, publishOperation, subscribeOperation } from "./OperationOverlay.js";
+import {
+  getWillNeedElevation,
+  publishOperation,
+  subscribeOperation,
+  type OperationKind,
+} from "./OperationOverlay.js";
 import styles from "./AddonRow.module.css";
 
 /**
  * Una fila de la lista de addons (Bloque 2, Tarea 21.1; conexion al backend en
- * 21.2). `classification` es `"pending"` mientras `classifyVScript` todavia no
- * resolvio para este addon - un tercer estado, distinto de "bloqueado" y de
- * "permitido" (AC 3.6-3.8: no se puede advertir ni permitir sobre una
- * clasificacion que no se conoce).
+ * 21.2; reescrita en BUG-002 para selección múltiple). `classification` es
+ * `"pending"` mientras `classifyVScript` todavia no resolvio para este addon -
+ * un tercer estado, distinto de "bloqueado" y de "permitido" (AC 3.6-3.8: no
+ * se puede advertir ni permitir sobre una clasificacion que no se conoce).
  *
- * El checkbox "Incluir" mantiene `included` como estado LOCAL para feedback
- * optimista inmediato, y al cambiar dispara la operacion real contra el backend
- * (`addAddon`/`removeAddon` del preload). Integracion DESACOPLADA (opcion B, ver
- * Context/05-plan-seccion-21-restante.md): la fila NO comparte estado con el
- * panel "Activos" de 21.2; cada uno lee/muta el Active_Set por su cuenta (el
- * panel refetchea `getActiveSet()` cuando se muestra). El gate de "Forzar
- * inclusion" (VScript) sigue siendo estado efimero local: solo habilita el
- * checkbox, no persiste ninguna marca de forzado (AC 3.7/3.8).
+ * DESACOPLE REVISADO (BUG-002): `included` YA NO es estado local optimista -
+ * es un prop controlado por `AddonList` (su fuente de verdad es `getActiveSet()`,
+ * la MISMA llamada IPC que usa `ActiveSetPanel`), para que Biblioteca y Activos
+ * nunca puedan desincronizarse (la causa raiz del bug de QA era exactamente que
+ * el checkbox no leia el Active_Set persistido al montar). El checkbox de una
+ * fila YA incluida queda tildado y DESHABILITADO; sacarla del Active_Set es una
+ * accion inmediata aparte ("Quitar"). Para una fila NO incluida, el checkbox
+ * vuelve a ser puramente de SELECCION (`selected`, tambien controlado por el
+ * padre) - tildarlo NO dispara ninguna IPC; `AddonList` es quien agrega todos
+ * los seleccionados de una sola accion ("Agregar a Activos"), reemplazando el
+ * flujo de a-uno-por-click que tenia esta fila antes.
  *
- * DECISION (priorityOrder de addAddon): `addAddon(addonId, priorityOrder)` exige
- * un `priorityOrder`, pero esta fila -por el desacople de la opcion B- NO conoce
- * el Active_Set actual y no puede calcular la posicion real. Se pasa `Date.now()`
- * como orden monotono creciente: deja el addon recien agregado al FINAL del
- * Priority_Order (el orquestador ordena ascendente por `priorityOrder`, y hace
- * UPSERT por addonId, ver MergeOrchestrator DECISION 4). El reordenamiento fino
- * es responsabilidad del panel de 21.2, no de este checkbox.
+ * El gate de "Forzar inclusion" (VScript) sigue siendo estado efimero local:
+ * solo habilita el checkbox, no persiste ninguna marca de forzado (AC 3.7/3.8).
+ * Forzar sigue siendo una accion INMEDIATA de a una (requiere el dialogo de
+ * confirmacion por addon), no pasa por la seleccion en lote.
  */
 interface AddonRowProps {
   addon: ScannedAddon;
   classification: VScriptClassification | "pending";
+  /** `true` si este addon ya esta en el Active_Set persistido (fuente: `AddonList`, mismo `getActiveSet()` que `ActiveSetPanel`). */
+  included: boolean;
+  /** `true` si esta fila esta marcada para el agregado en lote (solo relevante cuando `included` es `false`). */
+  selected: boolean;
+  /** Notifica al padre un cambio de seleccion (checkbox de una fila NO incluida). */
+  onToggleSelect: (addonId: string, next: boolean) => void;
+  /** Notifica al padre que este addon se agrego con exito (fuera del lote: via "Forzar inclusion"). */
+  onAdded: (addonId: string) => void;
+  /** Notifica al padre que este addon se quito con exito (boton "Quitar"). */
+  onRemoved: (addonId: string) => void;
 }
 
-/** Traduce un OperationResult no-exitoso a un mensaje corto para la fila. */
-function errorMessageFor(result: OperationResult): string | null {
-  if (result.status === "success") return null;
-  // "elevating": la operacion se cedio a una instancia elevada; el feedback
-  // detallado es de 21.4. Para la fila alcanza con no revertir el checkbox.
-  if (result.status === "elevating") return null;
-  return result.error;
-}
-
-export function AddonRow({ addon, classification }: AddonRowProps) {
+export function AddonRow({
+  addon,
+  classification,
+  included,
+  selected,
+  onToggleSelect,
+  onAdded,
+  onRemoved,
+}: AddonRowProps) {
   const [forced, setForced] = useState(false);
-  const [included, setIncluded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [otherOperationRunning, setOtherOperationRunning] = useState(false);
 
-  // Guard contra una operacion de OTRO origen en curso (Seccion 21.4). Escenario
-  // real que motiva esto: el usuario dispara "Aplicar" en el panel Activos
-  // (ActiveSetPanel), cambia a la vista Biblioteca ANTES de que el apply resuelva
-  // -ActiveSetPanel se desmonta pero su promesa de applyActiveSet sigue viva en el
-  // main- y clickea un checkbox de una fila mientras el apply todavia corre. Sin
-  // este guard, ese click dispararia un add/remove que competiria con el apply en
-  // vuelo (el backend lo rechazaria via operationInFlight, pero la UI mostraria un
-  // error confuso). Deshabilitando el checkbox mientras hay un "start" ajeno, la
-  // fila no deja iniciar esa operacion solapada.
-  //
-  // NO hace falta distinguir si el evento es de esta fila o de otra: ademas del
-  // "start" ajeno del apply de ActiveSetPanel, esta MISMA fila puede publicar su
-  // propio "start" cuando willNeedElevation es true (ver applyInclusion) - el
-  // pub-sub es a nivel de modulo (todas las filas reciben todo lo que se
-  // publica, incluida su propia fila). Un auto-bloqueo asi es inofensivo: la
-  // fila que originó ese "start" ya está deshabilitada por su propio `busy`
-  // (seteado sincrono antes de publicar nada), asi que `otherOperationRunning`
-  // en `true` sobre ESA fila no cambia nada visible - solo importa para las
-  // OTRAS filas, que es el caso real que este guard debe cubrir.
+  // Guard contra una operacion de OTRO origen en curso (Seccion 21.4, sigue
+  // vigente tras BUG-002): "Quitar" de esta fila, "Forzar inclusion" de esta
+  // fila, el agregado en lote de AddonList o "Aplicar" de ActiveSetPanel nunca
+  // deben solaparse - el backend los serializa via operationInFlight, pero sin
+  // este guard la UI mostraria un error confuso en vez de deshabilitar el
+  // control de entrada.
   useEffect(() => {
     return subscribeOperation((event) => {
       setOtherOperationRunning(event.type === "start");
@@ -83,70 +83,51 @@ export function AddonRow({ addon, classification }: AddonRowProps) {
   const title = info?.title ?? addon.id;
 
   /**
-   * Aplica el cambio de inclusion con feedback optimista: setea `included` al
-   * valor deseado YA (sincrono, antes de cualquier await - el flip visual del
-   * checkbox no se retrasa), invoca la IPC correspondiente, y si falla revierte
-   * al valor previo y muestra el error minimo en la fila. `elevating` no se
-   * trata como fallo (no se revierte): la instancia elevada completara la
-   * operacion.
-   *
-   * Aviso previo a UAC (Seccion 21.4/9.2): si `getWillNeedElevation()` (cacheado
-   * por sesion) dice que esta operacion probablemente va a pedir elevacion, se
-   * publica "start" al overlay ANTES de llamar a addAddon/removeAddon, para que
-   * el usuario vea el aviso ANTES de que aparezca el dialogo nativo de UAC. Es
-   * CONDICIONAL a proposito: publicar "start" siempre pondria el overlay
-   * bloqueante en cada click de checkbox, deshaciendo el feedback optimista sin
-   * bloqueo que se decidio preservar en 21.2/21.4 - la gran mayoria de los
-   * clicks no necesita elevar y sigue exactamente como antes (optimista, sin
-   * overlay hasta el resultado).
-   *
-   * HUECO CONOCIDO Y ACEPTADO: `willNeedElevation` es la heuristica PROACTIVA
-   * (path + probe write, calculada una vez al arranque - ver composition-root.ts).
-   * El camino REACTIVO de respaldo (`#writeStep`/`handleWriteFailure` en
-   * MergeOrchestrator, para cuando esa heuristica se equivoca - p. ej. una
-   * biblioteca de Steam en otro disco con permisos restringidos) puede disparar
-   * elevacion igual aunque este flag haya dicho `false`. En ese caso puntual NO
-   * habria "start" previo (el aviso temprano se lo pierde), pero el "result"
-   * final con status "elevating" SI se publica igual (ver mas abajo) - el
-   * usuario ve el aviso de reinicio, solo que no el de "esto va a pedir UAC"
-   * antes del dialogo. No se resuelve en este cambio.
+   * Ejecuta una escritura inmediata (add/remove de a UNO: "Quitar" y "Forzar
+   * inclusion") con el mismo aviso previo a UAC que ya tenia `applyInclusion`
+   * (Seccion 21.4/9.2): si `getWillNeedElevation()` dice que esta operacion
+   * probablemente va a pedir elevacion, se publica "start" al overlay ANTES de
+   * invocar la IPC. `onSuccess` es quien actualiza el estado compartido en
+   * `AddonList` (`activeIds`) - esta fila ya no mantiene su propio `included`
+   * optimista (ver DESACOPLE REVISADO arriba).
    */
-  const applyInclusion = async (next: boolean): Promise<void> => {
-    const previous = included;
-    setIncluded(next);
+  const runWrite = async (
+    kind: OperationKind,
+    invoke: () => Promise<OperationResult>,
+    onSuccess: () => void,
+  ): Promise<void> => {
     setError(null);
     setBusy(true);
-
-    const kind = next ? "add" : "remove";
     if (await getWillNeedElevation()) {
       publishOperation({ type: "start", kind });
     }
+    try {
+      const result = await invoke();
+      if (result.status === "elevating") {
+        // La instancia sin privilegios se va a cerrar; el overlay avisa el
+        // reinicio (mismo criterio que antes). No hay nada mas que actualizar
+        // en esta fila.
+        publishOperation({ type: "result", kind, result });
+        return;
+      }
+      if (result.status === "failure") {
+        setError(result.error);
+        return;
+      }
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error desconocido.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
-    const call = next
-      ? window.l4d2Api.addAddon(addon.id, Date.now())
-      : window.l4d2Api.removeAddon(addon.id);
-    call
-      .then((result) => {
-        // "elevating": la operacion se cedio a una instancia elevada y la app se
-        // va a reiniciar. Se publica al overlay global (montado en App.tsx) para
-        // que avise; NO se publica en success/failure (esos siguen con el feedback
-        // optimista + inline de la fila, sin overlay). Esto se publica SIEMPRE que
-        // el resultado sea "elevating", haya habido "start" previo o no (ver
-        // HUECO CONOCIDO arriba).
-        if (result.status === "elevating") {
-          publishOperation({ type: "result", kind, result });
-        }
-        const message = errorMessageFor(result);
-        if (message !== null) {
-          setIncluded(previous);
-          setError(message);
-        }
-      })
-      .catch((err: unknown) => {
-        setIncluded(previous);
-        setError(err instanceof Error ? err.message : "Error desconocido.");
-      })
-      .finally(() => setBusy(false));
+  const handleRemove = (): void => {
+    void runWrite(
+      "remove",
+      () => window.l4d2Api.removeAddon(addon.id),
+      () => onRemoved(addon.id),
+    );
   };
 
   const handleForce = (): void => {
@@ -156,7 +137,11 @@ export function AddonRow({ addon, classification }: AddonRowProps) {
     );
     if (confirmed) {
       setForced(true);
-      void applyInclusion(true);
+      void runWrite(
+        "add",
+        () => window.l4d2Api.addAddon(addon.id, Date.now()),
+        () => onAdded(addon.id),
+      );
     }
   };
 
@@ -179,13 +164,23 @@ export function AddonRow({ addon, classification }: AddonRowProps) {
         <label className={styles.includeLabel}>
           <input
             type="checkbox"
-            checked={included}
-            disabled={isPending || blocked || busy || otherOperationRunning}
-            onChange={(event) => void applyInclusion(event.target.checked)}
+            checked={included || selected}
+            disabled={included || isPending || blocked || busy || otherOperationRunning}
+            onChange={(event) => onToggleSelect(addon.id, event.target.checked)}
           />
-          Incluir
+          {included ? "Incluido" : "Seleccionar"}
         </label>
-        {!isPending && isVScript && !forced && (
+        {included && (
+          <button
+            type="button"
+            className={styles.removeButton}
+            disabled={busy || otherOperationRunning}
+            onClick={handleRemove}
+          >
+            Quitar
+          </button>
+        )}
+        {!included && !isPending && isVScript && !forced && (
           <button type="button" className={styles.forceButton} onClick={handleForce}>
             Forzar inclusión
           </button>

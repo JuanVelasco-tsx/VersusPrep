@@ -6,6 +6,7 @@ import type {
   OperationResult,
   ScannedAddon,
 } from "../../main/domain/index.js";
+import { LoadingIndicator } from "./LoadingIndicator.js";
 import { MergeSummaryPanel } from "./MergeSummaryPanel.js";
 import { publishOperation } from "./OperationOverlay.js";
 import { PriorityRow, type CollisionSummary } from "./PriorityRow.js";
@@ -125,7 +126,17 @@ function buildCollisionSummaries(
  * no comparte estado con la biblioteca, refetchea su propio `getActiveSet()`
  * cada vez que se muestra.
  */
-export function ActiveSetPanel() {
+interface ActiveSetPanelProps {
+  /**
+   * `true` si esta instancia arranco por un relanzo elevado con una sesion
+   * pendiente (BUG-004 parte 2, ver el mismo prop en `AddonList`). Cambia el
+   * mensaje de carga inicial a uno de continuidad ("Restaurando tu
+   * selección...") en vez del texto tecnico habitual.
+   */
+  resuming: boolean;
+}
+
+export function ActiveSetPanel({ resuming }: ActiveSetPanelProps) {
   const [loadState, setLoadState] = useState<LoadState>({ phase: "loading" });
   const [entries, setEntries] = useState<AddonManifestEntry[]>([]);
   const [previewState, setPreviewState] = useState<PreviewState>({ phase: "idle" });
@@ -263,7 +274,11 @@ export function ActiveSetPanel() {
   };
 
   if (loadState.phase === "loading") {
-    return <p className={styles.message}>Cargando Active_Set...</p>;
+    return (
+      <LoadingIndicator
+        message={resuming ? "Restaurando tu selección..." : "Cargando Active_Set..."}
+      />
+    );
   }
 
   if (loadState.phase === "error") {

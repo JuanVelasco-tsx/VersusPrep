@@ -23,3 +23,71 @@
 .retryButton:hover {
   background: #324a5a;
 }
+
+.selectAllBar {
+  display: flex;
+  padding: 0 12px 8px;
+}
+
+.selectAllLabel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #cfcfcf;
+  cursor: pointer;
+}
+
+.bulkBar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #202020;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+}
+
+.bulkCount {
+  font-size: 13px;
+  color: #cfcfcf;
+  margin-right: auto;
+}
+
+.bulkClearButton {
+  font-size: 13px;
+  background: transparent;
+  color: #cfcfcf;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.bulkClearButton:hover {
+  background: #2a2a2a;
+}
+
+.bulkAddButton {
+  font-size: 13px;
+  font-weight: 600;
+  background: #2a4a2a;
+  color: #d0f0d0;
+  border: 1px solid #3a6a3a;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.bulkAddButton:hover {
+  background: #325a32;
+}
+
+.bulkClearButton:disabled,
+.bulkAddButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
