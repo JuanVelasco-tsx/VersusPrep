@@ -4,7 +4,6 @@ import type {
   ActiveSetPreview,
   AddonManifestEntry,
   OperationResult,
-  ScannedAddon,
 } from "../../main/domain/index.js";
 import { LoadingIndicator } from "./LoadingIndicator.js";
 import { MergeSummaryPanel } from "./MergeSummaryPanel.js";
@@ -17,8 +16,16 @@ const PREVIEW_DEBOUNCE_MS = 350;
 /**
  * Estado de carga inicial del panel (misma union discriminada por `phase` que
  * `AddonList`). Carga `getActiveSet()` (Active_Set persistido) y
- * `scanAddons()` en paralelo: el segundo solo se usa para resolver titulos
+ * `getTitles()` en paralelo: el segundo solo se usa para resolver titulos
  * legibles por `addonId` (esta pantalla no necesita nada mas del escaneo).
+ *
+ * CORRECCION post-QA (BUG-001, mitad backend cerrada por Kiro): antes esto
+ * llamaba `scanAddons()` completo solo para resolver nombres - pagaba el
+ * costo entero del escaneo de la Workshop_Folder (12-17s con ~73 addons,
+ * P-23) nada mas que para mostrar titulos en "Activos". `getTitles()` es un
+ * snapshot EN MEMORIA (`TitleCache`) de addonId->titulo, poblado por el
+ * ULTIMO `scanAddons()` completo que corrio en la sesion (tipicamente al
+ * abrir Biblioteca) - no dispara ningun escaneo nuevo, es lectura pura.
  */
 type LoadState =
   | { phase: "loading" }
@@ -84,10 +91,6 @@ function swap(entries: AddonManifestEntry[], i: number, j: number): AddonManifes
   return next;
 }
 
-function titleFor(addon: ScannedAddon): string {
-  return addon.info?.title ?? addon.id;
-}
-
 /**
  * Cuenta, por addonId, cuantos archivos gana/pierde en las colisiones del
  * preview actual (`FileCollision.winner` vs. `contributors`). Vacio si no hay
@@ -151,7 +154,7 @@ export function ActiveSetPanel({ resuming }: ActiveSetPanelProps) {
   }, []);
 
   // Guard contra el doble-montaje de StrictMode en dev (mismo patron que
-  // AddonList.tsx): sin esto, getActiveSet()+scanAddons() se disparan DOS
+  // AddonList.tsx): sin esto, getActiveSet()+getTitles() se disparan DOS
   // veces por cada apertura de la pestana "Activos" en dev.
   const hasStarted = useRef(false);
 
@@ -161,17 +164,21 @@ export function ActiveSetPanel({ resuming }: ActiveSetPanelProps) {
 
     async function load(): Promise<void> {
       try {
-        const [activeSet, scanned] = await Promise.all([
+        const [activeSet, titles] = await Promise.all([
           window.l4d2Api.getActiveSet(),
-          window.l4d2Api.scanAddons(),
+          window.l4d2Api.getTitles(),
         ]);
         if (!isMounted.current) return;
 
-        const titles: Record<string, string> = {};
-        for (const addon of scanned) {
-          titles[addon.id] = titleFor(addon);
-        }
-
+        // `titles` es el snapshot EN MEMORIA de TitleCache (ultimo scanAddons()
+        // completo de la sesion, tipicamente al abrir Biblioteca), no un
+        // resultado fresco - si un addonId no aparece ahi (el usuario abrio
+        // "Activos" sin haber pasado nunca por Biblioteca en esta sesion), NO
+        // se dispara ningun scanAddons()/extraccion para resolverlo: eso
+        // reintroduciria el costo completo que este cambio elimina. El
+        // fallback es mostrar el addonId crudo (mismo criterio que el `?? addon.id`
+        // que ya usaba `titleFor` cuando el addon no tenia `info.title`) - un
+        // nombre temporal peor que ideal, pero correcto y barato.
         setEntries(withSequentialPriority(sortedByPriority(activeSet)));
         setLoadState({ phase: "ready", titles });
       } catch (error) {
