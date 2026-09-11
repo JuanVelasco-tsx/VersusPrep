@@ -114,6 +114,8 @@ interface Doubles {
   addCalls: Array<{ addonId: string; priorityOrder: number }>;
   removeCalls: string[];
   resumeValue: { value: ResumeState | null };
+  /** Cuenta las invocaciones de onElevatedHandoff (fix del cierre de la instancia sin privilegios). */
+  handoffCalls: { count: number };
   /** Si esta seteado, applyActiveSet devuelve ESTA promesa (para D4). */
   applyGate: { promise: Promise<OperationResult> } | null;
   /** Doble de classify configurable: por defecto resuelve sincrono. */
@@ -133,6 +135,7 @@ function buildDoubles(): Doubles {
     addCalls: [],
     removeCalls: [],
     resumeValue: { value: null },
+    handoffCalls: { count: 0 },
     applyGate: null,
     classifyImpl: {
       fn: (addon) => Promise.resolve(classification(addon.id)),
@@ -178,6 +181,9 @@ function buildDoubles(): Doubles {
       },
     } as IpcHandlersDeps["mergeOrchestrator"],
     getResumeState: () => d.resumeValue.value,
+    onElevatedHandoff: () => {
+      d.handoffCalls.count++;
+    },
   };
 
   return d;
@@ -414,6 +420,46 @@ describe("IPC — D4: guard de escritura concurrente", () => {
 // D5 — precondicion de orden de uso en addons:scan.
 // ---------------------------------------------------------------------------
 
+describe("IPC — handoff de elevacion (cierre de la instancia sin privilegios)", () => {
+  // Helper: espera un turno de macrotask para que corra el setImmediate del handoff.
+  const flushImmediate = (): Promise<void> =>
+    new Promise((resolve) => setImmediate(resolve));
+
+  test("apply que resuelve status:elevating dispara onElevatedHandoff (una vez)", async () => {
+    const { ipc, d } = setup();
+    d.applyGate = { promise: Promise.resolve<OperationResult>({ status: "elevating" }) };
+
+    const res = (await ipc.invoke(
+      IPC_CHANNELS.applyActiveSet,
+      [{ addonId: "111", priorityOrder: 0 }],
+    )) as OperationResult;
+
+    // El valor de retorno viaja PRIMERO; el handoff esta diferido con setImmediate.
+    expect(res.status).toBe("elevating");
+    expect(d.handoffCalls.count).toBe(0);
+
+    await flushImmediate();
+    expect(d.handoffCalls.count).toBe(1);
+  });
+
+  test("apply exitoso NO dispara el handoff", async () => {
+    const { ipc, d } = setup();
+    // applyActiveSet por defecto resuelve { status: "success" }.
+    await ipc.invoke(IPC_CHANNELS.applyActiveSet, [{ addonId: "111", priorityOrder: 0 }]);
+    await flushImmediate();
+    expect(d.handoffCalls.count).toBe(0);
+  });
+
+  test("add que resuelve status:elevating tambien dispara el handoff", async () => {
+    const { ipc, d } = setup();
+    d.deps.mergeOrchestrator.addAddon = () =>
+      Promise.resolve<OperationResult>({ status: "elevating" });
+
+    await ipc.invoke(IPC_CHANNELS.addAddon, "555", 7);
+    await flushImmediate();
+    expect(d.handoffCalls.count).toBe(1);
+  });
+});
 describe("IPC — D5: scanAddons exige paths detectadas", () => {
   test("getPaths() == null -> rechaza y NO llama a scan", async () => {
     const { ipc, d } = setup();

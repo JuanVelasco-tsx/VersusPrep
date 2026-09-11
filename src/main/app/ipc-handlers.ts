@@ -38,6 +38,16 @@ export interface IpcHandlersDeps {
    * ciclo de vida son responsabilidad del composition root; acá solo se lee.
    */
   getResumeState: () => ResumeState | null;
+  /**
+   * Handoff de elevación: se invoca cuando una operación de escritura resuelve
+   * `status: "elevating"` (se relanzó una instancia elevada vía UAC). El
+   * composition root (main.ts) la implementa con `app.quit()` para CERRAR esta
+   * instancia sin privilegios, cumpliendo el "reemplazo total, no coexisten" del
+   * diseño (ElevationService, Decisión 1 del ciclo de vida; tarea 17.1). Este
+   * módulo NO conoce `app` (sigue importando electron solo como tipo); recibe la
+   * acción de cierre inyectada, igual que el resto de sus dependencias.
+   */
+  onElevatedHandoff: () => void;
 }
 
 /**
@@ -117,8 +127,30 @@ export function registerIpcHandlers(
     }
     operationInFlight = true;
     try {
-      return await run();
+      const result = await run();
+      // CUIDADO DE SECUENCIA (DECISIÓN): el handoff de elevación se programa
+      // recién DESPUÉS de tener el `result` listo, y se difiere con
+      // `setImmediate` para que este handler RETORNE primero — el valor de
+      // retorno es lo que `ipcMain.handle` serializa y envía al renderer por
+      // IPC. Si `app.quit()` (que dispara `onElevatedHandoff`) arrancara ANTES
+      // del return, se arriesga a que el reply nunca viaje. `app.quit()` no
+      // mata el proceso de inmediato (corre `before-quit`, que cierra la DB),
+      // pero igual se difiere para NO depender de ese timing implícito: el
+      // return sale en este tick, el quit arranca en el próximo.
+      if (result.status === "elevating") {
+        setImmediate(() => deps.onElevatedHandoff());
+      }
+      return result;
     } finally {
+      // RIESGO ACEPTADO: `operationInFlight` vuelve a `false` acá (síncrono, en
+      // este tick) ANTES de que corra el `setImmediate` del handoff (macrotask,
+      // próximo tick). En esa ventana de microsegundos, un segundo invoke de
+      // escritura podría colarse y disparar un segundo relanzamiento elevado
+      // antes de que `app.quit()` cierre esta instancia. Es irrealizable para un
+      // click humano (la ventana es del orden de microsegundos y la app ya está
+      // cerrándose), así que NO se bloquea: dejar `operationInFlight` en `true`
+      // hasta el quit real complicaría el flujo normal por un caso que no puede
+      // ganar una interacción humana. Se documenta como riesgo consciente.
       operationInFlight = false;
     }
   }

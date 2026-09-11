@@ -159,6 +159,13 @@ async function bootstrap(): Promise<void> {
     localStore: base.localStore,
     mergeOrchestrator: outcome.pathDependent.mergeOrchestrator,
     getResumeState,
+    // Handoff de elevación (fix del "reemplazo total, no coexisten" del diseño,
+    // ElevationService Decisión 1 / tarea 17.1): cuando una operación resuelve
+    // `status: "elevating"`, esta instancia SIN privilegios se cierra para ceder
+    // el trabajo a la instancia elevada ya relanzada. Se usa app.quit() (NO
+    // app.exit) para disparar el `before-quit` que cierra limpio la DB de
+    // better-sqlite3 (ver el `app.on("before-quit", () => db.close())` de arriba).
+    onElevatedHandoff: () => app.quit(),
   });
 
   app.on("activate", () => {
