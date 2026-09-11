@@ -49,7 +49,7 @@ El formato VPK no incluye manifiesto de dependencias estándar. Opciones:
 ### P-06 - Modelo de datos y persistencia local
 Datos a persistir: addons activos, presets, favoritos, metadatos (nombre, portada, descripción, categoría), cache de miniaturas, dependencias, y **manifiesto por addon** (qué paths aportó cada addon al paquete fusionado - necesario para quitar addons sin rehacer todo).
 
-**Decisión tomada (2026-09):** opción **(a)** - base de datos local con manifiesto por addon, para permitir operaciones incrementales. Motor concreto (SQLite vía better-sqlite3, Dexie, o JSON) aún por elegir.
+**Decisión tomada (2026-09):** opción **á** - base de datos local con manifiesto por addon, para permitir operaciones incrementales. Motor concreto (SQLite vía better-sqlite3, Dexie, o JSON) aún por elegir.
 
 ---
 
@@ -126,3 +126,8 @@ El panel "Resumen de fusión" del mockup de referencia (Claude Design, opción 2
 
 ### P-17 - Orden tsc→vite del preload sin guard automático
 El `"build"` y la pata de Electron de `"dev"` dependen de que `tsc -p tsconfig.json` corra ANTES que `vite build --config vite.preload.config.ts`, a propósito: `tsc` reemite un `dist/src/preload/preload.js` en ESM (porque `src/preload` sigue en el `include` de `tsconfig.json`, deliberado para no perder el typecheck del preload - ver historial del fix de la Sección 20), y el build de Vite lo sobreescribe con el CJS correcto. Ese orden hoy es una convención MANUAL documentada en comentarios, no algo que el propio script/CI haga cumplir. Un reordenamiento futuro del `&&` chain (accidental o por un formateador de `package.json`) reintroduciría en silencio el bug de preload ESM que esta sesión corrigió, y ni `npm run typecheck` ni `npm test` (mockean el dominio, nunca cargan un preload real en un Electron real) lo detectarían. Pendiente decidir un guard real: un chequeo post-build que falle si `dist/src/preload/preload.js` contiene `import`/`export` de nivel superior, o mover el preload fuera del `include` de `tsc` para eliminar la carrera de raíz.
+
+### P-22 - Selección múltiple de addons (bulk select)
+La Biblioteca solo permite incluir/excluir addons de a UNO, vía el checkbox "Incluir" de cada `AddonRow`. No hay Shift+clic (rango), Ctrl+clic (selección discontinua) ni un "seleccionar todos"/"limpiar selección" para operar en lote. Es un pedido de UX real (reportado en QA), pero NUNCA estuvo en el alcance de la Tarea 21.1 ni de ningún Requirement (los AC 2.6/3.6-3.8 hablan de mostrar, advertir y permitir/bloquear addons individualmente, no de selección masiva). Se registra como MEJORA FUTURA, no como bug: la funcionalidad de a-uno es correcta y completa para lo especificado.
+
+**No bloquea el resto de la Sección 21.** Si se retoma, evaluar: manejo de rango/multi-selección en `AddonList` (que hoy no mantiene estado de selección compartido - ver la integración desacoplada, opción B), y cómo se traduce un "incluir N addons a la vez" a las llamadas `addAddon` del backend (una por addon vs. una operación de lote nueva en el contrato IPC).
