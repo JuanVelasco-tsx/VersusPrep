@@ -212,7 +212,22 @@ export function parseResumeArgs(argv: readonly string[]): PendingOperation | nul
 // ---------------------------------------------------------------------------
 
 export type StartupOutcome =
-  | { kind: "ready"; pathDependent: PathDependentDomain; resumeState: ResumeState | null }
+  | {
+      kind: "ready";
+      pathDependent: PathDependentDomain;
+      resumeState: ResumeState | null;
+      /**
+       * `true` si esta sesion va a necesitar elevacion UAC en la primera
+       * escritura protegida (Seccion 21.4/9.2, aviso previo al dialogo nativo).
+       * Calculado UNA SOLA VEZ acá con la MISMA heurística que ya usa el camino
+       * PROACTIVO de `ElevationService` (`isElevated()` + `needsElevation`), no
+       * es un mecanismo nuevo — solo se adelanta al arranque porque `gameRoot`
+       * no cambia durante la sesión. Sigue siendo una OPTIMIZACIÓN: el camino
+       * REACTIVO (`#writeStep`/`handleWriteFailure` en `MergeOrchestrator`)
+       * sigue siendo la red de seguridad real si esta heurística se equivoca.
+       */
+      willNeedElevation: boolean;
+    }
   | { kind: "fatal"; message: string };
 
 export interface StartupIo {
@@ -245,6 +260,29 @@ export async function runStartupSequence(
   }
   base.localStore.savePaths(detection.paths);
 
+  // Chequeo barato UNA SOLA VEZ por sesion (Seccion 21.4/9.2): gameRoot no
+  // cambia mientras la app corre, asi que la MISMA heuristica que ya usa el
+  // camino proactivo de ElevationService (isElevated cacheado + needsElevation,
+  // path heuristica + probe write) alcanza para saber de antemano si el primer
+  // write protegido va a pedir UAC. Fallo seguro (`false`): si el propio
+  // chequeo revienta (I/O inesperado sobre un gameRoot que en teoria ya se
+  // verifico en disco), no se aborta el arranque por una OPTIMIZACION - el
+  // camino reactivo sigue siendo la red de seguridad real si esto falla.
+  let willNeedElevation = false;
+  try {
+    willNeedElevation =
+      !base.elevationService.isElevated() &&
+      (await base.elevationService.needsElevation(detection.paths.gameRoot));
+  } catch (error) {
+    // No se aborta el arranque por esto (es puramente informativo: el chequeo
+    // REAL de autorizacion sigue intacto en MergeOrchestrator.ensureCanWrite,
+    // que no depende de este valor), pero se deja un rastro - silenciarlo del
+    // todo esconderia un fallo real de la heuristica si pasa en produccion por
+    // un motivo distinto al ENOENT esperado en los tests con paths ficticios.
+    console.warn("No se pudo calcular willNeedElevation; se asume false.", error);
+    willNeedElevation = false;
+  }
+
   const resumeBufferRef: { current: MergeProgressEvent[] | null } = { current: null };
   const onProgress = createStartupProgressListener(resumeBufferRef, io.broadcaster);
   const pathDependent = buildPathDependentDomain(detection.paths, base, {
@@ -263,5 +301,5 @@ export async function runStartupSequence(
     resumeBufferRef.current = null;
   }
 
-  return { kind: "ready", pathDependent, resumeState };
+  return { kind: "ready", pathDependent, resumeState, willNeedElevation };
 }

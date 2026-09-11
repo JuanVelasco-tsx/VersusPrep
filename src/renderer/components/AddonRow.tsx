@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import type { OperationResult, ScannedAddon, VScriptClassification } from "../../main/domain/index.js";
 import { AddonCover } from "./AddonCover.js";
-import { publishOperation, subscribeOperation } from "./OperationOverlay.js";
+import { getWillNeedElevation, publishOperation, subscribeOperation } from "./OperationOverlay.js";
 import styles from "./AddonRow.module.css";
 
 /**
@@ -60,13 +60,15 @@ export function AddonRow({ addon, classification }: AddonRowProps) {
   // error confuso). Deshabilitando el checkbox mientras hay un "start" ajeno, la
   // fila no deja iniciar esa operacion solapada.
   //
-  // NO hace falta distinguir si el evento es de esta fila o de otra: AddonRow
-  // NUNCA publica "start" (solo publica "result", y solo al confirmar un
-  // "elevating", cuando la operacion propia YA termino). Por lo tanto el unico
-  // "start" que puede llegar por el pub-sub viene del apply de ActiveSetPanel
-  // -exactamente el caso que este guard debe bloquear-. El pub-sub es a nivel de
-  // modulo (todas las filas reciben todo), pero como ninguna fila emite "start",
-  // no hay riesgo de que una fila se auto-bloquee por su propia operacion.
+  // NO hace falta distinguir si el evento es de esta fila o de otra: ademas del
+  // "start" ajeno del apply de ActiveSetPanel, esta MISMA fila puede publicar su
+  // propio "start" cuando willNeedElevation es true (ver applyInclusion) - el
+  // pub-sub es a nivel de modulo (todas las filas reciben todo lo que se
+  // publica, incluida su propia fila). Un auto-bloqueo asi es inofensivo: la
+  // fila que originó ese "start" ya está deshabilitada por su propio `busy`
+  // (seteado sincrono antes de publicar nada), asi que `otherOperationRunning`
+  // en `true` sobre ESA fila no cambia nada visible - solo importa para las
+  // OTRAS filas, que es el caso real que este guard debe cubrir.
   useEffect(() => {
     return subscribeOperation((event) => {
       setOtherOperationRunning(event.type === "start");
@@ -82,15 +84,44 @@ export function AddonRow({ addon, classification }: AddonRowProps) {
 
   /**
    * Aplica el cambio de inclusion con feedback optimista: setea `included` al
-   * valor deseado YA, invoca la IPC correspondiente, y si falla revierte al
-   * valor previo y muestra el error minimo en la fila. `elevating` no se trata
-   * como fallo (no se revierte): la instancia elevada completara la operacion.
+   * valor deseado YA (sincrono, antes de cualquier await - el flip visual del
+   * checkbox no se retrasa), invoca la IPC correspondiente, y si falla revierte
+   * al valor previo y muestra el error minimo en la fila. `elevating` no se
+   * trata como fallo (no se revierte): la instancia elevada completara la
+   * operacion.
+   *
+   * Aviso previo a UAC (Seccion 21.4/9.2): si `getWillNeedElevation()` (cacheado
+   * por sesion) dice que esta operacion probablemente va a pedir elevacion, se
+   * publica "start" al overlay ANTES de llamar a addAddon/removeAddon, para que
+   * el usuario vea el aviso ANTES de que aparezca el dialogo nativo de UAC. Es
+   * CONDICIONAL a proposito: publicar "start" siempre pondria el overlay
+   * bloqueante en cada click de checkbox, deshaciendo el feedback optimista sin
+   * bloqueo que se decidio preservar en 21.2/21.4 - la gran mayoria de los
+   * clicks no necesita elevar y sigue exactamente como antes (optimista, sin
+   * overlay hasta el resultado).
+   *
+   * HUECO CONOCIDO Y ACEPTADO: `willNeedElevation` es la heuristica PROACTIVA
+   * (path + probe write, calculada una vez al arranque - ver composition-root.ts).
+   * El camino REACTIVO de respaldo (`#writeStep`/`handleWriteFailure` en
+   * MergeOrchestrator, para cuando esa heuristica se equivoca - p. ej. una
+   * biblioteca de Steam en otro disco con permisos restringidos) puede disparar
+   * elevacion igual aunque este flag haya dicho `false`. En ese caso puntual NO
+   * habria "start" previo (el aviso temprano se lo pierde), pero el "result"
+   * final con status "elevating" SI se publica igual (ver mas abajo) - el
+   * usuario ve el aviso de reinicio, solo que no el de "esto va a pedir UAC"
+   * antes del dialogo. No se resuelve en este cambio.
    */
-  const applyInclusion = (next: boolean): void => {
+  const applyInclusion = async (next: boolean): Promise<void> => {
     const previous = included;
     setIncluded(next);
     setError(null);
     setBusy(true);
+
+    const kind = next ? "add" : "remove";
+    if (await getWillNeedElevation()) {
+      publishOperation({ type: "start", kind });
+    }
+
     const call = next
       ? window.l4d2Api.addAddon(addon.id, Date.now())
       : window.l4d2Api.removeAddon(addon.id);
@@ -99,14 +130,11 @@ export function AddonRow({ addon, classification }: AddonRowProps) {
         // "elevating": la operacion se cedio a una instancia elevada y la app se
         // va a reiniciar. Se publica al overlay global (montado en App.tsx) para
         // que avise; NO se publica en success/failure (esos siguen con el feedback
-        // optimista + inline de la fila, sin overlay). No se publica "start" en
-        // ningun caso: ver el comentario del useEffect del guard.
+        // optimista + inline de la fila, sin overlay). Esto se publica SIEMPRE que
+        // el resultado sea "elevating", haya habido "start" previo o no (ver
+        // HUECO CONOCIDO arriba).
         if (result.status === "elevating") {
-          publishOperation({
-            type: "result",
-            kind: next ? "add" : "remove",
-            result,
-          });
+          publishOperation({ type: "result", kind, result });
         }
         const message = errorMessageFor(result);
         if (message !== null) {
@@ -128,7 +156,7 @@ export function AddonRow({ addon, classification }: AddonRowProps) {
     );
     if (confirmed) {
       setForced(true);
-      applyInclusion(true);
+      void applyInclusion(true);
     }
   };
 
@@ -153,7 +181,7 @@ export function AddonRow({ addon, classification }: AddonRowProps) {
             type="checkbox"
             checked={included}
             disabled={isPending || blocked || busy || otherOperationRunning}
-            onChange={(event) => applyInclusion(event.target.checked)}
+            onChange={(event) => void applyInclusion(event.target.checked)}
           />
           Incluir
         </label>

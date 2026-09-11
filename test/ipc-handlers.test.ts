@@ -116,6 +116,7 @@ interface Doubles {
   resumeValue: { value: ResumeState | null };
   /** Cuenta las invocaciones de onElevatedHandoff (fix del cierre de la instancia sin privilegios). */
   handoffCalls: { count: number };
+  willNeedElevationValue: { value: boolean };
   /** Si esta seteado, applyActiveSet devuelve ESTA promesa (para D4). */
   applyGate: { promise: Promise<OperationResult> } | null;
   /** Doble de classify configurable: por defecto resuelve sincrono. */
@@ -136,6 +137,7 @@ function buildDoubles(): Doubles {
     removeCalls: [],
     resumeValue: { value: null },
     handoffCalls: { count: 0 },
+    willNeedElevationValue: { value: false },
     applyGate: null,
     classifyImpl: {
       fn: (addon) => Promise.resolve(classification(addon.id)),
@@ -181,6 +183,7 @@ function buildDoubles(): Doubles {
       },
     } as IpcHandlersDeps["mergeOrchestrator"],
     getResumeState: () => d.resumeValue.value,
+    getWillNeedElevation: () => d.willNeedElevationValue.value,
     onElevatedHandoff: () => {
       d.handoffCalls.count++;
     },
@@ -286,6 +289,15 @@ describe("IPC — ruteo canal->componente (ocho canales)", () => {
     const state: ResumeState = { bufferedEvents: [], result: null };
     d.resumeValue.value = state;
     expect(await ipc.invoke(IPC_CHANNELS.getResumeState)).toBe(state);
+  });
+
+  test("willNeedElevation llama getWillNeedElevation() y devuelve su resultado", async () => {
+    const { ipc, d } = setup();
+    // false (caso por defecto).
+    expect(await ipc.invoke(IPC_CHANNELS.willNeedElevation)).toBe(false);
+    // true.
+    d.willNeedElevationValue.value = true;
+    expect(await ipc.invoke(IPC_CHANNELS.willNeedElevation)).toBe(true);
   });
 });
 

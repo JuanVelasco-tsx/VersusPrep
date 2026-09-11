@@ -35,6 +35,8 @@ const api: L4d2Api = {
     ipcRenderer.invoke(IPC_CHANNELS.removeAddon, addonId) as Promise<OperationResult>,
   getResumeState: () =>
     ipcRenderer.invoke(IPC_CHANNELS.getResumeState) as Promise<ResumeState | null>,
+  willNeedElevation: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.willNeedElevation) as Promise<boolean>,
   onProgress: (listener) => {
     const handler = (_event: unknown, payload: MergeProgressEvent): void =>
       listener(payload);

@@ -40,6 +40,22 @@ export function subscribeOperation(listener: OperationListener): () => void {
   return () => listeners.delete(listener);
 }
 
+let cachedWillNeedElevation: Promise<boolean> | null = null;
+
+/**
+ * Cacheado a nivel de modulo (mismo espiritu que el pub-sub de arriba): el
+ * valor es FIJO para toda la sesion (`gameRoot` no cambia mientras la app
+ * corre, ver `StartupOutcome.willNeedElevation` en composition-root.ts), asi
+ * que una sola llamada IPC alcanza para toda la vida del renderer - evita que
+ * cada `AddonRow` que se monta dispare su propia llamada redundante.
+ */
+export function getWillNeedElevation(): Promise<boolean> {
+  if (cachedWillNeedElevation === null) {
+    cachedWillNeedElevation = window.l4d2Api.willNeedElevation();
+  }
+  return cachedWillNeedElevation;
+}
+
 /** Estado local del overlay (union discriminada por `phase`, mismo estilo que el resto de la UI). */
 type OverlayState =
   | { phase: "hidden" }

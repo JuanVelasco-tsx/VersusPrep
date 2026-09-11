@@ -159,6 +159,7 @@ async function bootstrap(): Promise<void> {
     localStore: base.localStore,
     mergeOrchestrator: outcome.pathDependent.mergeOrchestrator,
     getResumeState,
+    getWillNeedElevation: () => outcome.willNeedElevation,
     // Handoff de elevación (fix del "reemplazo total, no coexisten" del diseño,
     // ElevationService Decisión 1 / tarea 17.1): cuando una operación resuelve
     // `status: "elevating"`, esta instancia SIN privilegios se cierra para ceder

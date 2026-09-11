@@ -28,6 +28,7 @@ export const IPC_CHANNELS = {
   removeAddon: "activeSet:remove",
   getResumeState: "activeSet:resumeState",
   mergeProgress: "merge:onProgress",
+  willNeedElevation: "willNeedElevation",
 } as const;
 
 /**
@@ -57,6 +58,13 @@ export interface L4d2Api {
   addAddon(addonId: string, priorityOrder: number): Promise<OperationResult>;
   removeAddon(addonId: string): Promise<OperationResult>;
   getResumeState(): Promise<ResumeState | null>;
+  /**
+   * `true` si esta sesión va a necesitar elevación UAC en la primera escritura
+   * protegida (calculado una sola vez al arranque, ver `StartupOutcome` en
+   * composition-root.ts). Fijo para toda la sesión: `gameRoot` no cambia
+   * mientras la app corre.
+   */
+  willNeedElevation(): Promise<boolean>;
   /** Se suscribe al progreso; devuelve la función de desuscripción. */
   onProgress(listener: (event: MergeProgressEvent) => void): () => void;
 }

@@ -39,6 +39,13 @@ export interface IpcHandlersDeps {
    */
   getResumeState: () => ResumeState | null;
   /**
+   * Accesor al booleano calculado UNA SOLA VEZ en el arranque (ver
+   * `StartupOutcome.willNeedElevation`, composition-root.ts). Fijo para toda
+   * la sesión: el composition root (main.ts) lo cierra sobre el `outcome` ya
+   * resuelto, no lo recalcula por invocación.
+   */
+  getWillNeedElevation: () => boolean;
+  /**
    * Handoff de elevación: se invoca cuando una operación de escritura resuelve
    * `status: "elevating"` (se relanzó una instancia elevada vía UAC). El
    * composition root (main.ts) la implementa con `app.quit()` para CERRAR esta
@@ -209,4 +216,6 @@ export function registerIpcHandlers(
   );
 
   ipcMain.handle(IPC_CHANNELS.getResumeState, () => deps.getResumeState());
+
+  ipcMain.handle(IPC_CHANNELS.willNeedElevation, () => deps.getWillNeedElevation());
 }
