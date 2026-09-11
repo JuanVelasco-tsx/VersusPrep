@@ -139,7 +139,15 @@ export function ActiveSetPanel() {
     };
   }, []);
 
+  // Guard contra el doble-montaje de StrictMode en dev (mismo patron que
+  // AddonList.tsx): sin esto, getActiveSet()+scanAddons() se disparan DOS
+  // veces por cada apertura de la pestana "Activos" en dev.
+  const hasStarted = useRef(false);
+
   useEffect(() => {
+    if (hasStarted.current) return;
+    hasStarted.current = true;
+
     async function load(): Promise<void> {
       try {
         const [activeSet, scanned] = await Promise.all([
