@@ -145,10 +145,10 @@ Con ~73 addons esto midió entre 12 y 17 segundos (ver diagnóstico de rendimien
 
 Registrado como MEJORA FUTURA, no como bug. No bloquea el checkpoint 22 ni el resto de la Sección 21.
 
-### P-24 - "Cargando Active_Set...": backend listo (getTitles), falta el follow-up de renderer (BLOQUEADO EN CODE)
+### P-24 - "Cargando Active_Set...": backend (getTitles) + renderer, RESUELTO end-to-end
 BUG-001 tiene DOS mitades. La del PREVIEW quedo resuelta de raiz (ver P-20). La de la CARGA del panel "Activos" ("Cargando Active_Set...") quedo a MEDIAS a proposito, por el limite de responsabilidad main/renderer:
 
 - **Backend LISTO (esta sesion, BUG-001):** se agrego el componente `TitleCache` (id->titulo, en memoria), poblado por el handler `addons:scan` (setMany) y expuesto por un canal nuevo `addons:titles` -> `window.l4d2Api.getTitles(): Promise<Record<string,string>>`. Con esto el renderer puede resolver los titulos del Active_Set SIN re-escanear la Workshop (fallback a id crudo si un id no esta cacheado).
 - **Follow-up de renderer PENDIENTE (bloqueado en Code):** `ActiveSetPanel.tsx` HOY sigue llamando `scanAddons()` completo en su `load()` para resolver titulos -es decir, el sintoma "Cargando Active_Set..." (12-17 s con 73 addons) NO cambia hasta que Code reemplace ese `scanAddons()` por `getTitles()`-. El backend ya esta, pero el sintoma persiste hasta ese cambio de renderer. NO se toco `ActiveSetPanel.tsx` en esta sesion (territorio de Code; la integracion es opcion B desacoplada).
 
-**Accion pendiente (Code):** en `ActiveSetPanel.tsx`, cambiar la resolucion de titulos de `scanAddons()` a `getTitles()`. Si un id no esta en el mapa (usuario abrio Activos sin pasar por Biblioteca en la sesion), mostrar el `addonId` crudo como fallback temporal en vez de bloquear esperando un escaneo. Con eso, "Cargando Active_Set..." pasa a ser instantaneo.
+**RESUELTO (2026-09-11, commit `1809888` de Code) - mitad renderer cerrada.** `ActiveSetPanel.load()` ahora hace `Promise.all([getActiveSet(), getTitles()])` en vez de `scanAddons()`: resuelve los titulos legibles del snapshot en memoria del `TitleCache` (sin disparar ningun escaneo), con fallback a `addonId` crudo si un id no esta cacheado (usuario que abrio Activos sin pasar por Biblioteca). Con esto BUG-001 queda cerrado END-TO-END: preview (P-20, de raiz) + carga de Activos (esta entrada). La nota previa de "bloqueado en Code / accion pendiente" quedo obsoleta en la misma sesion: el follow-up ya se materializo.
