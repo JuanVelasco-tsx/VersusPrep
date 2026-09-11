@@ -37,22 +37,46 @@ export function App() {
   // diferencia real es lo que pasa despues: en vez de asumir que el resume ya
   // termino, se suscribe a `onProgress` (mismo canal `merge:onProgress`) y,
   // en cada evento que llega, relee `getResumeState()` - `result` sigue en
-  // `null` mientras el resume esta en curso; en cuanto aparece no-null (el
-  // evento final, sea "done" para exito o el ultimo step antes de un fallo
-  // inesperado), se publica al `OperationOverlay` como el resultado de la
-  // operacion que disparo la elevacion, y se deja de escuchar. NO se usa el
-  // replay de `bufferedEvents` (D2a-i): con `isResuming` ya se esta
-  // escuchando en vivo, reproducir el buffer ademas duplicaria eventos.
+  // `null` mientras el resume esta en curso; en cuanto aparece no-null se
+  // publica al `OperationOverlay` como el resultado de la operacion que
+  // disparo la elevacion, y se deja de escuchar/pollear. NO se usa el replay
+  // de `bufferedEvents` (D2a-i): con `isResuming` ya se esta escuchando en
+  // vivo, reproducir el buffer ademas duplicaria eventos.
+  //
+  // POLLING DE RESPALDO (no solo eventos) - CORRECCION post-QA: reaccionar
+  // SOLO a `onProgress` deja colgado al usuario en "Restaurando tu
+  // selección..." para siempre ante CUALQUIER fallo real durante el resume
+  // (no solo la excepcion inesperada que ya cubre el catch de `runResume` en
+  // composition-root.ts). Confirmado contra `MergeOrchestrator#materialize`:
+  // cuando falla un paso (`backup`/`install`/`gameinfo` via `#writeStep`, o
+  // `merge` via su propio catch -> `#failureFromError`), la funcion hace
+  // `return` DIRECTO con `status: "failure"` SIN emitir ningun evento
+  // posterior - el ULTIMO evento que llega es el del paso que estaba por
+  // EMPEZAR (p. ej. "merge"), no uno que anuncie que ese paso fallo. El
+  // chequeo que dispara ESE evento corre ANTES de que el trabajo real
+  // termine/falle (encuentra `result: null`), y como no llega ningun evento
+  // despues, `onProgress` solo nunca vuelve a disparar un re-chequeo. Un
+  // intervalo de respaldo (1s) garantiza que el resultado terminal se detecte
+  // en un tiempo acotado pase lo que pase con la emision de steps; los
+  // eventos de `onProgress` siguen dando respuesta casi inmediata en el
+  // camino feliz ("done" se emite justo antes del success).
   useEffect(() => {
     let cancelled = false;
     let unsubscribeProgress: (() => void) | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    const stopWatching = (): void => {
+      unsubscribeProgress?.();
+      unsubscribeProgress = null;
+      if (pollTimer !== null) clearInterval(pollTimer);
+      pollTimer = null;
+    };
 
     const checkTerminalResult = async (): Promise<void> => {
       const state = await window.l4d2Api.getResumeState();
       if (cancelled || state === null || state.result === null) return;
       publishOperation({ type: "result", kind: "apply", result: state.result });
-      unsubscribeProgress?.();
-      unsubscribeProgress = null;
+      stopWatching();
     };
 
     window.l4d2Api
@@ -63,6 +87,7 @@ export function App() {
         if (!isResuming) return;
         setView("active");
         unsubscribeProgress = window.l4d2Api.onProgress(() => void checkTerminalResult());
+        pollTimer = setInterval(() => void checkTerminalResult(), 1000);
         void checkTerminalResult();
       })
       .catch(() => {
@@ -71,7 +96,7 @@ export function App() {
 
     return () => {
       cancelled = true;
-      unsubscribeProgress?.();
+      stopWatching();
     };
   }, []);
 
