@@ -44,9 +44,9 @@ const REASON_MESSAGES: Record<PathDetectionFailureReason, string> = {
 interface AddonListProps {
   /**
    * `true` si esta instancia arranco por un relanzo elevado con una sesion
-   * pendiente (BUG-004 parte 2, via `getResumeState()` en `App.tsx` - la MISMA
-   * senial que ya expone el backend para el buffer de resume, D2a-i). Cuando
-   * es `true`, las fases de carga muestran un mensaje de continuidad
+   * pendiente (BUG-004 parte 2, via `isResuming()` en `App.tsx` - HECHO
+   * ESTATICO fijo para toda la vida del proceso, ver composition-root.ts).
+   * Cuando es `true`, las fases de carga muestran un mensaje de continuidad
    * ("Restaurando tu selección...") en vez del texto tecnico habitual, para
    * que el reinicio post-UAC no se sienta como una Biblioteca vacia/en blanco.
    */

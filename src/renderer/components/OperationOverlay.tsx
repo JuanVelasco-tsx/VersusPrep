@@ -107,6 +107,30 @@ export function OperationOverlay() {
     });
   }, []);
 
+  // BUG-004 (backend de Kiro cerrado en 8a7e009): `{ step: "restarting" }` lo
+  // emite ElevationService por el mismo canal `merge:onProgress`, JUSTO ANTES
+  // del relanzo `runas` - es decir, mientras esta instancia (todavia sin
+  // privilegios) sigue viva pero está a punto de cerrarse. En cuanto llega,
+  // el modal cambia su mensaje a uno de reinicio, EN VEZ de quedarse
+  // congelado en "Agregando addon..." (o lo que sea que RUNNING_LABELS
+  // mostraba) hasta que la ventana se cierra sin aviso. Se fuerza `"running"`
+  // pase lo que pase con el estado previo del overlay: el HUECO CONOCIDO de
+  // `AddonRow.tsx` (camino reactivo de elevacion, sin "start" previo si la
+  // heuristica `willNeedElevation` se equivoco) puede llegar a este punto con
+  // el overlay todavia en `"hidden"` - `kind` es irrelevante en ese caso (no
+  // hay `RUNNING_LABELS` que mostrar, `label` ya lo pisa), se usa "apply"
+  // como placeholder valido para el tipo.
+  useEffect(() => {
+    return window.l4d2Api.onProgress((event) => {
+      if (event.step !== "restarting") return;
+      setState((prev) => ({
+        phase: "running",
+        kind: prev.phase === "hidden" ? "apply" : prev.kind,
+        label: "Reiniciando con permisos de administrador...",
+      }));
+    });
+  }, []);
+
   if (state.phase === "hidden") return null;
 
   const handleClose = (): void => setState({ phase: "hidden" });

@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { ActiveSetPanel } from "./components/ActiveSetPanel.js";
 import { AddonList } from "./components/AddonList.js";
 import { LoadingIndicator } from "./components/LoadingIndicator.js";
-import { OperationOverlay } from "./components/OperationOverlay.js";
+import { OperationOverlay, publishOperation } from "./components/OperationOverlay.js";
 import { TrustNotices } from "./components/TrustNotices.js";
 import styles from "./App.module.css";
 
@@ -23,52 +23,55 @@ export function App() {
   const [view, setView] = useState<View>("library");
   const [resuming, setResuming] = useState<boolean | null>(null);
 
-  // `getResumeState()` (D2a-i) YA existe en el backend con exactamente la
-  // senial que hace falta ("esta instancia arranco de un relanzo elevado con
-  // sesion pendiente" - no `null` si y solo si el arranque vino de un resume),
-  // pero hasta ahora ningun consumidor del renderer la llamaba. Es una lectura
-  // DE UN SOLO USO del lado del main process (se limpia tras la primera
-  // llamada, ver el comentario de `getResumeState` en main.ts) - por eso se
-  // consume UNA sola vez aca, al montar App, y se deriva el booleano `resuming`
-  // para toda la sesion en vez de volver a preguntar despues.
+  // BUG-004 parte 2 (backend de Kiro cerrado en 8a7e009, reordenamiento A1):
+  // reemplaza la version anterior basada en `getResumeState()` al montar.
+  // Ahora `isResuming()` es el HECHO ESTATICO correcto para esto (derivado de
+  // los args de arranque, fijo para toda la vida del proceso) - a diferencia
+  // de `getResumeState()`, no depende de que el resume ya haya terminado, asi
+  // que no hay carrera: con A1 la ventana se crea ANTES de que el resume
+  // corra, entonces al montar `App` el resume bien puede seguir en curso.
   //
-  // Con `resuming === true` se arranca directo en "Activos" (refleja lo que
-  // se estaba aplicando) y se le pasa el flag a AddonList/ActiveSetPanel para
-  // que sus fases de carga iniciales muestren "Restaurando tu selección..."
-  // en vez del texto tecnico habitual.
-  //
-  // MEJORA PARCIAL, NO EL FIX DE FONDO DE BUG-004 PARTE 2 (aclaracion post-QA):
-  // esto solo mejora el MENSAJE una vez que la ventana por fin existe. Hoy
-  // `createWindow()` (main.ts) corre DESPUES de que `runStartupSequence`
-  // termina de esperar `resumePendingOperation()` (composition-root.ts) -
-  // el hueco real de "pantalla en negro" que reporto QA son esos 12-17s de
-  // materialize (P-23) ANTES de que la ventana se cree, y esta ventana ni
-  // siquiera existe todavia para mostrar este mensaje. Mientras Kiro no
-  // reordene el arranque (Opcion A: crear la ventana ANTES de esperar el
-  // resume), ese hueco sigue abierto. Cuando lo reordenen, revisar si esta
-  // lectura de UN SOLO USO al montar sigue alcanzando o si para ese momento
-  // hace falta algo consultable EN VIVO (Kiro propuso `activeSet:isResuming`)
-  // porque la ventana montaria ANTES de que el resume termine, no despues.
-  // `bufferedEvents`/`result` del resume (progreso/resultado de la operacion
-  // que disparo la elevacion) quedan sin consumir por ahora: no hay todavia
-  // una barra de progreso ni una reproduccion del resultado final en el
-  // renderer (BUG-004 parte 1 - evento de "reiniciando" antes del cierre -
-  // sigue pendiente de que Kiro exponga esa parte tambien).
+  // Si `isResuming` es `true`: arranca en "Activos" (refleja lo que se estaba
+  // aplicando) y pasa el flag a AddonList/ActiveSetPanel para su mensaje de
+  // continuidad ("Restaurando tu selección..."), IGUAL que antes. La
+  // diferencia real es lo que pasa despues: en vez de asumir que el resume ya
+  // termino, se suscribe a `onProgress` (mismo canal `merge:onProgress`) y,
+  // en cada evento que llega, relee `getResumeState()` - `result` sigue en
+  // `null` mientras el resume esta en curso; en cuanto aparece no-null (el
+  // evento final, sea "done" para exito o el ultimo step antes de un fallo
+  // inesperado), se publica al `OperationOverlay` como el resultado de la
+  // operacion que disparo la elevacion, y se deja de escuchar. NO se usa el
+  // replay de `bufferedEvents` (D2a-i): con `isResuming` ya se esta
+  // escuchando en vivo, reproducir el buffer ademas duplicaria eventos.
   useEffect(() => {
     let cancelled = false;
+    let unsubscribeProgress: (() => void) | null = null;
+
+    const checkTerminalResult = async (): Promise<void> => {
+      const state = await window.l4d2Api.getResumeState();
+      if (cancelled || state === null || state.result === null) return;
+      publishOperation({ type: "result", kind: "apply", result: state.result });
+      unsubscribeProgress?.();
+      unsubscribeProgress = null;
+    };
+
     window.l4d2Api
-      .getResumeState()
-      .then((resumeState) => {
+      .isResuming()
+      .then((isResuming) => {
         if (cancelled) return;
-        const isResuming = resumeState !== null;
         setResuming(isResuming);
-        if (isResuming) setView("active");
+        if (!isResuming) return;
+        setView("active");
+        unsubscribeProgress = window.l4d2Api.onProgress(() => void checkTerminalResult());
+        void checkTerminalResult();
       })
       .catch(() => {
         if (!cancelled) setResuming(false);
       });
+
     return () => {
       cancelled = true;
+      unsubscribeProgress?.();
     };
   }, []);
 
