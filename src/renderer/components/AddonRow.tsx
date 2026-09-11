@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { OperationResult, ScannedAddon, VScriptClassification } from "../../main/domain/index.js";
 import { AddonCover } from "./AddonCover.js";
+import { publishOperation, subscribeOperation } from "./OperationOverlay.js";
 import styles from "./AddonRow.module.css";
 
 /**
@@ -47,6 +48,30 @@ export function AddonRow({ addon, classification }: AddonRowProps) {
   const [included, setIncluded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [otherOperationRunning, setOtherOperationRunning] = useState(false);
+
+  // Guard contra una operacion de OTRO origen en curso (Seccion 21.4). Escenario
+  // real que motiva esto: el usuario dispara "Aplicar" en el panel Activos
+  // (ActiveSetPanel), cambia a la vista Biblioteca ANTES de que el apply resuelva
+  // -ActiveSetPanel se desmonta pero su promesa de applyActiveSet sigue viva en el
+  // main- y clickea un checkbox de una fila mientras el apply todavia corre. Sin
+  // este guard, ese click dispararia un add/remove que competiria con el apply en
+  // vuelo (el backend lo rechazaria via operationInFlight, pero la UI mostraria un
+  // error confuso). Deshabilitando el checkbox mientras hay un "start" ajeno, la
+  // fila no deja iniciar esa operacion solapada.
+  //
+  // NO hace falta distinguir si el evento es de esta fila o de otra: AddonRow
+  // NUNCA publica "start" (solo publica "result", y solo al confirmar un
+  // "elevating", cuando la operacion propia YA termino). Por lo tanto el unico
+  // "start" que puede llegar por el pub-sub viene del apply de ActiveSetPanel
+  // -exactamente el caso que este guard debe bloquear-. El pub-sub es a nivel de
+  // modulo (todas las filas reciben todo), pero como ninguna fila emite "start",
+  // no hay riesgo de que una fila se auto-bloquee por su propia operacion.
+  useEffect(() => {
+    return subscribeOperation((event) => {
+      setOtherOperationRunning(event.type === "start");
+    });
+  }, []);
 
   const isPending = classification === "pending";
   const isVScript = classification !== "pending" && classification.isVScriptAddon;
@@ -71,6 +96,18 @@ export function AddonRow({ addon, classification }: AddonRowProps) {
       : window.l4d2Api.removeAddon(addon.id);
     call
       .then((result) => {
+        // "elevating": la operacion se cedio a una instancia elevada y la app se
+        // va a reiniciar. Se publica al overlay global (montado en App.tsx) para
+        // que avise; NO se publica en success/failure (esos siguen con el feedback
+        // optimista + inline de la fila, sin overlay). No se publica "start" en
+        // ningun caso: ver el comentario del useEffect del guard.
+        if (result.status === "elevating") {
+          publishOperation({
+            type: "result",
+            kind: next ? "add" : "remove",
+            result,
+          });
+        }
         const message = errorMessageFor(result);
         if (message !== null) {
           setIncluded(previous);
@@ -115,7 +152,7 @@ export function AddonRow({ addon, classification }: AddonRowProps) {
           <input
             type="checkbox"
             checked={included}
-            disabled={isPending || blocked || busy}
+            disabled={isPending || blocked || busy || otherOperationRunning}
             onChange={(event) => applyInclusion(event.target.checked)}
           />
           Incluir
