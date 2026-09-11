@@ -7,6 +7,7 @@ import type {
   ScannedAddon,
 } from "../../main/domain/index.js";
 import { MergeSummaryPanel } from "./MergeSummaryPanel.js";
+import { publishOperation } from "./OperationOverlay.js";
 import { PriorityRow, type CollisionSummary } from "./PriorityRow.js";
 import styles from "./ActiveSetPanel.module.css";
 
@@ -208,17 +209,30 @@ export function ActiveSetPanel() {
     setEntries(withSequentialPriority(swap(entries, index, index + 1)));
   };
 
+  // El feedback real de "Aplicar" ahora vive en OperationOverlay (21.4, modal
+  // bloqueante compartido por apply/add/remove) - publishOperation ANTES de
+  // la llamada (para que el overlay se muestre en "running" de inmediato) y
+  // con el resultado final, sea cual sea su status. `applyState` local sigue
+  // existiendo solo para derivar `isApplying` (deshabilitar los botones de
+  // MergeSummaryPanel mientras la operacion esta en curso).
   const handleApply = (): void => {
     setApplyState({ phase: "applying" });
+    publishOperation({ type: "start", kind: "apply" });
     window.l4d2Api
       .applyActiveSet(entries)
       .then((result) => {
+        publishOperation({ type: "result", kind: "apply", result });
         if (!isMounted.current) return;
         setApplyState({ phase: "done", result });
       })
       .catch((error: unknown) => {
-        if (!isMounted.current) return;
         const message = error instanceof Error ? error.message : "Error desconocido.";
+        // Rechazo de la promesa de IPC (no un OperationResult con status
+        // "failure" normal) - se traduce igual a un resultado del overlay
+        // para no dejarlo colgado en "running" para siempre, ya que ahora es
+        // el UNICO feedback visible de "Aplicar".
+        publishOperation({ type: "result", kind: "apply", result: { status: "failure", error: message } });
+        if (!isMounted.current) return;
         setApplyState({ phase: "error", message });
       });
   };

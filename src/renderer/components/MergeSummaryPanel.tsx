@@ -9,26 +9,6 @@ interface MergeSummaryPanelProps {
   onDiscard: () => void;
 }
 
-/** Traduce el resultado de "Aplicar" a un mensaje corto (texto simple, sin progreso paso a paso - eso es 21.4). */
-function applyResultMessage(applyState: ApplyState): { text: string; isError: boolean } | null {
-  if (applyState.phase === "error") {
-    return { text: applyState.message, isError: true };
-  }
-  if (applyState.phase !== "done") return null;
-
-  const result = applyState.result;
-  if (result.status === "success") {
-    return { text: "Aplicado correctamente.", isError: false };
-  }
-  if (result.status === "elevating") {
-    return {
-      text: "Se solicito elevacion de permisos; la operacion continua en una instancia elevada.",
-      isError: false,
-    };
-  }
-  return { text: result.error, isError: true };
-}
-
 /**
  * Aside "Resumen de fusion" (mockup 1b): addons en la cadena, archivos a
  * empaquetar, colisiones y addons no disponibles del preview actual, mas los
@@ -43,7 +23,6 @@ export function MergeSummaryPanel({
   onDiscard,
 }: MergeSummaryPanelProps) {
   const isApplying = applyState.phase === "applying";
-  const resultMessage = applyResultMessage(applyState);
 
   return (
     <aside className={styles.summary}>
@@ -93,12 +72,6 @@ export function MergeSummaryPanel({
             </>
           )}
         </>
-      )}
-
-      {resultMessage !== null && (
-        <p className={resultMessage.isError ? styles.error : styles.success}>
-          {resultMessage.text}
-        </p>
       )}
 
       <div className={styles.actions}>

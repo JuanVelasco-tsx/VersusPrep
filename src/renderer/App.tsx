@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import { ActiveSetPanel } from "./components/ActiveSetPanel.js";
 import { AddonList } from "./components/AddonList.js";
+import { OperationOverlay } from "./components/OperationOverlay.js";
 import { TrustNotices } from "./components/TrustNotices.js";
 import styles from "./App.module.css";
 
@@ -35,6 +36,7 @@ export function App() {
         </button>
       </nav>
       <TrustNotices />
+      <OperationOverlay />
       {view === "library" && <AddonList />}
       {view === "active" && <ActiveSetPanel />}
     </main>
