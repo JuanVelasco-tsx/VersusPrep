@@ -40,6 +40,21 @@ export function App() {
   // (o si esta sesion no es un resume); una vez resuelto, fijo para el resto
   // de la sesion - mismo criterio que `resuming` - y se pasa hacia abajo, en
   // vez de que cada panel llame `getResumeState()` por su cuenta.
+  //
+  // DECISION DELIBERADA: a diferencia de un intento anterior de esta sesion
+  // (revertido, ver P-28 en Context/02-pendientes.md), este valor NUNCA se
+  // vuelve a poner en `null` despues de setearlo, ni siquiera cuando llega el
+  // resultado terminal del resume en `checkTerminalResult` (mas abajo). Un
+  // resume es un evento QUE OCURRE COMO MUCHO UNA VEZ por vida de este
+  // proceso (arranca por un relanzo elevado puntual, nunca se repite dentro
+  // de la misma instancia) - no hay un "segundo resume" futuro para el que
+  // este dato pueda quedar obsoleto y necesite invalidarse. Por eso es
+  // seguro tratarlo como un hecho estatico mas, igual que `isResuming`, en
+  // vez de acoplar su ciclo de vida al de `resuming`/`getResumeState().result`.
+  // Ademas, mostrar la seleccion restaurada es deseable AUNQUE el resume haya
+  // terminado en FALLO: el usuario ve de nuevo lo que tenia armado (para
+  // reintentar) en vez de una Biblioteca/Activos vacia, mientras el fallo en
+  // si se comunica aparte por `OperationOverlay` (`checkTerminalResult`).
   const [pendingEntries, setPendingEntries] = useState<AddonManifestEntry[] | null>(null);
 
   // BUG-004 parte 2 (backend de Kiro cerrado en 8a7e009, reordenamiento A1):
