@@ -9,6 +9,7 @@ import { LoadingIndicator } from "./LoadingIndicator.js";
 import { MergeSummaryPanel } from "./MergeSummaryPanel.js";
 import { publishOperation } from "./OperationOverlay.js";
 import { PriorityRow, type CollisionSummary } from "./PriorityRow.js";
+import { resolveActiveSetEntries } from "../state/pendingSelection.js";
 import styles from "./ActiveSetPanel.module.css";
 
 const PREVIEW_DEBOUNCE_MS = 350;
@@ -137,9 +138,19 @@ interface ActiveSetPanelProps {
    * selección...") en vez del texto tecnico habitual.
    */
   resuming: boolean;
+  /**
+   * (BUG-007, QA V3 jornada 2) Active_Set candidato que esta instancia esta
+   * restaurando (`ResumeState.pendingEntries`, resuelto una vez en `App.tsx`
+   * via `getResumeState()` - mitad main cerrada por Kiro, ver
+   * ipc-contract.ts). Cuando NO es `null`, tiene precedencia sobre
+   * `getActiveSet()` al cargar - ver `resolveActiveSetEntries` -, para que
+   * "Activos" muestre el lote que el usuario tenia seleccionado ANTES del
+   * handoff (con su Priority_Order) en vez de abrir vacio/desactualizado.
+   */
+  pendingEntries: AddonManifestEntry[] | null;
 }
 
-export function ActiveSetPanel({ resuming }: ActiveSetPanelProps) {
+export function ActiveSetPanel({ resuming, pendingEntries }: ActiveSetPanelProps) {
   const [loadState, setLoadState] = useState<LoadState>({ phase: "loading" });
   const [entries, setEntries] = useState<AddonManifestEntry[]>([]);
   const [previewState, setPreviewState] = useState<PreviewState>({ phase: "idle" });
@@ -179,7 +190,12 @@ export function ActiveSetPanel({ resuming }: ActiveSetPanelProps) {
         // fallback es mostrar el addonId crudo (mismo criterio que el `?? addon.id`
         // que ya usaba `titleFor` cuando el addon no tenia `info.title`) - un
         // nombre temporal peor que ideal, pero correcto y barato.
-        setEntries(withSequentialPriority(sortedByPriority(activeSet)));
+        //
+        // (BUG-007) `resolveActiveSetEntries` prefiere el candidato pendiente
+        // (`pendingEntries`, resuelto una vez en App.tsx) sobre el Active_Set
+        // instalado cuando existe: ver el doc de la prop y de la funcion.
+        const entriesSource = resolveActiveSetEntries(activeSet, pendingEntries);
+        setEntries(withSequentialPriority(sortedByPriority(entriesSource)));
         setLoadState({ phase: "ready", titles });
       } catch (error) {
         if (!isMounted.current) return;

@@ -9,6 +9,7 @@ import type {
 import { AddonRow } from "./AddonRow.js";
 import { LoadingIndicator } from "./LoadingIndicator.js";
 import { publishOperation, subscribeOperation } from "./OperationOverlay.js";
+import { mergePendingIntoActive } from "../state/pendingSelection.js";
 import styles from "./AddonList.module.css";
 
 /**
@@ -63,9 +64,23 @@ interface AddonListProps {
   pathsReady: boolean;
   /** Notifica a `App.tsx` que `detectPaths()` resolvio `ready`, para cachearlo. */
   onPathsReady: () => void;
+  /**
+   * (BUG-013, QA V3 jornada 2) Active_Set candidato que esta instancia esta
+   * restaurando (`ResumeState.pendingEntries`, resuelto una vez en `App.tsx`;
+   * mismo prop que recibe `ActiveSetPanel` para BUG-007). Se usa para que los
+   * checkboxes de "Incluir" reflejen tambien lo que el usuario tenia marcado
+   * ANTES del handoff, no solo lo que `getActiveSet()` reporta como ya
+   * instalado (ver `mergePendingIntoActive`).
+   */
+  pendingEntries: AddonManifestEntry[] | null;
 }
 
-export function AddonList({ resuming, pathsReady, onPathsReady }: AddonListProps) {
+export function AddonList({
+  resuming,
+  pathsReady,
+  onPathsReady,
+  pendingEntries,
+}: AddonListProps) {
   const [state, setState] = useState<LoadState>({ phase: "detecting-paths" });
 
   // Active_Set persistido completo (BUG-002 parte 2), no solo los ids: se
@@ -147,7 +162,10 @@ export function AddonList({ resuming, pathsReady, onPathsReady }: AddonListProps
       ]);
       if (!isMounted.current) return;
 
-      setActiveEntries(activeSet);
+      // (BUG-013) Fusiona el candidato pendiente del relanzo elevado (si lo
+      // hay) para que "Incluir" arranque tildado tambien para lo que el
+      // usuario tenia marcado ANTES del handoff, no solo lo ya instalado.
+      setActiveEntries(mergePendingIntoActive(activeSet, pendingEntries));
       // Pinta la lista YA (todas las filas en "pending" de VScript);
       // classifyVScript resuelve en paralelo y actualiza despues.
       setState({ phase: "ready", addons, classifications: {} });
@@ -165,7 +183,7 @@ export function AddonList({ resuming, pathsReady, onPathsReady }: AddonListProps
       const message = error instanceof Error ? error.message : "Error desconocido.";
       setState({ phase: "error", message });
     }
-  }, []);
+  }, [pendingEntries]);
 
   // Flujo de deteccion completo (detectPaths -> runScan), extraido para poder
   // REUSARLO: lo dispara el boton "Reintentar deteccion" de la rama

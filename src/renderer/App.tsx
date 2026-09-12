@@ -5,6 +5,7 @@
 // Context/05-plan-seccion-21-restante.md).
 import { useEffect, useState } from "react";
 
+import type { AddonManifestEntry } from "../main/domain/index.js";
 import { ActiveSetPanel } from "./components/ActiveSetPanel.js";
 import { AddonList } from "./components/AddonList.js";
 import { LoadingIndicator } from "./components/LoadingIndicator.js";
@@ -32,6 +33,14 @@ export function App() {
   // cada remontaje. Se resetea solo si el usuario pide explicitamente
   // "Reintentar deteccion" (ver AddonList.tsx, no pasa por este cache).
   const [pathsReady, setPathsReady] = useState(false);
+
+  // (BUG-007/BUG-013, QA V3 jornada 2) Active_Set CANDIDATO que esta
+  // instancia esta restaurando (`ResumeState.pendingEntries`, mitad main
+  // cerrada por Kiro - ver ipc-contract.ts). `null` mientras no se resolvio
+  // (o si esta sesion no es un resume); una vez resuelto, fijo para el resto
+  // de la sesion - mismo criterio que `resuming` - y se pasa hacia abajo, en
+  // vez de que cada panel llame `getResumeState()` por su cuenta.
+  const [pendingEntries, setPendingEntries] = useState<AddonManifestEntry[] | null>(null);
 
   // BUG-004 parte 2 (backend de Kiro cerrado en 8a7e009, reordenamiento A1):
   // reemplaza la version anterior basada en `getResumeState()` al montar.
@@ -91,10 +100,25 @@ export function App() {
 
     window.l4d2Api
       .isResuming()
-      .then((isResuming) => {
+      .then(async (isResuming) => {
         if (cancelled) return;
-        setResuming(isResuming);
-        if (!isResuming) return;
+        if (!isResuming) {
+          setResuming(false);
+          return;
+        }
+        // (BUG-007/BUG-013) Resuelve `pendingEntries` ANTES de publicar
+        // `resuming`/`view`: AddonList/ActiveSetPanel montan recien cuando
+        // `resuming !== null` (ver el JSX de mas abajo) y cada uno carga su
+        // estado UNA sola vez al montar (guard `hasStarted`) - si se
+        // publicara `resuming` primero, podrian montar con `pendingEntries`
+        // todavia en `null` y nunca reaccionar al valor que llega despues.
+        // Invariante de `ipc-contract.ts`: si `isResuming()` es `true`,
+        // `getResumeState()` YA NO es `null` y `pendingEntries` SIEMPRE esta
+        // presente (capturado en el arranque, antes de este await).
+        const state = await window.l4d2Api.getResumeState();
+        if (cancelled) return;
+        setPendingEntries(state?.pendingEntries ?? null);
+        setResuming(true);
         setView("active");
         unsubscribeProgress = window.l4d2Api.onProgress(() => void checkTerminalResult());
         pollTimer = setInterval(() => void checkTerminalResult(), 1000);
@@ -135,11 +159,14 @@ export function App() {
       {resuming !== null && view === "library" && (
         <AddonList
           resuming={resuming}
+          pendingEntries={pendingEntries}
           pathsReady={pathsReady}
           onPathsReady={() => setPathsReady(true)}
         />
       )}
-      {resuming !== null && view === "active" && <ActiveSetPanel resuming={resuming} />}
+      {resuming !== null && view === "active" && (
+        <ActiveSetPanel resuming={resuming} pendingEntries={pendingEntries} />
+      )}
     </main>
   );
 }
