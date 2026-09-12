@@ -73,6 +73,17 @@ interface AddonListProps {
    * instalado (ver `mergePendingIntoActive`).
    */
   pendingEntries: AddonManifestEntry[] | null;
+  /**
+   * (Correccion post-revision QA) Notifica a `App.tsx` que este montaje YA
+   * uso `pendingEntries` en su `runScan()` inicial. `App.tsx` lo usa para
+   * pasar `null` en vez del candidato pendiente en cualquier remontaje
+   * POSTERIOR de este panel (cambiar de pestaña y volver) - sin esto, la
+   * fusion de `mergePendingIntoActive` se reaplicaria en cada remontaje y
+   * pisaria cualquier cambio real que el usuario haga despues del resume
+   * (agregar/quitar addons normalmente). Se llama SOLO cuando `pendingEntries`
+   * no era `null` (nada que consumir, si ya lo es, no hace falta notificar).
+   */
+  onPendingConsumed: () => void;
 }
 
 export function AddonList({
@@ -80,6 +91,7 @@ export function AddonList({
   pathsReady,
   onPathsReady,
   pendingEntries,
+  onPendingConsumed,
 }: AddonListProps) {
   const [state, setState] = useState<LoadState>({ phase: "detecting-paths" });
 
@@ -166,6 +178,11 @@ export function AddonList({
       // hay) para que "Incluir" arranque tildado tambien para lo que el
       // usuario tenia marcado ANTES del handoff, no solo lo ya instalado.
       setActiveEntries(mergePendingIntoActive(activeSet, pendingEntries));
+      // Marca el consumo SOLO si habia algo que consumir (ver doc de la prop
+      // en AddonListProps): evita un setState de mas en App.tsx en el camino
+      // normal, y asegura que un remontaje posterior de este panel reciba
+      // `null` en vez de reaplicar la fusion para siempre.
+      if (pendingEntries !== null) onPendingConsumed();
       // Pinta la lista YA (todas las filas en "pending" de VScript);
       // classifyVScript resuelve en paralelo y actualiza despues.
       setState({ phase: "ready", addons, classifications: {} });
@@ -183,7 +200,7 @@ export function AddonList({
       const message = error instanceof Error ? error.message : "Error desconocido.";
       setState({ phase: "error", message });
     }
-  }, [pendingEntries]);
+  }, [pendingEntries, onPendingConsumed]);
 
   // Flujo de deteccion completo (detectPaths -> runScan), extraido para poder
   // REUSARLO: lo dispara el boton "Reintentar deteccion" de la rama

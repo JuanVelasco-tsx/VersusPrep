@@ -37,25 +37,35 @@ export function App() {
   // (BUG-007/BUG-013, QA V3 jornada 2) Active_Set CANDIDATO que esta
   // instancia esta restaurando (`ResumeState.pendingEntries`, mitad main
   // cerrada por Kiro - ver ipc-contract.ts). `null` mientras no se resolvio
-  // (o si esta sesion no es un resume); una vez resuelto, fijo para el resto
-  // de la sesion - mismo criterio que `resuming` - y se pasa hacia abajo, en
-  // vez de que cada panel llame `getResumeState()` por su cuenta.
-  //
-  // DECISION DELIBERADA: a diferencia de un intento anterior de esta sesion
-  // (revertido, ver P-28 en Context/02-pendientes.md), este valor NUNCA se
-  // vuelve a poner en `null` despues de setearlo, ni siquiera cuando llega el
-  // resultado terminal del resume en `checkTerminalResult` (mas abajo). Un
-  // resume es un evento QUE OCURRE COMO MUCHO UNA VEZ por vida de este
-  // proceso (arranca por un relanzo elevado puntual, nunca se repite dentro
-  // de la misma instancia) - no hay un "segundo resume" futuro para el que
-  // este dato pueda quedar obsoleto y necesite invalidarse. Por eso es
-  // seguro tratarlo como un hecho estatico mas, igual que `isResuming`, en
-  // vez de acoplar su ciclo de vida al de `resuming`/`getResumeState().result`.
-  // Ademas, mostrar la seleccion restaurada es deseable AUNQUE el resume haya
-  // terminado en FALLO: el usuario ve de nuevo lo que tenia armado (para
-  // reintentar) en vez de una Biblioteca/Activos vacia, mientras el fallo en
-  // si se comunica aparte por `OperationOverlay` (`checkTerminalResult`).
+  // (o si esta sesion no es un resume); una vez resuelto, se mantiene en
+  // estado (nunca se vuelve `null` aca) para que el panel que TODAVIA no lo
+  // consumio (ver mas abajo) pueda seguir viendolo si monta mas tarde.
   const [pendingEntries, setPendingEntries] = useState<AddonManifestEntry[] | null>(null);
+
+  // CORRECCION (hallazgo post-revision, QA): un resume ocurre como mucho una
+  // vez por vida del proceso, pero ESO NO significa que la PRECEDENCIA de
+  // `pendingEntries` sobre el estado real (`resolveActiveSetEntries`/
+  // `mergePendingIntoActive`) deba aplicarse en cada remontaje de
+  // AddonList/ActiveSetPanel (cambiar de pestaña y volver remonta cada uno
+  // por completo, ver App.module - integracion desacoplada). Si se aplicara
+  // siempre, cualquier cambio REAL que el usuario haga despues del resume
+  // (agregar/quitar addons normalmente) se veria "revertido" la proxima vez
+  // que cualquiera de los dos paneles remonte, porque `pendingEntries` seguiria
+  // ganando para siempre.
+  //
+  // Fix: cada panel tiene su PROPIO flag de consumo, marcado por el panel
+  // mismo (via `onPendingConsumed`) la PRIMERA vez que su propio `load()`
+  // efectivamente usa `pendingEntries` (no en remontajes posteriores, porque
+  // el flag vive aca en App.tsx, que no remonta). Una vez marcado, ese panel
+  // recibe `null` en vez de `pendingEntries` de ahi en adelante y cae al
+  // camino normal (`getActiveSet()` sin override). NO alcanza con un solo
+  // flag compartido: el resume fuerza `view="active"` primero, asi que si se
+  // limpiara `pendingEntries` apenas lo consume `ActiveSetPanel`, `AddonList`
+  // jamas lo veria no-`null` al entrar por primera vez a "Biblioteca"
+  // (reabriria BUG-013). Cada panel necesita su propia ventana de "primera
+  // vez", independiente del ciclo de montaje del otro.
+  const [activeSetConsumedPending, setActiveSetConsumedPending] = useState(false);
+  const [addonListConsumedPending, setAddonListConsumedPending] = useState(false);
 
   // BUG-004 parte 2 (backend de Kiro cerrado en 8a7e009, reordenamiento A1):
   // reemplaza la version anterior basada en `getResumeState()` al montar.
@@ -174,13 +184,18 @@ export function App() {
       {resuming !== null && view === "library" && (
         <AddonList
           resuming={resuming}
-          pendingEntries={pendingEntries}
+          pendingEntries={addonListConsumedPending ? null : pendingEntries}
+          onPendingConsumed={() => setAddonListConsumedPending(true)}
           pathsReady={pathsReady}
           onPathsReady={() => setPathsReady(true)}
         />
       )}
       {resuming !== null && view === "active" && (
-        <ActiveSetPanel resuming={resuming} pendingEntries={pendingEntries} />
+        <ActiveSetPanel
+          resuming={resuming}
+          pendingEntries={activeSetConsumedPending ? null : pendingEntries}
+          onPendingConsumed={() => setActiveSetConsumedPending(true)}
+        />
       )}
     </main>
   );

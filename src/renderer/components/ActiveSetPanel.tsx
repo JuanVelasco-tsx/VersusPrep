@@ -148,9 +148,24 @@ interface ActiveSetPanelProps {
    * handoff (con su Priority_Order) en vez de abrir vacio/desactualizado.
    */
   pendingEntries: AddonManifestEntry[] | null;
+  /**
+   * (Correccion post-revision QA) Notifica a `App.tsx` que este montaje YA
+   * uso `pendingEntries` en su `load()` inicial. `App.tsx` lo usa para pasar
+   * `null` en vez del candidato pendiente en cualquier remontaje POSTERIOR de
+   * este panel (cambiar de pestaña y volver) - sin esto, la precedencia de
+   * `resolveActiveSetEntries` se reaplicaria en cada remontaje y pisaria
+   * cualquier cambio real que el usuario haga despues del resume. Se llama
+   * SOLO cuando `pendingEntries` no era `null` (nada que consumir, si ya lo
+   * es, no hace falta notificar).
+   */
+  onPendingConsumed: () => void;
 }
 
-export function ActiveSetPanel({ resuming, pendingEntries }: ActiveSetPanelProps) {
+export function ActiveSetPanel({
+  resuming,
+  pendingEntries,
+  onPendingConsumed,
+}: ActiveSetPanelProps) {
   const [loadState, setLoadState] = useState<LoadState>({ phase: "loading" });
   const [entries, setEntries] = useState<AddonManifestEntry[]>([]);
   const [previewState, setPreviewState] = useState<PreviewState>({ phase: "idle" });
@@ -197,6 +212,11 @@ export function ActiveSetPanel({ resuming, pendingEntries }: ActiveSetPanelProps
         const entriesSource = resolveActiveSetEntries(activeSet, pendingEntries);
         setEntries(withSequentialPriority(sortedByPriority(entriesSource)));
         setLoadState({ phase: "ready", titles });
+        // Marca el consumo SOLO si habia algo que consumir: si `App.tsx` ya
+        // le paso `null` (resume ya consumido en un montaje anterior de este
+        // panel, o esta sesion no es un resume), no hace falta notificar de
+        // nuevo - evita un `setState` de mas en `App.tsx` en el camino normal.
+        if (pendingEntries !== null) onPendingConsumed();
       } catch (error) {
         if (!isMounted.current) return;
         const message = error instanceof Error ? error.message : "Error desconocido.";
