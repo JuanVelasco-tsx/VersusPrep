@@ -1030,3 +1030,28 @@ Se tomaron tres decisiones de implementación no fijadas explícitamente por el 
 **Observación (deuda menor registrada, NO implementada):** el canal de progreso ahora emite el step `"backup"` DOS veces consecutivas (el `ensureDir(modsvsFolder)` reactivo reutiliza el emit `"backup"` antes del backup real). Es un artefacto conocido; a futuro podría considerarse un step propio (p. ej. `"prepare"`/`"ensureModsvs"`) en `MergeProgressEvent`. No se cambió el código de producción por esto para no ampliar el alcance del fix.
 
 **Referencia:** bug BUG-009 (QA V3 jornada 2). Spec en `.kiro/specs/bug-009-merge-no-crea-modsvs/`.
+### [2026-09] BUG-007: la elevación UAC "perdía" el batch seleccionado (el ResumeState no exponía el Active_Set candidato)
+
+**Qué (síntoma confirmado en QA V3 jornada 2, CRÍTICO):** al disparar la elevación UAC (relanzo con `runas`), la instancia elevada arrancaba y el resume materializaba la operación (instalaba el `.vpk`, guardaba el manifest), pero el renderer NO podía repintar la selección (el batch: addons + Priority_Order) que el usuario tenía preparada. El usuario percibía el batch como "perdido" aunque el dominio SÍ lo persistía y lo aplicaba. Este fix cubre la mitad "main"; la mitad renderer (consumir el dato para repintar) es follow-up de Code.
+
+**Referencia a P-25 (por qué no lo cubría):** P-25 había cerrado BUG-004 end-to-end (feedback de reinicio `restarting` + `isResuming()` consumidos por Code). Pero P-25 NO cubría este hueco: el `ResumeState` que `getResumeState()` expone al renderer llevaba `{ bufferedEvents, result }` (progreso + resultado terminal) y NO las entries del batch candidato. El renderer sabía que estaba resumiendo y veía el progreso/resultado, pero no tenía de dónde leer la lista `{ addonId, priorityOrder }` para reconstruir la selección.
+
+**Causa raíz (determinada con evidencia, dos hipótesis evaluadas):**
+  - **Hipótesis B (captura incompleta del estado visual) — DESCARTADA para el camino reportado:** en `applyActiveSet(entries)` las entries fluyen DIRECTO del renderer hasta `savePendingSession(entries)` sin transformación, y `SqliteLocalStore` persiste `addonId` + `priorityOrder` con el flag active. El batch SÍ se persiste correctamente; no se pierde en la escritura.
+  - **Hipótesis A (carrera de ciclo de vida) — CAUSA RAÍZ, REFINADA:** no es timing puro (P-25 ya resolvió el timing con `isResuming()` estático + la ventana antes del resume). El hueco real es de DATOS EXPUESTOS: `getActiveSet()` devuelve el manifest INSTALADO (que durante el resume aún no refleja el candidato, porque `saveManifest` es el último paso), y `getPendingSession()` es interno del dominio (no está expuesto por IPC) y además se limpia en el `finally` del resume. El renderer no tenía ningún canal para leer el candidato.
+
+**Decisión / fix (sin canal IPC nuevo, decisión explícita del usuario de NO agregar `getPendingOperation`):**
+  - **(a) Se extendió el `ResumeState` existente** (`src/main/app/ipc-contract.ts`) con un campo OBLIGATORIO `pendingEntries: AddonManifestEntry[]`. Semántica: lista = candidato (Priority_Order ascendente); `[]` = sesión activa con candidato vacío (mostrar selección vacía, NO "sin resume"); invariante: si el `ResumeState` no es `null`, `pendingEntries` siempre presente; "sin resume" = `ResumeState` `null`.
+  - **(b) En `composition-root.ts` (`runStartupSequence`) se CAPTURA el candidato con `getPendingSession() ?? []` ANTES** de que `runResume()` dispare `clearPendingSession()`, se incluye en el `resumeState` inicial y se preserva en las ramas de éxito y de catch de `runResume`. `resumePendingOperation` (dominio) NO se tocó: el orden `getPendingSession` al inicio + `clearPendingSession` en el `finally` se mantiene; la captura vive en la capa de composición.
+  - **(c) `ipc-handlers.ts` y `main.ts` sin cambios funcionales:** el handler `activeSet:resumeState` ya delega en `getResumeState` y pasa el objeto extendido tal cual. NO se agregó ningún canal a `IPC_CHANNELS`.
+
+**Límite main/renderer:** main expone `pendingEntries` en el `ResumeState` (esta sección); Code (renderer) lo consume para repintar la selección tras el UAC (follow-up, spec aparte). Este spec NO cierra la mitad de Code.
+
+**Testing (metodología de bug condition):**
+  - Tests exploratorios que reproducían el hueco (`pendingEntries` undefined) sobre el código SIN fix (fallaban, confirmando la causa raíz).
+  - Property test de corrección (fast-check, 100 iter): para cualquier candidato persistido, el `ResumeState` expone EXACTAMENTE esas entries en Priority_Order ascendente, antes y después de `runResume`.
+  - Property test de preservación: arranque sin resume -> `null`; resume idempotente + `clear` en el `finally`; distinción `null` vs `[]`; sin canal nuevo.
+  - Unit tests de `composition-root` e `ipc-handlers`.
+  - Suite completa: **377 passed**, typecheck **0 errores**.
+
+**Referencia:** bug BUG-007 (QA V3 jornada 2). Spec en `.kiro/specs/bug-007-elevacion-pierde-batch/`.

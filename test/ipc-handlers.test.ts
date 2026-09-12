@@ -292,10 +292,43 @@ describe("IPC — ruteo canal->componente (ocho canales)", () => {
     const { ipc, d } = setup();
     // null (caso por defecto).
     expect(await ipc.invoke(IPC_CHANNELS.getResumeState)).toBeNull();
-    // valor no nulo.
-    const state: ResumeState = { bufferedEvents: [], result: null };
+    // valor no nulo. (BUG-007) El ResumeState pasa a incluir `pendingEntries`
+    // como campo OBLIGATORIO cuando el objeto no es null; acá se refleja `[]`
+    // (candidato vacío intencional) para que el objeto compile con la nueva forma.
+    const state: ResumeState = { bufferedEvents: [], result: null, pendingEntries: [] };
     d.resumeValue.value = state;
     expect(await ipc.invoke(IPC_CHANNELS.getResumeState)).toBe(state);
+  });
+
+  // (BUG-007, req 3.6) El handler `activeSet:resumeState` es un pasamanos puro:
+  // devuelve el ResumeState EXTENDIDO tal cual lo entrega `deps.getResumeState()`,
+  // SIN filtrar ni recomponer `pendingEntries`. Esto es lo que permite que el
+  // renderer, con el MISMO canal que ya consume (P-25), obtenga el batch candidato
+  // para repintar la selección tras el UAC. No hay canal IPC nuevo.
+  test("activeSet:resumeState devuelve el ResumeState EXTENDIDO con pendingEntries intacto (BUG-007)", async () => {
+    const { ipc, d } = setup();
+    const pendingEntries: AddonManifestEntry[] = [
+      { addonId: "a", priorityOrder: 0 },
+      { addonId: "b", priorityOrder: 1 },
+    ];
+    const state: ResumeState = {
+      bufferedEvents: [],
+      result: { status: "success" },
+      pendingEntries,
+    };
+    d.resumeValue.value = state;
+
+    const returned = (await ipc.invoke(IPC_CHANNELS.getResumeState)) as ResumeState;
+
+    // Se devuelve el MISMO objeto (identidad de referencia): el handler no clona
+    // ni transforma nada.
+    expect(returned).toBe(state);
+    // Y el batch candidato viaja intacto por el canal existente.
+    expect(returned.pendingEntries).toBe(pendingEntries);
+    expect(returned.pendingEntries).toEqual([
+      { addonId: "a", priorityOrder: 0 },
+      { addonId: "b", priorityOrder: 1 },
+    ]);
   });
 
   test("willNeedElevation llama getWillNeedElevation() y devuelve su resultado", async () => {

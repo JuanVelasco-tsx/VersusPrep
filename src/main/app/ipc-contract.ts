@@ -42,6 +42,30 @@ export const IPC_CHANNELS = {
 export interface ResumeState {
   bufferedEvents: MergeProgressEvent[];
   result: OperationResult | null;
+  /**
+   * (BUG-007) Active_Set CANDIDATO que se está restaurando en este resume: la
+   * selección + Priority_Order que el usuario tenía preparada antes del relanzo
+   * elevado. Capturado del `getPendingSession()` del LocalStore ANTES de que
+   * `resumePendingOperation()` limpie el pending, de modo que el renderer pueda
+   * repintar la selección aunque el resume ya haya terminado.
+   *
+   * Semántica (espeja `getPendingSession()`, ver local-store.ts DECISIÓN 5):
+   *  - lista con entradas: el candidato tal cual se persistió (en Priority_Order
+   *    ascendente). El renderer repinta esa selección.
+   *  - `[]`: sesión activa con candidato intencionalmente vacío (p. ej. se quitó
+   *    el último addon). El renderer muestra una selección vacía, NO "sin resume".
+   *
+   * INVARIANTE: si el objeto `ResumeState` existe (no es `null`), `pendingEntries`
+   * SIEMPRE está presente (nunca `undefined`). El caso "no hay resume" se
+   * representa con el `ResumeState` entero en `null`, igual que hoy.
+   *
+   * DISPONIBILIDAD EN EL CICLO DE VIDA: `pendingEntries` está poblado desde el
+   * PRIMER `getResumeState()` que el renderer haga tras montar (se captura al
+   * construir el `resumeState` inicial en `runStartupSequence`, antes de que
+   * `runResume()` limpie el pending). Está disponible tanto mientras `result` es
+   * `null` (resume en curso) como después (resume terminado).
+   */
+  pendingEntries: AddonManifestEntry[];
 }
 
 /** API tipada que el preload expone en `window.l4d2Api`. */

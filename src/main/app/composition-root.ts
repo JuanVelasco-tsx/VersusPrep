@@ -336,12 +336,22 @@ export async function runStartupSequence(
   const pending = parseResumeArgs(io.argv);
   const isResuming = pending !== null && base.localStore.getPendingSession() !== null;
 
+  // (BUG-007) Captura del Active_Set CANDIDATO ANTES del clear. Se lee una sola
+  // vez acá, en la capa de composición, porque `runResume()` disparará
+  // `resumePendingOperation()` → `clearPendingSession()` y a partir de entonces
+  // `getPendingSession()` devolvería `null`. Como `isResuming` ya implica
+  // `getPendingSession() !== null`, `pendingEntries` refleja el candidato real
+  // (que puede ser `[]` legítimamente en una sesión activa vacía). El `?? []`
+  // cubre además el caso sin resume, donde el valor no se usa. NO se vuelve a
+  // llamar `getPendingSession()` después: el resume lo limpia.
+  const pendingEntries = base.localStore.getPendingSession() ?? [];
+
   // Estado del resume, poblado por `runResume`. Si hay resume pendiente arranca
   // "en curso" (`result: null`): el contrato de `ResumeState` ya define que un
   // `result` null con el objeto presente significa "resume en curso, el progreso
   // llega en vivo por merge:onProgress" (Decisión D2a-i).
   let resumeState: ResumeState | null = isResuming
-    ? { bufferedEvents: [], result: null }
+    ? { bufferedEvents: [], result: null, pendingEntries }
     : null;
 
   const runResume = async (): Promise<void> => {
@@ -352,7 +362,7 @@ export async function runStartupSequence(
       // El buffer queda disponible por compatibilidad del contrato; el renderer
       // con isResuming escucha en vivo y lo ignora (no hay duplicación porque
       // elige una sola vía). El RESULTADO TERMINAL vive acá, en `result`.
-      resumeState = { bufferedEvents: resumeBufferRef.current ?? [], result };
+      resumeState = { bufferedEvents: resumeBufferRef.current ?? [], result, pendingEntries };
     } catch (error) {
       // (BUG-004) Excepción INESPERADA del resume (un throw real, no un
       // OperationResult con status:"failure"). Con A1 el resume corre
@@ -370,6 +380,7 @@ export async function runStartupSequence(
             "Error inesperado al restaurar la sesión: " +
             (error instanceof Error ? error.message : String(error)),
         },
+        pendingEntries,
       };
     } finally {
       resumeBufferRef.current = null;

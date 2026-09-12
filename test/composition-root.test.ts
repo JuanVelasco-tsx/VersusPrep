@@ -29,6 +29,7 @@ import type {
   GamePaths,
   MergeProgressEvent,
   MergeProgressListener,
+  OperationResult,
   PathDetectionResult,
 } from "../src/main/domain/index.js";
 
@@ -367,4 +368,169 @@ describe("runStartupSequence", () => {
     }
     expect(base.localStore.getPaths()).toBeNull();
   });
+});
+
+// ---------------------------------------------------------------------------
+// BUG-007: pendingEntries en el ResumeState (unit tests CONCRETOS)
+// ---------------------------------------------------------------------------
+//
+// Estos tests fijan ejemplos concretos (no property) del comportamiento de
+// `pendingEntries` capturado por `runStartupSequence`/`runResume`, complementando
+// el property test de la tarea 4.1. Reutilizan los helpers de este archivo
+// (makeIndependentIo, makeFakePathDetector, makeBaseWith, makeStartupIo,
+// SAMPLE_PATHS) para no duplicar el andamiaje.
+//
+// Casos cubiertos:
+//  1. resumeState inicial incluye pendingEntries (candidato NO vacío), ordenado,
+//     con result null (resume en curso) ANTES de runResume.
+//  2. resumeState inicial con candidato VACÍO []: ResumeState no es null,
+//     pendingEntries === [], result null (distinto de "sin resume").
+//  3. Tras runResume en la rama de ÉXITO (mergeOrchestrator doble que devuelve un
+//     OperationResult success): pendingEntries SIGUE siendo el candidato y
+//     result.status === "success".
+//  4. Tras runResume en la rama de CATCH (scan real sobre workshopFolder
+//     inexistente lanza): result.status === "failure" y pendingEntries SIGUE
+//     reflejando el candidato capturado.
+//  5. Sin resume (sin args): readResumeState() === null (preservación) — se
+//     omite como test dedicado por ser redundante con el caso (a) ya existente en
+//     "runStartupSequence"; ver nota más abajo.
+
+/** PathDetectionResult "ready" reutilizable para los casos de resume. */
+const READY_DETECTION: PathDetectionResult = {
+  kind: "ready",
+  paths: SAMPLE_PATHS,
+  verification: {
+    present: {
+      gameRoot: true,
+      workshopFolder: true,
+      vpkToolPath: true,
+      gameInfoFile: true,
+      modsvsFolder: true,
+    },
+    missing: [],
+    allPresent: true,
+  },
+  source: "auto",
+};
+
+/** argv de resume estándar usado en los casos de este bloque. */
+const RESUME_ARGV = [
+  "--l4d2-resume-type",
+  "applyActiveSet",
+  "--l4d2-resume-handle",
+  "H1",
+] as const;
+
+describe("runStartupSequence — BUG-007 pendingEntries en ResumeState", () => {
+  test("caso 1: resumeState INICIAL incluye pendingEntries (candidato no vacío, ordenado) con result null", async () => {
+    const base = makeBaseWith(makeFakePathDetector(READY_DETECTION));
+    // Candidato con dos entries; savePendingSession/getPendingSession garantizan
+    // orden ascendente por priorityOrder (luego addonId).
+    const candidato: AddonManifestEntry[] = [
+      { addonId: "a", priorityOrder: 1 },
+      { addonId: "b", priorityOrder: 2 },
+    ];
+    base.localStore.savePendingSession(candidato);
+
+    const outcome = await runStartupSequence(base, makeStartupIo(RESUME_ARGV));
+
+    expect(outcome.kind).toBe("ready");
+    if (outcome.kind === "ready") {
+      // ANTES de runResume: resume "en curso" (result null) pero con el candidato
+      // ya capturado en pendingEntries.
+      const state = outcome.readResumeState();
+      expect(state).not.toBeNull();
+      expect(state?.result).toBeNull();
+      expect(state?.pendingEntries).toEqual(candidato);
+    }
+  });
+
+  test("caso 2: resumeState INICIAL con candidato VACÍO [] -> ResumeState no null, pendingEntries [], result null", async () => {
+    const base = makeBaseWith(makeFakePathDetector(READY_DETECTION));
+    // Sesión activa con candidato intencionalmente vacío (active = 1, filas = 0).
+    // getPendingSession() devuelve [] (no null), así que isResuming es true.
+    base.localStore.savePendingSession([]);
+
+    const outcome = await runStartupSequence(base, makeStartupIo(RESUME_ARGV));
+
+    expect(outcome.kind).toBe("ready");
+    if (outcome.kind === "ready") {
+      expect(outcome.isResuming).toBe(true);
+      const state = outcome.readResumeState();
+      // Distinto de "sin resume" (que sería null): el objeto existe con [] .
+      expect(state).not.toBeNull();
+      expect(state?.result).toBeNull();
+      expect(state?.pendingEntries).toEqual([]);
+    }
+  });
+
+  test("caso 3: tras runResume en la rama de ÉXITO -> pendingEntries SIGUE siendo el candidato y result.status success", async () => {
+    const base = makeBaseWith(makeFakePathDetector(READY_DETECTION));
+    const candidato: AddonManifestEntry[] = [
+      { addonId: "a", priorityOrder: 1 },
+      { addonId: "b", priorityOrder: 2 },
+    ];
+    base.localStore.savePendingSession(candidato);
+
+    const outcome = await runStartupSequence(base, makeStartupIo(RESUME_ARGV));
+
+    expect(outcome.kind).toBe("ready");
+    if (outcome.kind === "ready") {
+      // Para ejercitar la rama de ÉXITO real (sin que el AddonScanner sobre el
+      // workshopFolder ficticio lance), se sustituye el mergeOrchestrator del
+      // outcome por un doble simple cuyo resumePendingOperation resuelve un
+      // OperationResult success. El closure runResume captura la MISMA referencia
+      // `pathDependent` que expone `outcome.pathDependent`, así que mutar acá el
+      // mergeOrchestrator hace que runResume use el doble.
+      const successResult: OperationResult = {
+        status: "success",
+        installedManifest: candidato,
+      };
+      outcome.pathDependent.mergeOrchestrator = {
+        async resumePendingOperation(): Promise<OperationResult | null> {
+          return successResult;
+        },
+      } as unknown as (typeof outcome.pathDependent)["mergeOrchestrator"];
+
+      await expect(outcome.runResume()).resolves.toBeUndefined();
+
+      const state = outcome.readResumeState();
+      expect(state).not.toBeNull();
+      // El resultado terminal es el success del doble...
+      expect(state?.result?.status).toBe("success");
+      // ...y pendingEntries SIGUE reflejando el candidato capturado antes del clear.
+      expect(state?.pendingEntries).toEqual(candidato);
+    }
+  });
+
+  test("caso 4: tras runResume en la rama de CATCH (scan real lanza) -> result.status failure y pendingEntries SIGUE siendo el candidato", async () => {
+    const base = makeBaseWith(makeFakePathDetector(READY_DETECTION));
+    const candidato: AddonManifestEntry[] = [
+      { addonId: "a", priorityOrder: 1 },
+      { addonId: "b", priorityOrder: 2 },
+    ];
+    base.localStore.savePendingSession(candidato);
+
+    const outcome = await runStartupSequence(base, makeStartupIo(RESUME_ARGV));
+
+    expect(outcome.kind).toBe("ready");
+    if (outcome.kind === "ready") {
+      // Sin sustituir el mergeOrchestrator: el AddonScanner real intenta leer
+      // SAMPLE_PATHS.workshopFolder (inexistente) y lanza (ENOENT), cayendo en el
+      // catch de runResume. El catch NO debe propagar la excepción.
+      await expect(outcome.runResume()).resolves.toBeUndefined();
+
+      const state = outcome.readResumeState();
+      expect(state).not.toBeNull();
+      // Resultado TERMINAL de fallo (el renderer puede salir de "Restaurando...").
+      expect(state?.result?.status).toBe("failure");
+      // pendingEntries preservado también en la rama de catch.
+      expect(state?.pendingEntries).toEqual(candidato);
+    }
+  });
+
+  // Caso 5 (sin resume => readResumeState() null): OMITIDO como test dedicado por
+  // ser redundante con el caso (a) del describe "runStartupSequence" de este mismo
+  // archivo, que ya asevera `outcome.readResumeState()` === null cuando no hay args
+  // de resume. Se documenta acá para dejar rastro de la decisión (tarea 6.1).
 });
