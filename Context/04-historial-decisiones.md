@@ -1077,3 +1077,27 @@ Se tomaron tres decisiones de implementación no fijadas explícitamente por el 
   - Suite completa: **405 passed**, typecheck **0 errores**.
 
 **Referencia:** bug BUG-010 (QA V3 jornada 2). Spec en `.kiro/specs/bug-010-gameinfo-tabulacion/`.
+### [2026-09] Recalibración de DEFAULT_MAX_COMMAND_LENGTH — crash de vpk.exe por longitud (BUG-011)
+
+**Qué (síntoma confirmado en QA V3 jornada 2, bloqueante):** al aplicar mods, `vpk.exe` crasheaba con `STATUS_STACK_BUFFER_OVERRUN` (exit `3221226505` = `0xC0000409`) al extraer addons con paths internos largos (reportado con el addon `627562239`). QA lo describió como "aplicar un único mod falla / con 2+ funciona".
+
+**Premisa de QA engañosa (descartada como causa):** el "1 vs 2+ mods" NO era la causa. Cada addon se extrae por separado con su propia invocación `vpk x`; no existe una rama especial de "1 addon". El síntoma era circunstancial al CONTENIDO del addon `627562239` (paths internos largos que cruzan el umbral de crash DENTRO de su propio lote), no a la cantidad de mods. Confirmado con un test exploratorio contra el `vpk.exe` real: un argv de 1 path y uno de N paths son estructuralmente idénticos salvo la cantidad, así que el número de mods no explica el crash.
+
+**Causa raíz confirmada (medida, no hipótesis):** la constante `DEFAULT_MAX_COMMAND_LENGTH = 6000` en `src/main/domain/vpk-batch.ts` estaba mal calibrada. Se había elegido con margen respecto del máximo de línea de comando de `cmd` de Windows (~8191), pero `vpk.exe` desborda su buffer interno MUCHO antes. Hay DOS vectores de crash independientes:
+  1. **Por CANTIDAD de argumentos** (~80 paths), ya cubierto desde la Tarea 3 por `DEFAULT_MAX_BATCH_SIZE = 50`.
+  2. **Por LONGITUD total de la línea de comando**, que NO estaba cubierto: pocos paths largos (~20) crashean respetando a la vez ≤50 paths y ≤6000 chars. Este segundo vector es el que reproducía BUG-011.
+
+**Umbral remedido con overhead de producción:** una primera medición con rutas de `tmpdir` (overhead fijo ~83 chars) ubicaba el crash en la ventana ~1600/~3130, pero SUBESTIMABA el overhead fijo real de producción. Se remidió con overhead de producción (ejecutable real de 71 chars + `vpkPath` del Workshop de ~85 chars = overhead ~159 chars): último valor SANO **1719 chars** / primer CRASH **2031 chars** (`0xC0000409`, estable y reproducible). El umbral real cae en la ventana `(1719, 2031]`.
+
+**Decisión / fix (mínimo):** recalibrar `DEFAULT_MAX_COMMAND_LENGTH` de **6000 → 1024**. El fix toca SOLO la constante + la reescritura de su JSDoc y del párrafo del encabezado del archivo (aclarando que el límite es el buffer interno real de `vpk.exe`, NO el máximo de línea de comando de `cmd`). Se MANTIENE el doble límite simultáneo: `DEFAULT_MAX_BATCH_SIZE = 50` y la fórmula `commandLengthForBatch` quedan intactos. 1024 queda ~40% por debajo del último valor sano medido (1719) y a menos de la mitad del primer crash (2031), dejando margen conservador para el overhead que el modelo de costo no cuenta (ver riesgo abajo).
+
+**Riesgo conocido NO corregido (documentado):** el modelo de costo del batching SUBESTIMA el overhead del ejecutable en ~64 chars, porque `VpkTool.extract` invoca `vpk.exe` con la RUTA REAL (`this.#vpkExe`, ~71 chars) mientras que `commandLengthForBatch` usa `DEFAULT_EXECUTABLE_NAME = "vpk.exe"` (7 chars). Con el margen de 1024 esa diferencia queda absorbida (~1088 chars reales de peor caso vs 1719 del umbral sano). Se decidió NO corregirlo en BUG-011 (fix mínimo); si en el futuro se subiera el techo cerca del umbral real, habría que pasar `this.#vpkExe` vía `options.executableName` para que el modelo de costo cuente el ejecutable real.
+
+**Testing (metodología de bug condition):**
+  - Test de EXPLORACIÓN que falla sobre el código SIN fix (contraejemplo de 40 paths largos → línea de comando ~2021 chars > 1719, confirmando el crash) y pasa tras el fix.
+  - Property tests de PRESERVACIÓN (fast-check, ≥100 iter): sin pérdida/duplicación/reordenamiento de paths, `maxBatchSize = 50` respetado, path sobredimensionado aislado en su propio lote, entrada vacía → `[]`, determinismo; más una property de que ningún lote excede 1024 salvo la garantía (c) (un path que por sí solo supera el límite va solo).
+  - Unit tests de las constantes y de edge cases.
+  - Test de integración SKIPPEABLE contra el `vpk.exe` real que confirma que el conjunto que crasheaba (2024 chars) ahora se parte en 3 lotes de `[1016, 1016, 200]` chars, todos con exit 0.
+  - Suite completa: **428 passed**, typecheck **0 errores**.
+
+**Referencia:** bug BUG-011 (QA V3 jornada 2). Spec en `.kiro/specs/bug-011-vpk-crash-longitud/`.

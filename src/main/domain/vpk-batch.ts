@@ -69,14 +69,21 @@
  *     este módulo NO los altera ni traduce separadores — eso es la tarea 2.5).
  *
  * Naturaleza APROXIMADA del modelo: este cálculo es una aproximación
- * conservadora del costo real de la línea de comando de Windows, NO el conteo
- * exacto del sistema operativo. En particular NO modela el quoting/escaping que
- * el SO podría aplicar a argumentos con espacios o caracteres especiales (que
- * añadiría comillas y, por tanto, más caracteres). Como el modelo ya deja un
- * margen amplio respecto del máximo real (~6000 vs ~8191) y como la invocación
- * se hace SIN shell (argumentos como array, ver diseño VpkTool), el quoting
- * extra queda absorbido por el margen. El objetivo no es replicar el conteo del
- * SO, sino quedar cómodamente por debajo del límite.
+ * conservadora del costo real de la línea de comando, NO el conteo exacto del
+ * sistema operativo. En particular NO modela el quoting/escaping que el SO
+ * podría aplicar a argumentos con espacios o caracteres especiales (que
+ * añadiría comillas y, por tanto, más caracteres). El límite CONTRA el que se
+ * compara este costo NO es el máximo de línea de comando de `cmd` de Windows,
+ * sino el BUFFER INTERNO REAL de `vpk.exe`, que se desborda con
+ * `STATUS_STACK_BUFFER_OVERRUN` (`0xC0000409`) MUCHO ANTES del máximo del SO
+ * (ver BUG-011 y el JSDoc de {@link DEFAULT_MAX_COMMAND_LENGTH}). Medido contra
+ * el binario real con overhead de producción, `vpk.exe` tolera hasta ~1719
+ * caracteres y crashea a partir de ~2031. Como el techo por defecto (1024) deja
+ * un margen amplio respecto de ese umbral real (~1024 vs ~1719/2031) y como la
+ * invocación se hace SIN shell (argumentos como array, ver diseño VpkTool), el
+ * quoting extra queda absorbido por el margen. El objetivo no es replicar el
+ * conteo del SO, sino quedar cómodamente por debajo del buffer real de
+ * `vpk.exe`.
  *
  * El cálculo se expone como {@link commandLengthForBatch} (función nombrada y
  * reutilizable) para que el property test de la tarea 2.4 (Property 9) pueda
@@ -130,15 +137,34 @@
 
 /**
  * Límite seguro por defecto (en caracteres) para la longitud estimada de la
- * línea de comando de una invocación `vpk x`. Se fija en 6000, cómodamente por
- * debajo del máximo real de Windows para `cmd` (~8191), dejando margen para el
- * quoting/escaping que el modelo de costo no cuenta explícitamente.
+ * línea de comando de una invocación `vpk x`. Se fija en 1024.
+ *
+ * IMPORTANTE — este límite NO es el máximo de línea de comando de `cmd` de
+ * Windows (~8191). Es un MARGEN EMPÍRICO CONSERVADOR sobre el BUFFER INTERNO
+ * REAL de `vpk.exe`, que se desborda con `STATUS_STACK_BUFFER_OVERRUN`
+ * (`0xC0000409`) MUCHO ANTES del máximo del SO (BUG-011). El valor anterior
+ * (6000) se había calibrado contra el máximo de `cmd`, premisa que resultó
+ * falsa: `vpk.exe` crashea muy por debajo de eso.
+ *
+ * CALIBRACIÓN (BUG-011): medido contra el binario `vpk.exe` real con overhead de
+ * producción (ejecutable + ruta del VPK largos), el último valor SANO observado
+ * fue ~1719 caracteres (exit 0, extrae todo) y el primer CRASH observado fue
+ * ~2031 caracteres (`0xC0000409`, estable). Es decir, el umbral real cae en la
+ * ventana (1719, 2031]. NO es un número documentado por Valve, es una medición
+ * empírica.
+ *
+ * Se elige 1024 (potencia de 2, valor "redondo") por quedar ~40 % por debajo del
+ * último valor sano medido (1719) y a menos de la mitad del primer crash
+ * observado (2031). Ese margen amplio absorbe además la subestimación conocida
+ * del overhead del ejecutable en el modelo de costo (ver diseño de BUG-011) y
+ * variaciones del binario/entorno (rutas de VPK más largas, distinto build de
+ * `vpk.exe`).
  *
  * Se exporta como constante nombrada para reutilización y para que los tests
- * (tarea 2.4) referencien el mismo valor sin duplicar el literal. El límite
- * puede sobreescribirse por invocación vía `options.maxCommandLength`.
+ * referencien el mismo valor sin duplicar el literal. El límite puede
+ * sobreescribirse por invocación vía `options.maxCommandLength`.
  */
-export const DEFAULT_MAX_COMMAND_LENGTH = 6000;
+export const DEFAULT_MAX_COMMAND_LENGTH = 1024;
 
 /**
  * Cantidad MÁXIMA de paths por lote (segundo límite, por CANTIDAD de

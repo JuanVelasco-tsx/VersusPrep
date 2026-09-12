@@ -234,7 +234,10 @@ export class VpkTool {
    * POR LOTES (AC 6.4, 6.5).
    *
    * Particiona los paths con `batchInternalPaths` (2.3) para que ninguna línea
-   * de comando exceda el límite seguro, y ejecuta un `vpk x` por lote con
+   * de comando exceda el límite seguro —que es el BUFFER INTERNO REAL de
+   * `vpk.exe` (BUG-011), NO el máximo de línea de comando de `cmd` de Windows:
+   * `vpk.exe` se desborda con `STATUS_STACK_BUFFER_OVERRUN` mucho antes del
+   * máximo del SO—, y ejecuta un `vpk x` por lote con
    * `destDir` como working directory (AC 6.3: `vpk x` NO crea carpetas; el
    * llamador —MergeEngine— crea los subdirectorios y el proceso escribe relativo
    * a su cwd). Los paths se pasan TAL CUAL (con `/`, formato interno del VPK);
