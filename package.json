@@ -1,6 +1,6 @@
 {
   "name": "l4d2-versus-addon-manager",
-  "version": "0.1.0",
+  "version": "0.2.0-alpha",
   "description": "Gestor de addons de la Steam Workshop para el modo Versus de Left 4 Dead 2 (Electron + TypeScript).",
   "private": true,
   "author": "L4D2 Versus Addon Manager contributors",
@@ -18,6 +18,7 @@
     "dev:preload": "vite build --config vite.preload.config.ts --watch",
     "dev": "concurrently -k -n vite,preload,electron \"vite\" \"npm:dev:preload\" \"wait-on tcp:5173 dist/src/preload/preload.js && tsc -p tsconfig.json && vite build --config vite.preload.config.ts && electron .\"",
     "electron:pack": "electron-builder --dir",
+    "release": "npm run build && npm run build:renderer && electron-builder --win portable && node scripts/notify-release.mjs",
     "rebuild:native": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {

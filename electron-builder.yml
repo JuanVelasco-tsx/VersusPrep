@@ -17,6 +17,10 @@ directories:
   output: release
   buildResources: build
 
+# Nombre del artefacto versionado (aplica a todos los targets, incluido portable).
+# Formato: <productName>_v<version>.<ext>  ->  L4D2 Versus Addon Manager_v0.1.0.exe
+artifactName: ${productName}_v${version}.${ext}
+
 # Empaquetamos únicamente la salida compilada y el manifiesto de dependencias.
 files:
   - dist/**/*
