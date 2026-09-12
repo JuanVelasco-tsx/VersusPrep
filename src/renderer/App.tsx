@@ -34,6 +34,20 @@ export function App() {
   // "Reintentar deteccion" (ver AddonList.tsx, no pasa por este cache).
   const [pathsReady, setPathsReady] = useState(false);
 
+  // ESTABILIZACION PREVENTIVA (no es un fix de un bug observado): mismo
+  // patron que `handleAddonListPendingConsumed`/`handleActiveSetPendingConsumed`
+  // mas abajo, aplicado aca por la misma clase de fragilidad - `onPathsReady`
+  // se pasaba como arrow function inline en el JSX, con identidad nueva en
+  // cada re-render de `App`. `runDetection` (`AddonList.tsx`) la incluye en
+  // sus deps, asi que esa inestabilidad se propagaba hasta el `useEffect` de
+  // montaje que dispara `detectPaths()`/`scanAddons()` - sin sintoma
+  // observado hoy (el guard `hasStarted.current` de `AddonList` ya absorbe
+  // cualquier re-invocacion espuria), pero por la misma razon que se
+  // estabilizo `onPendingConsumed`.
+  const handlePathsReady = useCallback(() => {
+    setPathsReady(true);
+  }, []);
+
   // (BUG-007/BUG-013, QA V3 jornada 2) Active_Set CANDIDATO que esta
   // instancia esta restaurando (`ResumeState.pendingEntries`, mitad main
   // cerrada por Kiro - ver ipc-contract.ts). `null` mientras no se resolvio
@@ -207,7 +221,7 @@ export function App() {
           pendingEntries={addonListConsumedPending ? null : pendingEntries}
           onPendingConsumed={handleAddonListPendingConsumed}
           pathsReady={pathsReady}
-          onPathsReady={() => setPathsReady(true)}
+          onPathsReady={handlePathsReady}
         />
       )}
       {resuming !== null && view === "active" && (
