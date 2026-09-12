@@ -138,7 +138,7 @@ commit y registro de la decisión.
   - Si surgen dudas o fallos inesperados, consultar al usuario antes de continuar.
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7_
 
-- [-] 10. Commit y registro de la decisión
+- [x] 10. Commit y registro de la decisión
   - Añadir una entrada en `Context/04-historial-decisiones.md` con el formato existente (Qué / Decisión / Motivo / Impacto) documentando los 4 cambios: (a) `ensureDir(modsvsFolder)` en `#materialize` y por qué ahí y NO en `BackupManager`; (b) remoción de `modsvsFolder` de `REQUIRED_PATH_KEYS` manteniendo la clave en el tipo `RequiredPathKey`; (c) corrección del bug pegajoso por re-derivación en `detect()` sin migración explícita; (d) reconciliación del JSDoc a `<gameRoot>\modsvs`.
   - Crear el commit con el mensaje exacto: `fix(dominio): crear modsvs y no exigirla como ruta preexistente (bug BUG-009)`.
   - **NO mergear sin mostrar el diff primero**: el usuario pidió explícitamente revisar el diff antes de cualquier merge.
