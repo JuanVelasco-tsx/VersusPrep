@@ -3,7 +3,7 @@
 // carga de datos y el estado real viven en AddonList/ActiveSetPanel, cada uno
 // por su cuenta (integracion desacoplada, opcion B - ver
 // Context/05-plan-seccion-21-restante.md).
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type { AddonManifestEntry } from "../main/domain/index.js";
 import { ActiveSetPanel } from "./components/ActiveSetPanel.js";
@@ -66,6 +66,26 @@ export function App() {
   // vez", independiente del ciclo de montaje del otro.
   const [activeSetConsumedPending, setActiveSetConsumedPending] = useState(false);
   const [addonListConsumedPending, setAddonListConsumedPending] = useState(false);
+
+  // CORRECCION (hallazgo de revision QA): `onPendingConsumed` pasado como
+  // arrow function inline en el JSX (mas abajo) tendria una identidad NUEVA
+  // en CADA re-render de `App`, no solo cuando cambia lo que le importa a
+  // cada panel. Como `AddonList.tsx` incluye `onPendingConsumed` en las deps
+  // de su `useCallback` de `runScan` (que a su vez esta en las deps del
+  // `useEffect` de montaje que dispara `detectPaths()`/`scanAddons()`), esa
+  // inestabilidad de identidad se propagaria hasta ese efecto - inofensivo
+  // HOY solo porque el guard `hasStarted.current` de `AddonList` absorbe
+  // cualquier re-invocacion espuria, pero fragil (un cambio futuro a ese
+  // guard reabriria BUG-008 por esta via, sin tocar el propio BUG-008).
+  // `useCallback(..., [])` alcanza porque los setters de `useState` son
+  // referencialmente estables entre renders (garantia de React) - la funcion
+  // que retorna es la MISMA en toda la vida de este componente.
+  const handleAddonListPendingConsumed = useCallback(() => {
+    setAddonListConsumedPending(true);
+  }, []);
+  const handleActiveSetPendingConsumed = useCallback(() => {
+    setActiveSetConsumedPending(true);
+  }, []);
 
   // BUG-004 parte 2 (backend de Kiro cerrado en 8a7e009, reordenamiento A1):
   // reemplaza la version anterior basada en `getResumeState()` al montar.
@@ -185,7 +205,7 @@ export function App() {
         <AddonList
           resuming={resuming}
           pendingEntries={addonListConsumedPending ? null : pendingEntries}
-          onPendingConsumed={() => setAddonListConsumedPending(true)}
+          onPendingConsumed={handleAddonListPendingConsumed}
           pathsReady={pathsReady}
           onPathsReady={() => setPathsReady(true)}
         />
@@ -194,7 +214,7 @@ export function App() {
         <ActiveSetPanel
           resuming={resuming}
           pendingEntries={activeSetConsumedPending ? null : pendingEntries}
-          onPendingConsumed={() => setActiveSetConsumedPending(true)}
+          onPendingConsumed={handleActiveSetPendingConsumed}
         />
       )}
     </main>
