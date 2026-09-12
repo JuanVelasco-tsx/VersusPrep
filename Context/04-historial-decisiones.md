@@ -1101,3 +1101,26 @@ Se tomaron tres decisiones de implementación no fijadas explícitamente por el 
   - Suite completa: **428 passed**, typecheck **0 errores**.
 
 **Referencia:** bug BUG-011 (QA V3 jornada 2). Spec en `.kiro/specs/bug-011-vpk-crash-longitud/`.
+### [2026-09] Paralelización del escaneo inicial con concurrencia acotada (BUG-006)
+
+**Qué (síntoma confirmado en QA V3 jornada 2, prioridad Media — último bug de la jornada):** el escaneo inicial de la Workshop bloqueaba/congelaba la UI durante ~45s en la pantalla de carga inicial. El usuario percibía la aplicación como colgada mientras se enumeraban los addons.
+
+**Aclaración del texto de QA (verificada por lectura del JSX):** QA reportó el freeze en la pantalla "Detectando rutas del juego...", pero la investigación de `AddonList.tsx` confirmó que cada fase muestra un texto DISTINTO y correcto: la fase `detecting-paths` renderiza "Detectando rutas del juego..." (liviana, no explica los 45s) y la fase `scanning-addons` renderiza "Escaneando addons..." (la fase costosa real). El desfase entre lo reportado y lo real es un error de transcripción/percepción de QA, NO un bug de label desactualizado. No hay hallazgo de UI adicional: ningún texto quedó mal cableado.
+
+**Causa raíz confirmada (medida, no hipótesis):** `AddonScanner.scan` (en `src/main/domain/addon-scanner.ts`) recorría todos los `.vpk` de la Workshop en un bucle `for...await` estrictamente SERIAL (concurrencia efectiva 1), lanzando 1-2 procesos `vpk.exe` por addon (`list` + `extract` del addoninfo). Con ~200 addons eso son ~200-400 procesos encadenados uno tras otro. La escala está medida en `Context/02-pendientes.md`: 12-17s con 73 addons → ~45s con una Workshop grande (crecimiento lineal). NO era I/O síncrono bloqueante (todo usa `fs/promises` + `execFile` async): era la latencia total del escaneo serial sumada a la ausencia de feedback. Asimetría reveladora: la fase POSTERIOR de clasificación VScript YA estaba paralelizada con `classifyWithBoundedConcurrency` + `DEFAULT_VPK_CONCURRENCY = 4`, mientras que el escaneo inicial no lo estaba.
+
+**Decisión / fix:** paralelizar `AddonScanner.scan` con un pool INLINE de concurrencia acotada, reutilizando el patrón ya presente en el código (cursor compartido + escritura por índice `results[index]`) y la constante compartida `DEFAULT_VPK_CONCURRENCY = 4` (definida en `vpk-tool.ts`). Se estructura en dos fases:
+  - **(1) Recolección secuencial de candidatos:** filtro de `.vpk` de nivel superior + derivación de `id`/`vpkPath`, preservando el orden de aparición → el índice de cada candidato es su posición final en la lista de resultados.
+  - **(2) Llenado paralelo acotado:** hasta `DEFAULT_VPK_CONCURRENCY` addons en vuelo a la vez, escribiendo cada resultado por su índice (`results[index]`).
+  Baja el tiempo ~4x (~45s → ~11s). El resultado es IDÉNTICO al serial: misma lista, mismo orden, misma metadata. La firma pública de `scan` y los helpers privados (`#resolveCover`, `#readAddonInfoSafely`, incluido su try/catch best-effort) NO cambian. Sin `worker_threads`, sin tocar el renderer, sin canal de progreso IPC.
+
+**Opción (b) inline elegida (con deuda técnica anotada):** se optó por replicar el pool inline dentro de `AddonScanner` en vez de extraer un helper genérico `mapWithBoundedConcurrency` y refactorizar los tres consumidores (scanner + `classifyWithBoundedConcurrency` + `MergeEngine.preview`). Motivo: fix mínimo de bajo riesgo, y ya existe precedente de replicar el patrón inline (`MergeEngine.preview`). Deuda técnica: unificar los tres pools en un cambio separado cuando convenga.
+
+**Testing (metodología de bug condition):**
+  - Test EXPLORATORIO con un `CommandRunner` instrumentado que mide `maxInFlight` (invocaciones `vpk.exe` en vuelo simultáneas): sobre el código SERIAL `maxInFlight === 1` (aseverar `> 1` FALLA, demostrando la concurrencia efectiva 1) y tras el fix `maxInFlight` cae en `(1, 4]` con 8 addons (medido = 4).
+  - Property tests de PRESERVACIÓN con modelo independiente (deep-equal + mismo orden que el serial de referencia, ≥100 iter) + property de COTA de concurrencia (`maxInFlight <= DEFAULT_VPK_CONCURRENCY`).
+  - Unit tests concretos: orden preservado con un addoninfo que falla en el medio, addon sin cover, filtrado de subdirectorios/no-`.vpk`, lista vacía → `[]`, derivación de `id`/`vpkPath`.
+  - Los tests existentes `addon-scanner.test.ts` y `addon-scanner.property.test.ts` siguen pasando SIN modificación (red de seguridad de que el resultado no cambió).
+  - Suite completa: **437 passed**, typecheck **0 errores**.
+
+**Referencia:** bug BUG-006 (QA V3 jornada 2, último bug de la jornada). Spec en `.kiro/specs/bug-006-escaneo-bloquea-ui/`.

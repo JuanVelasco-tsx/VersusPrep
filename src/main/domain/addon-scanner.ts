@@ -65,6 +65,7 @@
 import { COVER_EXTENSION } from "./addon-cover.js";
 import { extractAddonInfo } from "./addoninfo-extract.js";
 import type { AddonInfo, ScannedAddon } from "./types.js";
+import { DEFAULT_VPK_CONCURRENCY } from "./vpk-tool.js";
 import type { VpkTool } from "./vpk-tool.js";
 
 /** Nombre interno (basename) del archivo de metadata dentro del VPK. */
@@ -182,36 +183,79 @@ export class AddonScanner {
   /**
    * Escanea `workshopFolder` y devuelve los addons detectados (AC 2.1–2.6).
    *
-   * El orden del resultado sigue el orden en que el FS listó las entradas. El
-   * escaneo de la lista y la asociación de cover son deterministas y no dependen
-   * de la metadata; la fase de metadata es best-effort por-addon.
+   * El orden del resultado sigue el orden en que el FS listó las entradas.
+   *
+   * ---------------------------------------------------------------------------
+   * BUG-006 — el escaneo se ejecuta con CONCURRENCIA ACOTADA (no serial). El
+   * recorrido se hace en DOS FASES para bajar la latencia sin cambiar QUÉ
+   * produce el escaneo (mismo resultado, mismo orden, misma metadata que el
+   * escaneo serial de referencia):
+   *
+   *   FASE 1 — recolección secuencial de CANDIDATOS (barata, SIN `vpk.exe`):
+   *     recorre `entries` EN ORDEN y se queda solo con los `.vpk` de nivel
+   *     superior (AC 2.1/2.2), derivando lo barato y determinista `{ id, vpkPath }`.
+   *     Las entradas ignoradas (subdirectorios y no-`.vpk`) NO ocupan lugar, así
+   *     que el ÍNDICE de cada candidato ES su posición final en el resultado. El
+   *     `filter/map` preserva el orden de `entries`, idéntico al del recorrido
+   *     serial anterior.
+   *
+   *   FASE 2 — llenado PARALELO con concurrencia ACOTADA (pool INLINE):
+   *     replica el patrón de `classifyWithBoundedConcurrency` (ipc-handlers.ts) y
+   *     de `MergeEngine.preview`: un array `results` de longitud
+   *     `candidates.length`, un CURSOR compartido y hasta
+   *     `DEFAULT_VPK_CONCURRENCY` (vpk-tool.ts, única fuente del tamaño de pool)
+   *     workers. Cada worker toma `index = cursor++`, corta al salir de rango,
+   *     procesa `#resolveCover` + `#readAddonInfoSafely` (que NO cambian) y
+   *     escribe en `results[index]`. La escritura POR ÍNDICE (posición original)
+   *     garantiza que el orden del resultado sea el del listado del directorio,
+   *     independiente del orden en que terminen los workers. Nunca hay más de
+   *     `DEFAULT_VPK_CONCURRENCY` invocaciones `vpk.exe` en vuelo a la vez.
+   *
+   * El manejo de errores best-effort por-addon es INALTERADO: `#readAddonInfoSafely`
+   * conserva su try/catch → `null` y `#resolveCover` usa `fs.exists` no-lanzante,
+   * así que ningún worker propaga una excepción que rompa el `Promise.all` durante
+   * el escaneo normal (AC 2.5). El único rechazo posible sigue siendo el de
+   * `listEntries` (Fase 1, fuera del pool): sin listado no hay escaneo.
+   * ---------------------------------------------------------------------------
    */
   async scan(workshopFolder: string): Promise<ScannedAddon[]> {
     const entries = await this.#fs.listEntries(workshopFolder);
 
-    const addons: ScannedAddon[] = [];
-    for (const entry of entries) {
-      // AC 2.1/2.2: solo archivos de nivel superior; los directorios se ignoran.
-      if (entry.isDirectory) {
-        continue;
+    // FASE 1 — candidatos en orden (barata, sin vpk.exe). El índice del
+    // candidato ES su posición final en el resultado (los ignorados no ocupan
+    // lugar), preservando el orden del listado (AC 2.1/2.2).
+    const candidates = entries
+      .filter((entry) => !entry.isDirectory)
+      .map((entry) => ({ entry, id: addonIdFromVpkName(entry.name) }))
+      .filter((candidate): candidate is { entry: DirEntry; id: string } => candidate.id !== null)
+      .map((candidate) => ({
+        id: candidate.id,
+        vpkPath: joinWindowsPath(workshopFolder, candidate.entry.name),
+      }));
+
+    // FASE 2 — pool INLINE acotado que escribe por índice (orden preservado).
+    const results: ScannedAddon[] = new Array<ScannedAddon>(candidates.length);
+    let cursor = 0;
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const index = cursor++;
+        const candidate = candidates[index];
+        // noUncheckedIndexedAccess: candidate es {…} | undefined; el undefined
+        // solo ocurre cuando index salió de rango → fin del worker.
+        if (candidate === undefined) {
+          return;
+        }
+        const coverPath = await this.#resolveCover(workshopFolder, candidate.id);
+        const info = await this.#readAddonInfoSafely(candidate.vpkPath, candidate.id);
+        // AC 2.3/2.4: addon con id derivado, vpkPath y cover asociado (o null).
+        results[index] = { id: candidate.id, vpkPath: candidate.vpkPath, coverPath, info };
       }
-      const id = addonIdFromVpkName(entry.name);
-      if (id === null) {
-        // No es un `.vpk` (otra extensión): se ignora (AC 2.1).
-        continue;
-      }
+    };
 
-      const vpkPath = joinWindowsPath(workshopFolder, entry.name);
-      const coverPath = await this.#resolveCover(workshopFolder, id);
-      const info = await this.#readAddonInfoSafely(vpkPath, id);
+    const poolSize = Math.min(DEFAULT_VPK_CONCURRENCY, candidates.length);
+    await Promise.all(Array.from({ length: poolSize }, () => worker()));
 
-      // AC 2.3/2.4: addon con id derivado, vpkPath y cover asociado (o null).
-      // exactOptionalPropertyTypes: `coverPath` e `info` son obligatorios en
-      // ScannedAddon (pueden ser null), así que se asignan siempre.
-      addons.push({ id, vpkPath, coverPath, info });
-    }
-
-    return addons;
+    return results;
   }
 
   /**
