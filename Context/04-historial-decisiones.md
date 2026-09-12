@@ -1055,3 +1055,25 @@ Se tomaron tres decisiones de implementación no fijadas explícitamente por el 
   - Suite completa: **377 passed**, typecheck **0 errores**.
 
 **Referencia:** bug BUG-007 (QA V3 jornada 2). Spec en `.kiro/specs/bug-007-elevacion-pierde-batch/`.
+### [2026-09] BUG-010: separador clave-valor incorrecto al inyectar `Game modsvs` en gameinfo.txt
+
+**Qué (síntoma confirmado en QA V3 jornada 2, prioridad ALTA):** al garantizar que `Game modsvs` sea la PRIMERA y ÚNICA entrada del bloque `SearchPaths` del `gameinfo.txt`, el `GameInfoEditor` insertaba/movía esa línea usando un ESPACIO SIMPLE entre la clave `Game` y el valor `modsvs` (`Game modsvs`), mientras el resto del bloque usa TABULACIÓN (a menudo varias tabs seguidas para alinear las columnas). El motor Source es sensible al formato del bloque `SearchPaths`, por lo que una línea con separador distinto al del resto del bloque es un riesgo. Bug autocontenido en la capa main/dominio (`src/main/domain/game-info-editor.ts`).
+
+**Causa raíz (confirmada por lectura estática, no supuesta):** `canonicalModsvsSegment(indent, eol)` HARDCODEABA el espacio simple (`${indent}Game modsvs`). El helper `referenceIndentEol` ya derivaba la INDENTACIÓN líder y el EOL de la primera entrada `Game` de referencia del bloque, pero NO derivaba el separador clave-valor, así que la línea canónica nunca replicaba las tabulaciones del archivo real.
+
+**Decisión / fix (cuatro cambios + preservación de idempotencia):**
+  - **Nuevo helper `extractSeparator(text)`:** captura la CORRIDA COMPLETA de whitespace `[ \t]+` entre `Game` y el valor (regex `/^\s*game([ \t]+)\S/i`), NO un único carácter. **Decisión 2:** el formato de Valve usa múltiples tabs para alinear columnas, así que replicar un solo carácter no bastaría; se copia la corrida entera tal cual.
+  - **`referenceIndentEol` extendido a `{ indent, eol, separator }`:** el separador se deriva de la MISMA primera línea `Game` de referencia de la que ya salían la indentación y el EOL. **Decisión 1:** una ÚNICA línea de referencia —la primera `Game` en orden de aparición— es determinista y evita ambigüedad si distintas entradas del bloque usan separadores distintos.
+  - **`canonicalModsvsSegment(indent, separator, eol)`** ahora construye `${indent}Game${separator}modsvs` con el separador derivado, en vez del espacio fijo.
+  - **Nueva constante `DEFAULT_SEPARATOR = "\t"` (un tab):** fallback cuando el bloque no tiene ninguna otra entrada `Game` de la cual derivar el separador.
+  - **Idempotencia del Caso C preservada por construcción:** su early-return corta ANTES de construir la línea canónica, así que una `Game modsvs` ya primera-y-única NO se reescribe aunque su separador difiera del canónico. El fix NO normaliza separadores en el Caso C; solo los Casos A/B (insertar/mover) usan el separador derivado.
+
+**Testing (metodología de bug condition):**
+  - Tests exploratorios que reproducían el bug (línea `modsvs` con espacio simple en vez del tab de referencia) sobre el código SIN fix (fallaban, confirmando la causa raíz).
+  - Property test de corrección (fast-check, 100 iter): para cualquier primera entrada `Game` con separador `S` (corrida arbitraria de tabs/espacios, incluidas mezclas), la línea `modsvs` insertada/movida replica EXACTAMENTE `S`, más idempotencia.
+  - Property test de preservación: el Caso C idempotente NO reescribe una `modsvs` ya primera-y-única aunque su separador sea arbitrario.
+  - Unit tests concretos: una/dos/tres tabs, tres espacios, mezcla tab+espacio, Caso B derivando de la referencia (no de la `modsvs` vieja), y Decisión 1 tomando la PRIMERA entrada.
+  - Los tests existentes de `game-info-editor` siguieron pasando sin ajuste (su oráculo compara valores, no separadores).
+  - Suite completa: **405 passed**, typecheck **0 errores**.
+
+**Referencia:** bug BUG-010 (QA V3 jornada 2). Spec en `.kiro/specs/bug-010-gameinfo-tabulacion/`.

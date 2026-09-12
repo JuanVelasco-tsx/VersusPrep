@@ -123,6 +123,15 @@ const DEFAULT_EOL = "\r\n";
 const DEFAULT_INDENT = "\t\t\t\t";
 
 /**
+ * Separador clave-valor por defecto de la línea `Game modsvs` si el bloque no
+ * tiene ninguna otra entrada `Game` de la cual derivarlo. Un tab: el resto del
+ * dominio usa tabs (DEFAULT_INDENT) y el formato Valve alinea las columnas del
+ * bloque SearchPaths con tabulación, así que un tab es el default consistente y
+ * razonable (nunca un espacio simple, que es justo el defecto de BUG-010).
+ */
+const DEFAULT_SEPARATOR = "\t";
+
+/**
  * Motivo por el que `ensureModsvsFirst` no pudo operar sobre el gameinfo.txt.
  * Ver DECISIÓN 1.
  *
@@ -254,6 +263,19 @@ function leadingIndent(text: string): string {
 }
 
 /**
+ * Extrae el separador clave-valor de una línea `Game <valor>`: la corrida COMPLETA
+ * de whitespace (`[ \t]+`) entre la clave `game` (case-insensitive) y el inicio del
+ * valor. Devuelve `null` si la línea no es una entrada `Game <valor>` reconocible
+ * (no debería ocurrir sobre una línea ya validada con `isGameLine`, pero se protege).
+ * Ver DECISIÓN 2 (BUG-010): se replica la corrida entera de tabs/espacios, no un
+ * único carácter, para no romper la alineación de columnas del formato Valve.
+ */
+function extractSeparator(text: string): string | null {
+  const match = /^\s*game([ \t]+)\S/i.exec(text);
+  return match ? (match[1] ?? null) : null;
+}
+
+/**
  * ¿La línea es una entrada `Game modsvs`? Se compara la clave `Game` y el valor
  * `modsvs` de forma CASE-INSENSITIVE, aceptando el valor con o sin comillas
  * (`Game modsvs`, `game   MODSVS`, `Game "modsvs"`). Cualquier otra `Game <x>`
@@ -376,40 +398,56 @@ function locateSearchPaths(segments: LineSegment[]): SearchPathsBlock {
 
 
 /**
- * Construye la línea canónica `Game modsvs` con la indentación y el EOL dados.
- * El EOL vacío (última línea del archivo sin salto) se sustituye por el EOL de
- * referencia para que la línea insertada quede bien terminada.
+ * Construye la línea canónica `Game modsvs` con la indentación, el SEPARADOR
+ * clave-valor y el EOL dados. El separador (corrida de tabs/espacios entre `Game`
+ * y `modsvs`) se deriva de la primera entrada `Game` de referencia (BUG-010,
+ * DECISIÓN 2), en vez del espacio simple que se hardcodeaba antes. El EOL vacío
+ * (última línea del archivo sin salto) se sustituye por el EOL de referencia para
+ * que la línea insertada quede bien terminada.
  */
-function canonicalModsvsSegment(indent: string, eol: string): LineSegment {
-  return { text: `${indent}${"Game"} ${MODSVS_FOLDER}`, eol: eol === "" ? DEFAULT_EOL : eol };
+function canonicalModsvsSegment(indent: string, separator: string, eol: string): LineSegment {
+  return { text: `${indent}Game${separator}${MODSVS_FOLDER}`, eol: eol === "" ? DEFAULT_EOL : eol };
 }
 
 /**
- * Determina la indentación y el EOL de referencia para la línea `Game modsvs`,
- * inspeccionando las líneas del bloque (openIndex, closeIndex). Prioriza:
- *   1. La indentación/EOL de una línea `Game` existente del bloque.
- *   2. En su defecto, la de la línea de apertura `{`.
- *   3. En último caso, los valores por defecto (DECISIÓN 3).
+ * Determina la indentación, el EOL y el SEPARADOR clave-valor de referencia para
+ * la línea `Game modsvs`, inspeccionando las líneas del bloque (openIndex,
+ * closeIndex). Prioriza:
+ *   1. La indentación/EOL/separador de una línea `Game` existente del bloque.
+ *   2. En su defecto, la indentación/EOL de la línea de apertura `{` (con
+ *      `DEFAULT_SEPARATOR`).
+ *   3. En último caso, los valores por defecto (DECISIÓN 3 + DEFAULT_SEPARATOR).
+ *
+ * BUG-010, DECISIÓN 1: el separador se deriva de la MISMA primera línea `Game` de
+ * referencia de la que ya salen la indentación y el EOL, para mantener una única
+ * línea de referencia determinista.
  */
 function referenceIndentEol(
   segments: LineSegment[],
   block: SearchPathsBlock,
-): { indent: string; eol: string } {
+): { indent: string; eol: string; separator: string } {
   for (let i = block.openIndex + 1; i < block.closeIndex; i++) {
     const seg = segments[i];
     if (seg !== undefined && isGameLine(seg.text)) {
-      return { indent: leadingIndent(seg.text), eol: seg.eol === "" ? DEFAULT_EOL : seg.eol };
+      // La MISMA línea de referencia aporta indentación, EOL y separador (DECISIÓN 1).
+      const separator = extractSeparator(seg.text) ?? DEFAULT_SEPARATOR;
+      return {
+        indent: leadingIndent(seg.text),
+        eol: seg.eol === "" ? DEFAULT_EOL : seg.eol,
+        separator,
+      };
     }
   }
   const openSeg = segments[block.openIndex];
   if (openSeg !== undefined) {
     // Indentar un nivel más que la línea de apertura si es solo `{`; si la llave
-    // va pegada a la clave, se usa su misma indentación + un tab de cortesía.
+    // va pegada a la clave, se usa su misma indentación + un tab de cortesía. Sin
+    // línea `Game` previa, el separador cae en DEFAULT_SEPARATOR (un tab).
     const baseIndent = leadingIndent(openSeg.text);
     const eol = openSeg.eol === "" ? DEFAULT_EOL : openSeg.eol;
-    return { indent: `${baseIndent}\t`, eol };
+    return { indent: `${baseIndent}\t`, eol, separator: DEFAULT_SEPARATOR };
   }
-  return { indent: DEFAULT_INDENT, eol: DEFAULT_EOL };
+  return { indent: DEFAULT_INDENT, eol: DEFAULT_EOL, separator: DEFAULT_SEPARATOR };
 }
 
 /**
@@ -448,8 +486,8 @@ export function ensureModsvsFirstInContent(content: string): GameInfoEditOutcome
     return { content, changed: false, appliedCase: "unchanged" };
   }
 
-  const { indent, eol } = referenceIndentEol(segments, block);
-  const canonical = canonicalModsvsSegment(indent, eol);
+  const { indent, eol, separator } = referenceIndentEol(segments, block);
+  const canonical = canonicalModsvsSegment(indent, separator, eol);
 
   if (modsvsIndices.length === 0) {
     // Caso A — no existe: insertar como primera entrada Game (o al inicio del
