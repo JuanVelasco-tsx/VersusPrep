@@ -361,7 +361,10 @@ describe("derivePaths (AC 1.7, 1.8)", () => {
 
 describe("verifyPathsOnDisk (AC 1.9)", () => {
   test("marca faltantes: algunas presentes, otras no; allPresent=false", async () => {
-    // Solo existen gameRoot y workshop; faltan vpkTool, gameinfo y modsvs.
+    // Solo existen gameRoot y workshop; faltan vpkTool y gameinfo.
+    // NOTA (BUG-009): `modsvsFolder` ya NO está en REQUIRED_PATH_KEYS (la app la
+    // crea), así que `verifyPathsOnDisk` ya no la incluye en `present` ni en
+    // `missing`. Solo se verifican las 4 rutas que sí deben preexistir.
     const fs = new MockFs([GAME_ROOT, WORKSHOP]);
     const detector = makeDetector({ fs });
     const paths = detector.derivePaths(LIB, STEAM);
@@ -371,9 +374,8 @@ describe("verifyPathsOnDisk (AC 1.9)", () => {
       workshopFolder: true,
       vpkToolPath: false,
       gameInfoFile: false,
-      modsvsFolder: false,
     });
-    expect(v.missing).toEqual(["vpkToolPath", "gameInfoFile", "modsvsFolder"]);
+    expect(v.missing).toEqual(["vpkToolPath", "gameInfoFile"]);
     expect(v.allPresent).toBe(false);
   });
 
@@ -507,73 +509,80 @@ describe("detect: flujo completo (AC 1.1–1.12)", () => {
 
   test("una ruta derivada falta → selección manual de ESA ruta + re-verificación (AC 1.10, 1.11)", async () => {
     const registry = new MockRegistry(STEAM);
-    // Falta modsvs; el resto existe. El usuario da un modsvs alternativo que SÍ existe.
-    const altModsvs = "E:\\alt\\modsvs";
+    // NOTA (BUG-009): `modsvsFolder` ya NO se verifica ni se pide manualmente.
+    // Se usa `vpkToolPath` (que SIGUE en REQUIRED_PATH_KEYS) como la ruta faltante
+    // que se pide manualmente. Falta vpkTool; el resto existe. El usuario da un
+    // vpk.exe alternativo que SÍ existe.
+    const altVpk = "E:\\alt\\vpk.exe";
     const fs = new MockFs(
-      [GAME_ROOT, WORKSHOP, VPK_TOOL, GAMEINFO, altModsvs],
+      [GAME_ROOT, WORKSHOP, GAMEINFO, altVpk],
       [[VDF_PATH, vdfWithL4D2OnD()]],
     );
-    const manual = new MockManual().onRequiredPath("modsvsFolder", selected(altModsvs));
+    const manual = new MockManual().onRequiredPath("vpkToolPath", selected(altVpk));
     const detector = makeDetector({ registry, fs, manual });
 
     const result = await detector.detect();
     expect(result.kind).toBe("ready");
     if (result.kind === "ready") {
       expect(result.source).toBe("manual");
-      expect(result.paths.modsvsFolder).toBe(altModsvs);
+      expect(result.paths.vpkToolPath).toBe(altVpk);
       expect(result.verification.allPresent).toBe(true);
     }
-    // Se pidió específicamente la ruta modsvsFolder.
+    // Se pidió específicamente la ruta vpkToolPath.
     expect(
       manual.requests.some(
-        (r) => r.kind === "required-path" && r.pathKey === "modsvsFolder",
+        (r) => r.kind === "required-path" && r.pathKey === "vpkToolPath",
       ),
     ).toBe(true);
   });
 
   test("primera ruta manual NO existe, segunda SÍ → reintento (AC 1.12)", async () => {
     const registry = new MockRegistry(STEAM);
-    const badModsvs = "E:\\does-not-exist\\modsvs";
-    const goodModsvs = "E:\\good\\modsvs";
-    // goodModsvs existe; badModsvs NO. El usuario primero da la mala, luego la buena.
+    // NOTA (BUG-009): se usa `gameInfoFile` (sigue en REQUIRED_PATH_KEYS) en vez
+    // de `modsvsFolder`, que ya no se verifica ni se pide manualmente.
+    const badGameinfo = "E:\\does-not-exist\\gameinfo.txt";
+    const goodGameinfo = "E:\\good\\gameinfo.txt";
+    // goodGameinfo existe; badGameinfo NO. El usuario primero da la mala, luego la buena.
     const fs = new MockFs(
-      [GAME_ROOT, WORKSHOP, VPK_TOOL, GAMEINFO, goodModsvs],
+      [GAME_ROOT, WORKSHOP, VPK_TOOL, goodGameinfo],
       [[VDF_PATH, vdfWithL4D2OnD()]],
     );
     const manual = new MockManual().onRequiredPath(
-      "modsvsFolder",
-      selected(badModsvs),
-      selected(goodModsvs),
+      "gameInfoFile",
+      selected(badGameinfo),
+      selected(goodGameinfo),
     );
     const detector = makeDetector({ registry, fs, manual });
 
     const result = await detector.detect();
     expect(result.kind).toBe("ready");
     if (result.kind === "ready") {
-      expect(result.paths.modsvsFolder).toBe(goodModsvs);
+      expect(result.paths.gameInfoFile).toBe(goodGameinfo);
     }
-    // Se solicitó modsvsFolder DOS veces (la mala se rechazó por no existir).
-    const modsvsRequests = manual.requests.filter(
-      (r) => r.kind === "required-path" && r.pathKey === "modsvsFolder",
+    // Se solicitó gameInfoFile DOS veces (la mala se rechazó por no existir).
+    const gameinfoRequests = manual.requests.filter(
+      (r) => r.kind === "required-path" && r.pathKey === "gameInfoFile",
     );
-    expect(modsvsRequests.length).toBe(2);
+    expect(gameinfoRequests.length).toBe(2);
   });
 
   test("ruta faltante y usuario cancela → needs-manual required-path-missing", async () => {
     const registry = new MockRegistry(STEAM);
-    // Falta modsvs y el usuario cancela la selección manual.
+    // NOTA (BUG-009): se usa `vpkToolPath` (sigue en REQUIRED_PATH_KEYS) como la
+    // ruta faltante, ya que `modsvsFolder` dejó de verificarse/pedirse.
+    // Falta vpkTool y el usuario cancela la selección manual.
     const fs = new MockFs(
-      [GAME_ROOT, WORKSHOP, VPK_TOOL, GAMEINFO],
+      [GAME_ROOT, WORKSHOP, GAMEINFO],
       [[VDF_PATH, vdfWithL4D2OnD()]],
     );
-    const manual = new MockManual().onRequiredPath("modsvsFolder", cancelled);
+    const manual = new MockManual().onRequiredPath("vpkToolPath", cancelled);
     const detector = makeDetector({ registry, fs, manual });
 
     const result = await detector.detect();
     expect(result.kind).toBe("needs-manual");
     if (result.kind === "needs-manual") {
       expect(result.reason).toBe("required-path-missing");
-      expect(result.verification?.missing).toContain("modsvsFolder");
+      expect(result.verification?.missing).toContain("vpkToolPath");
     }
   });
 

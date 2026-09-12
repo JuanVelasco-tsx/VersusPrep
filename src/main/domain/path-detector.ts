@@ -105,13 +105,22 @@ function joinWindows(base: string, ...segments: string[]): string {
 /**
  * Orden canónico de las rutas REQUERIDAS a verificar (AC 1.9). `verifyPathsOnDisk`
  * y `detect` recorren en ESTE orden para que `missing` sea determinista.
+ *
+ * BUG-009 (Cambio 2): `modsvsFolder` NO se incluye aquí a propósito. `modsvs` es
+ * una carpeta que la propia app gestiona y crea (ver `MergeOrchestrator.#materialize`),
+ * no una ruta preexistente del juego. Verificarla en disco en una instalación
+ * fresca la marcaba como faltante y forzaba una selección manual que desviaba
+ * `modsvsFolder` a la raíz del juego (bug pegajoso). Al quitarla, `verifyPathsOnDisk`
+ * ya no la consulta, `#verifyThenManual` no la pide vía `ManualPathProvider`, y
+ * `modsvsFolder` sigue derivándose (`derivePaths`/`#detectFromGameRoot`) y
+ * persistiéndose como `<gameRoot>\modsvs`. Las OTRAS 4 rutas SÍ deben preexistir
+ * y mantienen su verificación/selección manual (preserva bugfix 3.5, 3.6).
  */
 const REQUIRED_PATH_KEYS: readonly RequiredPathKey[] = [
   "gameRoot",
   "workshopFolder",
   "vpkToolPath",
   "gameInfoFile",
-  "modsvsFolder",
 ];
 
 // ---------------------------------------------------------------------------
@@ -327,6 +336,13 @@ export class PathDetector {
    * → `verifyPathsOnDisk`, ofreciendo selección manual con RE-VERIFICACIÓN ante
    * cada fallo. Devuelve `ready` SOLO vía {@link pathsReady} (invariante de
    * verificación-antes-de-persistir), o `needs-manual` si el usuario cancela.
+   *
+   * BUG-009 (Cambio 3, bug pegajoso): no hay lógica de migración explícita de un
+   * `modsvsFolder` mal persistido. `detect()` RE-DERIVA `modsvsFolder = <gameRoot>\modsvs`
+   * en CADA corrida (desde el registro / `libraryfolders.vdf` vía `derivePaths` o
+   * `#detectFromGameRoot`), sin pedirlo como preexistente. El handler `detectPaths`
+   * persiste ese resultado `ready` con `savePaths`, sobrescribiendo cualquier valor
+   * incorrecto guardado en una sesión previa. Así la corrección se da sola.
    */
   async detect(): Promise<PathDetectionResult> {
     // Paso 1-2: Steam_Path por registro, o selección manual (AC 1.1, 1.2).

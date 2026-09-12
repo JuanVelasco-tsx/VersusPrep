@@ -30,7 +30,7 @@ export interface GamePaths {
   vpkToolPath: string;
   /** `<left4dead2Dir>\gameinfo.txt` */
   gameInfoFile: string;
-  /** `<left4dead2Dir>\modsvs` */
+  /** `<gameRoot>\modsvs` */
   modsvsFolder: string;
 }
 
@@ -53,16 +53,25 @@ export interface LibraryEntry {
 }
 
 /**
- * Claves de `GamePaths` que el AC 1.9 enumera como REQUERIDAS de verificar en
- * disco: `gameRoot`, `workshopFolder`, `vpkToolPath`, `gameInfoFile` y
- * `modsvsFolder`.
+ * Claves de `GamePaths` verificables como REQUERIDAS de existir en disco.
  *
  * Se modela como un subconjunto tipado de las claves de {@link GamePaths} (no un
- * `string` libre) para que `verifyPathsOnDisk` y `detect` (tarea 5.3) no puedan
- * referirse a un rol de ruta inexistente y para que, ante cualquier cambio de
- * `GamePaths`, el compilador obligue a revisar qué rutas se verifican. `steamPath`
- * y `left4dead2Dir` NO están aquí: el AC 1.9 no los lista como requeridos (ver la
+ * `string` libre) para que `verifyPathsOnDisk` y `detect` no puedan referirse a
+ * un rol de ruta inexistente y para que, ante cualquier cambio de `GamePaths`, el
+ * compilador obligue a revisar qué rutas se verifican. `steamPath` y
+ * `left4dead2Dir` NO están aquí: el AC 1.9 no los lista como requeridos (ver la
  * DECISIÓN documentada en el historial 2026-09-05, tarea 5.3).
+ *
+ * BUG-009: `modsvsFolder` SE MANTIENE en esta unión de tipo porque
+ * {@link PathVerification.present} usa `Record<RequiredPathKey, boolean>` y sacarlo
+ * del tipo rompería más de lo necesario. SIN EMBARGO, `modsvsFolder` ya NO se
+ * verifica en disco: `REQUIRED_PATH_KEYS` (el recorrido efectivo en
+ * `path-detector.ts`) dejó de incluirlo, porque `modsvs` es una carpeta que la
+ * propia app CREA (en `MergeOrchestrator.#materialize`), no una ruta preexistente.
+ * Como `present`/`missing` se construyen recorriendo `REQUIRED_PATH_KEYS`, en la
+ * práctica NO tendrán una entrada para `modsvsFolder` aunque el tipo la admita.
+ * Las rutas realmente verificadas son: `gameRoot`, `workshopFolder`, `vpkToolPath`
+ * y `gameInfoFile`.
  */
 export type RequiredPathKey =
   | "gameRoot"
@@ -91,14 +100,25 @@ export type RequiredPathKey =
  * estructuralmente imposible marcar rutas como persistibles sin una verificación
  * en disco cuyas rutas requeridas estén TODAS presentes.
  *
- * Se usa `Record<RequiredPathKey, boolean>` (todas las claves obligatorias) en
- * vez de un mapa parcial, para que el compilador garantice que se verificó CADA
- * ruta requerida —no se puede "olvidar" una— antes de derivar `allPresent`.
+ * Se usa `Record<RequiredPathKey, boolean>` (tipa todas las claves de la unión)
+ * en vez de un mapa parcial, para que el compilador acompañe el recorrido de las
+ * rutas verificadas antes de derivar `allPresent`.
+ *
+ * BUG-009: aunque el tipo `RequiredPathKey` admite `modsvsFolder`, esta carpeta
+ * ya NO se verifica en disco (la app la crea en `MergeOrchestrator.#materialize`).
+ * `present` y `missing` se construyen recorriendo `REQUIRED_PATH_KEYS`
+ * (path-detector.ts), que ya NO incluye `modsvsFolder`; por lo tanto, en la
+ * práctica `present` no tendrá esa entrada y `missing` nunca la listará. Las
+ * rutas efectivamente verificadas son `gameRoot`, `workshopFolder`, `vpkToolPath`
+ * y `gameInfoFile`.
  */
 export interface PathVerification {
-  /** Existencia en disco de cada ruta requerida (una entrada por clave). */
+  /**
+   * Existencia en disco de cada ruta EFECTIVAMENTE verificada (una entrada por
+   * clave de `REQUIRED_PATH_KEYS`). No incluye `modsvsFolder` (ya no se verifica).
+   */
   present: Record<RequiredPathKey, boolean>;
-  /** Claves cuyas rutas NO existen en disco, en orden de {@link RequiredPathKey}. */
+  /** Claves cuyas rutas NO existen en disco, en orden de `REQUIRED_PATH_KEYS`. */
   missing: RequiredPathKey[];
   /** `true` solo si todas las rutas requeridas existen (`missing` vacío). */
   allPresent: boolean;

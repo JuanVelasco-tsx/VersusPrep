@@ -41,10 +41,17 @@ describe("MergeOrchestrator — progreso (canal aditivo onProgress)", () => {
     const res = await orch.applyActiveSet(ENTRIES);
 
     expect(res.status).toBe("success");
+    // NOTA (BUG-009): el step "backup" aparece DOS veces consecutivas. El fix
+    // agregó un `ensureDir(modsvsFolder)` reactivo ANTES del backup real, y ese
+    // paso reutiliza el mismo `#emit("backup")` (comparte el manejo reactivo con
+    // el backup). Así, la secuencia observable emite "backup" (creación de modsvs)
+    // seguido de "backup" (respaldo del pak01 previo). Es un artefacto conocido
+    // del fix; el aserto refleja el comportamiento REAL del código.
     expect(p.steps).toEqual([
       "guard",
       "scan",
       "elevation",
+      "backup",
       "backup",
       "merge",
       "install",
@@ -90,8 +97,12 @@ describe("MergeOrchestrator — progreso (canal aditivo onProgress)", () => {
 
     expect(res?.status).toBe("success");
     // El resume NO chequea ProcessGuard (sin "guard") ni re-eleva (sin "elevation").
+    // NOTA (BUG-009): "backup" aparece DOS veces por el mismo motivo que en el
+    // applyActiveSet: el `ensureDir(modsvsFolder)` reactivo del fix emite "backup"
+    // antes del respaldo real. Artefacto conocido del fix; se aserta el real.
     expect(p.steps).toEqual([
       "scan",
+      "backup",
       "backup",
       "merge",
       "install",

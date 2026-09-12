@@ -35,7 +35,11 @@ export const TEST_PATHS: GamePaths = {
   vpkToolPath: "C:\\Steam\\steamapps\\common\\Left 4 Dead 2\\bin\\vpk.exe",
   gameInfoFile:
     "C:\\Steam\\steamapps\\common\\Left 4 Dead 2\\left4dead2\\gameinfo.txt",
-  modsvsFolder: "C:\\Steam\\steamapps\\common\\Left 4 Dead 2\\left4dead2\\modsvs",
+  // BUG-009: `modsvs` cuelga de `<gameRoot>` (raíz del juego), NO de `left4dead2\`.
+  // Es la topología CORRECTA confirmada por el usuario (P-01) y por `derivePaths`
+  // en `path-detector.ts` (`joinWindows(gameRoot, "modsvs")`). El valor anterior
+  // (`<gameRoot>\left4dead2\modsvs`) reflejaba el bug y estaba mal.
+  modsvsFolder: "C:\\Steam\\steamapps\\common\\Left 4 Dead 2\\modsvs",
 };
 
 /** Registro de una invocación a MergeEngine.merge. */
@@ -200,9 +204,15 @@ export class FakeLocalStore implements LocalStore {
 }
 
 /** BackupFileSystem mockeado (para el BackupManager real): configurable. */
-class FakeBackupFs {
+export class FakeBackupFs {
   readonly log: string[];
   existing = false;
+  /**
+   * Último destino (`dst`) recibido por `copyFile` del backup, o `null` si no se
+   * copió (p. ej. no había fuente que respaldar). Permite verificar en qué carpeta
+   * quedó el `.backup` (BUG-009 Property 1).
+   */
+  backupDest: string | null = null;
   #throwOnCopy: (() => Error) | null = null;
 
   constructor(log: string[]) {
@@ -214,8 +224,9 @@ class FakeBackupFs {
   exists(_path: string): Promise<boolean> {
     return Promise.resolve(this.existing);
   }
-  copyFile(_src: string, _dst: string): Promise<void> {
+  copyFile(_src: string, dst: string): Promise<void> {
     this.log.push("backup");
+    this.backupDest = dst;
     if (this.#throwOnCopy !== null) return Promise.reject(this.#throwOnCopy());
     return Promise.resolve();
   }
@@ -230,7 +241,29 @@ export class FakeOrchestratorFs implements MergeOrchestratorFileSystem {
   readonly log: string[];
   readonly ensuredDirs: string[] = [];
   readonly removedDirs: string[] = [];
+  /**
+   * Último destino (`dst`) recibido por `copyFile` del paso de INSTALACIÓN, o
+   * `null` si aún no se instaló. Permite verificar en qué carpeta quedó el
+   * `pak01_dir.vpk` fusionado (BUG-009 Property 1).
+   */
+  installDest: string | null = null;
+  /**
+   * Longitud del log cronológico compartido en el instante en que se invocó
+   * `ensureDir(dir)`, por cada `dir`. Permite verificar el ORDEN relativo de la
+   * creación de un directorio respecto de `backup`/`install`/`gameinfo` SIN
+   * contaminar el log (que otros tests asertan con `toEqual`). BUG-009: la creación
+   * de `modsvs` debe ocurrir ANTES del paso de backup.
+   */
+  readonly ensureDirLogIndex = new Map<string, number>();
   #throwOnInstall: (() => Error) | null = null;
+  /**
+   * Hook OPCIONAL para simular un fallo de `ensureDir` SOLO cuando el `dir`
+   * coincide con `#throwOnEnsureDirTarget` (BUG-009 caso EACCES/EPERM en la
+   * creación de `modsvs`). Por defecto no está configurado: `ensureDir` es un
+   * no-op y NO afecta a los tests existentes que crean `workDir`/`modsvs`.
+   */
+  #throwOnEnsureDir: (() => Error) | null = null;
+  #throwOnEnsureDirTarget: string | null = null;
 
   constructor(log: string[]) {
     this.log = log;
@@ -238,12 +271,32 @@ export class FakeOrchestratorFs implements MergeOrchestratorFileSystem {
   throwOnInstall(factory: () => Error): void {
     this.#throwOnInstall = factory;
   }
+  /**
+   * Configura `ensureDir` para que LANCE (con el error de `factory`) únicamente
+   * cuando se lo invoque con `targetDir`. Cualquier otro directorio (p. ej. el
+   * `workDir` temporal) sigue siendo un no-op. Permite ejercitar el manejo
+   * reactivo de permisos al crear `modsvs` sin alterar el resto del flujo.
+   */
+  throwOnEnsureDir(targetDir: string, factory: () => Error): void {
+    this.#throwOnEnsureDirTarget = targetDir;
+    this.#throwOnEnsureDir = factory;
+  }
   ensureDir(dir: string): Promise<void> {
     this.ensuredDirs.push(dir);
+    // Se captura la posición en el log ANTES de que se registren pasos posteriores
+    // (backup/install). No se escribe en el log para no romper los tests que
+    // aseveran su contenido exacto con `toEqual`.
+    if (!this.ensureDirLogIndex.has(dir)) {
+      this.ensureDirLogIndex.set(dir, this.log.length);
+    }
+    if (this.#throwOnEnsureDir !== null && dir === this.#throwOnEnsureDirTarget) {
+      return Promise.reject(this.#throwOnEnsureDir());
+    }
     return Promise.resolve();
   }
-  copyFile(_src: string, _dst: string): Promise<void> {
+  copyFile(_src: string, dst: string): Promise<void> {
     this.log.push("install");
+    this.installDest = dst;
     if (this.#throwOnInstall !== null) return Promise.reject(this.#throwOnInstall());
     return Promise.resolve();
   }

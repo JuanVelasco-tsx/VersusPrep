@@ -397,6 +397,26 @@ const REQUIRED_KEYS = [
 ] as const satisfies readonly RequiredPathKey[];
 
 /**
+ * VERIFIED_KEYS — las rutas que `detect()` REALMENTE comprueba en disco (BUG-009).
+ *
+ * Tras el fix de BUG-009, `modsvsFolder` salió de `REQUIRED_PATH_KEYS`: la app crea
+ * esa carpeta, así que ya NO se verifica en disco ni se pide manualmente. El TIPO
+ * `RequiredPathKey` SIGUE teniendo las 5 claves (por eso `REQUIRED_KEYS` de arriba
+ * mantiene el chequeo de exhaustividad de TIPOS), pero el ORÁCULO de esta property
+ * debe razonar sobre lo que detect() efectivamente verifica: estas 4 rutas.
+ *
+ * Regla derivada: `modsvsFolder` puede NO existir en el FS y aun así detect() puede
+ * devolver `ready`. Por eso el oráculo (a)/(b)/(c) se evalúa sobre VERIFIED_KEYS,
+ * NO sobre REQUIRED_KEYS.
+ */
+const VERIFIED_KEYS = [
+  "gameRoot",
+  "workshopFolder",
+  "vpkToolPath",
+  "gameInfoFile",
+] as const satisfies readonly RequiredPathKey[];
+
+/**
  * CHEQUEO DE EXHAUSTIVIDAD EN TIEMPO DE COMPILACIÓN (fix del hardening 5.4).
  *
  * REQUIRED_KEYS se duplica localmente a propósito (no acoplar el test a un export
@@ -560,8 +580,10 @@ test(
 
         if (result.kind === "ready") {
           readyCount++;
-          // (a) Las 5 rutas requeridas finales existen realmente en el FS.
-          for (const key of REQUIRED_KEYS) {
+          // (a) Las 4 rutas VERIFICADAS finales existen realmente en el FS.
+          // NOTA (BUG-009): NO se exige `modsvsFolder` (puede no existir y aun así
+          // ready), por eso el oráculo recorre VERIFIED_KEYS, no REQUIRED_KEYS.
+          for (const key of VERIFIED_KEYS) {
             if (!existsInFs(result.paths[key])) {
               return false;
             }
@@ -569,17 +591,18 @@ test(
           // (a) verification consistente.
           if (!result.verification.allPresent) return false;
           if (result.verification.missing.length !== 0) return false;
-          // (b)+(c) reforzado: ninguna ruta requerida final es inexistente en el FS.
-          const anyMissing = REQUIRED_KEYS.some((k) => !existsInFs(result.paths[k]));
+          // (b)+(c) reforzado: ninguna ruta VERIFICADA final es inexistente en el FS.
+          const anyMissing = VERIFIED_KEYS.some((k) => !existsInFs(result.paths[k]));
           if (anyMissing) return false;
           return true;
         }
 
         // needs-manual: si trae paths+verification (required-path-missing), el
-        // oráculo debe coincidir con `missing` (b).
+        // oráculo debe coincidir con `missing` (b). Solo aplica a VERIFIED_KEYS:
+        // `modsvsFolder` ya no se verifica, así que nunca aparece en `missing`.
         if (result.paths !== undefined && result.verification !== undefined) {
           const v: PathVerification = result.verification;
-          for (const key of REQUIRED_KEYS) {
+          for (const key of VERIFIED_KEYS) {
             const existsNow = existsInFs(result.paths[key]);
             const inMissing = v.missing.includes(key);
             if (existsNow && inMissing) return false; // existente jamás en missing

@@ -495,6 +495,34 @@ export class MergeOrchestrator {
     try {
       await this.#fs.ensureDir(workDir);
 
+      // BUG-009 — Crear `modsvs` ANTES de backup/instalar (Cambio 1 del design).
+      //
+      // En una instalación fresca `<gameRoot>\modsvs` todavía no existe, y ni
+      // `BackupManager` (que por DECISIÓN 4 NO crea directorios; su
+      // `BackupFileSystem` solo expone `exists` + `copyFile`) ni `copyFile` (sobre
+      // `fs.copyFile`, que no crea el directorio padre) la crean. Sin esta línea,
+      // el backup/instalar fallaría por `ENOENT` o desviaría el `.vpk` fuera de
+      // `modsvs`. Va acá y NO en `BackupManager` porque `#materialize` es el ÚNICO
+      // componente que coordina las TRES escrituras del Game_Root (backup,
+      // instalar, gameinfo) y ya posee `MergeOrchestratorFileSystem.ensureDir`
+      // (lo usa para el `workDir`): crear la carpeta una sola vez acá garantiza
+      // que exista para los tres pasos posteriores, sin violar el contrato mínimo
+      // de `BackupManager` ni duplicar la responsabilidad. `ensureDir` es
+      // recursivo e idempotente: si `modsvs` ya existe es un no-op y el caso ya
+      // funcional queda inalterado (preserva 3.7).
+      //
+      // Va envuelto en `#writeStep` (igual que backup/instalar/gameinfo) porque es
+      // una escritura en el Game_Root: un `EACCES`/`EPERM` al crear `modsvs` bajo
+      // un directorio protegido debe disparar la elevación reactiva
+      // (`handleWriteFailure`) en vez de abortar (coherente con 3.3). Se reutiliza
+      // el emit "backup" —sin agregar un step nuevo a `MergeProgressEvent`— porque
+      // esta creación es preparación del backup: es el paso más simple y coherente.
+      this.#emit("backup");
+      const modsvsResult = await this.#writeStep(entries, operationType, () =>
+        this.#fs.ensureDir(this.#paths.modsvsFolder),
+      );
+      if (modsvsResult.kind === "outcome") return modsvsResult.result;
+
       // Paso 4 — Backup (escritura en Game_Root -> reactivo).
       this.#emit("backup");
       const backupResult = await this.#writeStep(entries, operationType, () =>

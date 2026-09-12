@@ -1002,3 +1002,31 @@ Se tomaron tres decisiones de implementación no fijadas explícitamente por el 
 **Riesgo aceptado (documentado en el código):** `operationInFlight` vuelve a `false` en el `finally` (síncrono, este tick) ANTES de que corra el `setImmediate` del handoff (próximo tick). En esa ventana de microsegundos un segundo invoke de escritura podría colarse y disparar un segundo relanzamiento elevado. Es irrealizable para un click humano y la app ya se está cerrando, así que se deja como riesgo consciente en vez de mantener `operationInFlight` en `true` hasta el quit real.
 
 **Impacto:** `src/main/app/ipc-handlers.ts` (`onElevatedHandoff` en `IpcHandlersDeps` + disparo diferido en `guardedWrite` + comentario del riesgo aceptado), `src/main/main.ts` (inyecta `() => app.quit()`), `test/ipc-handlers.test.ts` (doble con tracker `handoffCalls` + 3 tests: apply->elevating dispara una vez tras el setImmediate, apply exitoso NO dispara, add->elevating también dispara). 340/340 tests, typecheck limpio. NO se tocó el dominio (ElevationService/MergeOrchestrator ya emitían `elevating` correctamente; solo faltaba que la capa que conoce `app` reaccionara).
+---
+
+### [2026-09] BUG-009: la fusión no creaba `modsvs` (pak01_dir.vpk + .backup en la raíz del juego)
+
+**Qué (síntoma confirmado en QA V3 jornada 2, bloqueante):** al materializar una fusión, `pak01_dir.vpk` y su `.backup` quedaban SUELTOS en `<gameRoot>\` (la raíz de "Left 4 Dead 2") en vez de dentro de `<gameRoot>\modsvs\`, y la carpeta `modsvs` NUNCA se creaba. La ubicación correcta, confirmada end-to-end en P-01, es `<gameRoot>\modsvs`.
+
+**Causa raíz (DOS causas, ambas confirmadas leyendo el código, no supuestas):**
+  1. **`modsvsFolder` estaba en `REQUIRED_PATH_KEYS` (`path-detector.ts`):** al estar en esa lista, se verificaba EN DISCO. En una instalación fresca `<gameRoot>\modsvs` todavía no existe, así que `verifyPathsOnDisk` la marcaba como faltante -> `#verifyThenManual` la pedía por `ManualPathProvider` -> el usuario, al no existir la carpeta, terminaba eligiendo la raíz del juego -> `modsvsFolder = <gameRoot>`. Peor: `LocalStore.savePaths` PERSISTÍA esa ruta incorrecta, así que el bug se volvía pegajoso entre sesiones.
+  2. **`MergeOrchestrator.#materialize` nunca hacía `ensureDir(modsvsFolder)`:** `BackupManager` (DECISIÓN 4) NO crea directorios por contrato, y `fs.copyFile` tampoco crea el directorio padre. Con `modsvsFolder` apuntando a la raíz (causa 1) el copy "funcionaba" dejando los archivos sueltos; incluso con la ruta correcta, faltaba crear la carpeta.
+  Además había una **contradicción de documentación**: el JSDoc de `GamePaths.modsvsFolder` decía `<left4dead2Dir>\modsvs` mientras que `derivePaths` calculaba `<gameRoot>\modsvs`.
+
+**Decisión / cambios (cuatro):**
+  - **(a) `MergeOrchestrator.#materialize` ahora crea `<gameRoot>\modsvs` con `ensureDir` ANTES del backup**, envuelto en el manejo reactivo `#writeStep` para que un `EACCES`/`EPERM` al crear `modsvs` dispare la ELEVACIÓN en vez de abortar. Se decidió acá y NO en `BackupManager` porque el orquestador es el único que coordina las tres escrituras del Game_Root y ya posee `MergeOrchestratorFileSystem.ensureDir`; `BackupManager` conserva su contrato mínimo (`exists` + `copyFile`, no crea dirs). `ensureDir` es idempotente: si `modsvs` ya existe es un no-op, preservando el caso que ya funcionaba.
+  - **(b) Se removió `modsvsFolder` de `REQUIRED_PATH_KEYS`** (quedan `gameRoot`, `workshopFolder`, `vpkToolPath`, `gameInfoFile`). `modsvs` es una carpeta que la app CREA, no una ruta preexistente del juego, así que dejó de verificarse en disco y de pedirse manualmente. Se MANTUVO `modsvsFolder` en el TIPO `RequiredPathKey` (porque `PathVerification.present` usa `Record<RequiredPathKey, boolean>`); en la práctica `present`/`missing` ya no la incluyen porque se construyen recorriendo `REQUIRED_PATH_KEYS`.
+  - **(c) Bug pegajoso: NO se agregó migración explícita.** `detect()` re-deriva `modsvsFolder = <gameRoot>\modsvs` en cada corrida y el handler `detectPaths` re-persiste el resultado `ready`, sobrescribiendo cualquier valor incorrecto guardado antes. El valor malo se cura solo en la primera detección posterior al fix.
+  - **(d) Se reconcilió el JSDoc de `GamePaths.modsvsFolder` a `<gameRoot>\modsvs`**, alineándolo con lo que `derivePaths` ya calculaba.
+
+**Testing (metodología de bug condition):**
+  - Tests exploratorios que reproducían el bug sobre el código SIN fix (fallaban, confirmando la causa raíz).
+  - Property test de corrección (fast-check, 100 iter): para cualquier `gameRoot`, el `installTarget` y el `backupPath` caen bajo `<gameRoot>\modsvs`, y `ensureDir(modsvs)` ocurre ANTES del backup.
+  - Property test de preservación (100 iter): con `modsvs` ya presente, el orden de escrituras (backup -> install -> gameinfo -> saveManifest) y los destinos NO cambian, y el `ensureDir` extra es un no-op.
+  - Unit tests concretos: orden del `ensureDir`, instalación fresca, `PathDetector` ya no pide `modsvs`, `EACCES`/`EPERM` -> `elevating`, bug pegajoso.
+  - Se ajustaron los tests de regresión de `path-detector` y `merge-orchestrator-progress`.
+  - Suite completa: **364 passed**, typecheck **0 errores**.
+
+**Observación (deuda menor registrada, NO implementada):** el canal de progreso ahora emite el step `"backup"` DOS veces consecutivas (el `ensureDir(modsvsFolder)` reactivo reutiliza el emit `"backup"` antes del backup real). Es un artefacto conocido; a futuro podría considerarse un step propio (p. ej. `"prepare"`/`"ensureModsvs"`) en `MergeProgressEvent`. No se cambió el código de producción por esto para no ampliar el alcance del fix.
+
+**Referencia:** bug BUG-009 (QA V3 jornada 2). Spec en `.kiro/specs/bug-009-merge-no-crea-modsvs/`.
