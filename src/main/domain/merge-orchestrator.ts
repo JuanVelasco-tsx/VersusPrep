@@ -291,6 +291,27 @@ export class MergeOrchestrator {
   }
 
   /**
+   * Construye un `OperationResult` de fallo definitivo, emitiendo el step
+   * terminal `"failed"` JUSTO ANTES de devolverlo (P-26). Punto ÚNICO por el
+   * que pasa TODO camino que retorna `status: "failure"` (juego corriendo,
+   * addon candidato ausente del escaneo, UAC denegado, `#writeStep`
+   * `already-writable`, catch de `VpkToolError` en el merge) — simétrico a
+   * como `"done"` se emite justo antes del `status: "success"` en
+   * `#materialize`. Reemplaza construir el objeto de fallo a mano en cada
+   * `return` para que ningún camino nuevo pueda olvidar emitir el step.
+   *
+   * NO se usa para `status: "elevating"`: ese desenlace no es un fallo, la
+   * operación sigue viva en la instancia elevada (ver `MergeProgressEvent`).
+   */
+  #failure(error: string, addonId?: string): OperationResult {
+    this.#emit("failed");
+    if (addonId !== undefined) {
+      return { status: "failure", error, addonId };
+    }
+    return { status: "failure", error };
+  }
+
+  /**
    * Aplica un Active_Set candidato completo tal cual lo recibe (fusión completa
    * desde cero). Chequea el juego, resuelve elevación proactiva y materializa.
    */
@@ -402,10 +423,9 @@ export class MergeOrchestrator {
     // Paso 1 — Precondición: el juego no puede estar corriendo (Req 4.1, 4.2).
     this.#emit("guard");
     if (await this.#processGuard.isGameRunning()) {
-      return {
-        status: "failure",
-        error: "El juego (left4dead2.exe) está en ejecución. Cerralo antes de aplicar cambios.",
-      };
+      return this.#failure(
+        "El juego (left4dead2.exe) está en ejecución. Cerralo antes de aplicar cambios.",
+      );
     }
 
     // Paso 2 — Resolver los ScannedAddon ANTES de la elevación (DECISIÓN 5): si un
@@ -427,10 +447,9 @@ export class MergeOrchestrator {
       return { status: "elevating" };
     }
     if (proactive.kind === "denied") {
-      return {
-        status: "failure",
-        error: `Se canceló la solicitud de permisos de administrador (UAC): ${proactive.reason}`,
-      };
+      return this.#failure(
+        `Se canceló la solicitud de permisos de administrador (UAC): ${proactive.reason}`,
+      );
     }
 
     // proactive.kind === "already-writable" -> se puede escribir; materializar.
@@ -460,11 +479,10 @@ export class MergeOrchestrator {
       if (addon === undefined) {
         return {
           kind: "outcome",
-          result: {
-            status: "failure",
-            error: `El addon ${entry.addonId} no está en la Workshop (¿desuscrito o borrado?). No se puede fusionar.`,
-            addonId: entry.addonId,
-          },
+          result: this.#failure(
+            `El addon ${entry.addonId} no está en la Workshop (¿desuscrito o borrado?). No se puede fusionar.`,
+            entry.addonId,
+          ),
         };
       }
       addons.push(addon);
@@ -617,10 +635,9 @@ export class MergeOrchestrator {
       if (outcome.kind === "denied") {
         return {
           kind: "outcome",
-          result: {
-            status: "failure",
-            error: `Se canceló la solicitud de permisos de administrador (UAC): ${outcome.reason}`,
-          },
+          result: this.#failure(
+            `Se canceló la solicitud de permisos de administrador (UAC): ${outcome.reason}`,
+          ),
         };
       }
       // already-writable: el error NO era de permisos. Fallo definitivo derivado
@@ -629,20 +646,21 @@ export class MergeOrchestrator {
     }
   }
 
-  /** Traduce un error capturado a un OperationResult de fallo definitivo. */
+  /**
+   * Traduce un error capturado a un OperationResult de fallo definitivo, vía
+   * `#failure` (emite `"failed"` — cubre tanto el catch de `VpkToolError` en
+   * `#materialize` como la rama `already-writable` de `#writeStep`).
+   */
   #failureFromError(err: unknown): OperationResult {
     if (err instanceof GameInfoEditError) {
-      return {
-        status: "failure",
-        error: `No se pudo editar gameinfo.txt (${err.reason}): ${err.message}`,
-      };
+      return this.#failure(`No se pudo editar gameinfo.txt (${err.reason}): ${err.message}`);
     }
     // VpkToolError lleva addonId; se propaga si está presente (Req 6.12).
     const e = err as { message?: string; addonId?: string };
     const message = typeof e.message === "string" ? e.message : String(err);
     if (typeof e.addonId === "string") {
-      return { status: "failure", error: message, addonId: e.addonId };
+      return this.#failure(message, e.addonId);
     }
-    return { status: "failure", error: message };
+    return this.#failure(message);
   }
 }

@@ -84,6 +84,39 @@ describe("MergeOrchestrator — progreso (canal aditivo onProgress)", () => {
     ]);
   });
 
+  test("UAC denegado emite 'failed' ANTES de retornar status:failure (P-26)", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    h.elevation.ensureCanWriteOutcome = { kind: "denied", reason: "El usuario canceló el UAC." };
+    const p = progressCollector();
+    const orch = new MergeOrchestrator({ ...h.deps, onProgress: p.onProgress });
+
+    const res = await orch.applyActiveSet(ENTRIES);
+
+    expect(res.status).toBe("failure");
+    // Antes de P-26 la secuencia terminaba en "elevation" sin ningún step
+    // terminal: el renderer no tenía forma de detectar por este canal que la
+    // operación fallida había terminado.
+    expect(p.steps).toEqual(["guard", "scan", "elevation", "failed"]);
+  });
+
+  test("catch de VpkToolError en el merge emite 'failed' ANTES de retornar status:failure (P-26)", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    h.backupFs.existing = true;
+    h.mergeEngine.throwOnMerge(() => Object.assign(new Error("vpk x fallo"), { addonId: "222" }));
+    const p = progressCollector();
+    const orch = new MergeOrchestrator({ ...h.deps, onProgress: p.onProgress });
+
+    const res = await orch.applyActiveSet(ENTRIES);
+
+    expect(res.status).toBe("failure");
+    if (res.status === "failure") {
+      expect(res.addonId).toBe("222");
+    }
+    // "failed" reemplaza el silencio previo: antes de P-26 la secuencia
+    // terminaba en "merge" sin señalizar el fallo por este canal.
+    expect(p.steps).toEqual(["guard", "scan", "elevation", "backup", "backup", "merge", "failed"]);
+  });
+
   test("resumePendingOperation emite la secuencia sin 'guard' ni 'elevation'", async () => {
     const pending: AddonManifestEntry[] = [
       { addonId: "111", priorityOrder: 0 },

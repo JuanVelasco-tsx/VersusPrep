@@ -520,12 +520,25 @@ export type ActiveSetPreview =
  *
  * SEMÁNTICA (canal ADITIVO y OPCIONAL, ver `merge-orchestrator.ts`):
  *  - Se emite UN evento por paso, SIEMPRE ANTES de iniciar ese paso (no después).
- *  - NO hay evento en los caminos de fallo temprano ni de elevación: si el juego
- *    está corriendo, si un addon candidato falta en el escaneo, o si la elevación
- *    resuelve `elevated-handoff`/`denied`, NO se emite el evento del paso que no
- *    llegó a ejecutarse. El `OperationResult` final ya comunica esos desenlaces.
  *  - `"done"` se emite JUSTO ANTES de retornar un `status: "success"` (tras
  *    persistir el manifest), como señal de operación completada con éxito.
+ *  - `"failed"` (P-26) se emite JUSTO ANTES de retornar CUALQUIER
+ *    `status: "failure"` — juego corriendo, addon candidato ausente del
+ *    escaneo, UAC denegado, un fallo de `#writeStep` que resulta
+ *    `already-writable` (no era de permisos), o el `catch` de
+ *    `MergeEngine.merge()` (`VpkToolError`). Antes de este fix ningún camino de
+ *    fallo emitía un step terminal (asimetría con `"done"`) y el renderer no
+ *    tenía forma de detectar por este canal que una operación fallida había
+ *    terminado; dependía únicamente de un polling de respaldo aparte, que
+ *    sigue existiendo como red de seguridad pero ya no es el mecanismo
+ *    principal. Centralizado en el helper `#failure` de
+ *    `merge-orchestrator.ts`: todo `OperationResult` de fallo se construye ahí,
+ *    nunca a mano en cada `return`.
+ *  - La ÚNICA excepción sigue siendo la elevación: si la elevación resuelve
+ *    `elevated-handoff` (`status: "elevating"`), NO se emite ningún evento
+ *    terminal en ESTA instancia — la operación sigue viva en la instancia
+ *    elevada (señalizada por `"restarting"`, ver abajo), que retoma la
+ *    secuencia de steps y emitirá su propio `"done"`/`"failed"` al terminar.
  *  - `"restarting"` (BUG-004) lo emite ElevationService JUSTO ANTES del relanzo
  *    `runas`, cuando una escritura va a elevar y la instancia actual se va a
  *    cerrar. Es la señal para que la UI del renderer todavía vivo cambie su
@@ -553,7 +566,8 @@ export interface MergeProgressEvent {
     | "install"
     | "gameinfo"
     | "saveManifest"
-    | "done";
+    | "done"
+    | "failed";
 }
 
 /**
