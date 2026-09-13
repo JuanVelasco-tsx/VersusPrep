@@ -8,8 +8,9 @@
   "main": "dist/src/main/main.js",
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json && vite build --config vite.preload.config.ts && npm run build:renderer",
+    "build": "tsc -p tsconfig.json && vite build --config vite.preload.config.ts && npm run check:preload-cjs && npm run build:renderer",
     "build:renderer": "vite build",
+    "check:preload-cjs": "node scripts/check-preload-cjs.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
