@@ -18,6 +18,7 @@
  * dist/src/, main baja a main/ y preload a preload/).
  */
 import { spawnSync } from "node:child_process";
+import { appendFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -40,6 +41,63 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 async function bootstrap(): Promise<void> {
   const { app, BrowserWindow: BrowserWindowCtor, dialog, ipcMain, net, protocol } =
     await import("electron");
+
+  // ---------------------------------------------------------------------------
+  // DIAGNOSTICO (crash.log): instrumentacion minima para el bug "la app se abre
+  // y se cierra sola" tras la elevacion UAC, sin error visible. SOLO agrega
+  // logging; NO cambia ningun comportamiento funcional. Ver los puntos de log
+  // en onElevatedHandoff, window-all-closed, render-process-gone y los dos
+  // handlers de proceso de abajo.
+  //
+  // DECISION D-LOG-1 (escritura SINCRONA en append): se usa appendFileSync
+  // (flag implicito "a") en vez de la API async, para GARANTIZAR que la entrada
+  // quede en disco ANTES de que el proceso muera (un write async podria no
+  // alcanzar a vaciarse si el proceso sale de inmediato). Cada entrada lleva un
+  // timestamp ISO. La ruta vive en app.getPath("userData") (disponible apenas
+  // resuelve import("electron"), NO requiere app.whenReady()). El propio
+  // logging es best-effort: si escribir falla, se traga el error para no
+  // introducir una nueva causa de cierre.
+  // ---------------------------------------------------------------------------
+  const nlSep = "\r\n";
+  const crashLogPath = path.join(app.getPath("userData"), "crash.log");
+  const logCrash = (label: string, detail?: unknown): void => {
+    try {
+      const stamp = new Date().toISOString();
+      // Serializa el detalle segun su forma: un Error va con stack completo;
+      // un objeto (p. ej. el payload del comando de relanzo elevado) va como
+      // JSON legible (evita "[object Object]"); un primitivo, como String.
+      let body = "";
+      if (detail instanceof Error) {
+        body = detail.stack ?? `${detail.name}: ${detail.message}`;
+      } else if (detail !== undefined) {
+        try {
+          body = typeof detail === "object" && detail !== null
+            ? JSON.stringify(detail, null, 2)
+            : String(detail);
+        } catch {
+          body = String(detail);
+        }
+      }
+      const line = body ? `[${stamp}] ${label}${nlSep}${body}${nlSep}${nlSep}` : `[${stamp}] ${label}${nlSep}`;
+      appendFileSync(crashLogPath, line, "utf8");
+    } catch {
+      // best-effort: nunca dejamos que el logging de diagnostico tumbe el proceso.
+    }
+  };
+
+  // DECISION D-LOG-2 (handlers de proceso ANTES de app.whenReady()): se
+  // registran uncaughtException y unhandledRejection lo antes posible dentro de
+  // bootstrap (antes de whenReady) para capturar un stack completo ante
+  // cualquier excepcion no atrapada o promesa rechazada sin manejar que hoy
+  // mataria el proceso sin dejar rastro visible. Solo loguean; no alteran el
+  // flujo (uncaughtException deja que el comportamiento por defecto de Node/
+  // Electron siga su curso).
+  process.on("uncaughtException", (err) => {
+    logCrash("uncaughtException", err);
+  });
+  process.on("unhandledRejection", (reason) => {
+    logCrash("unhandledRejection", reason);
+  });
 
   // Esquema del protocolo custom de covers (Tarea 21.1, Bloque 1). DEBE
   // registrarse como privileged ANTES de app.whenReady() para que un
@@ -155,6 +213,13 @@ async function bootstrap(): Promise<void> {
     } else {
       void mainWindow.loadURL("http://localhost:5173");
     }
+    // (DIAGNOSTICO crash.log) Captura un crash del PROCESO DE RENDER (que hoy no
+    // se registra en ningun lado): si el renderer muere (crash/oom/killed), la
+    // ventana puede desaparecer sin error visible. `details.reason` dice el
+    // motivo (crashed | oom | killed | ...). Solo loguea; no altera el flujo.
+    mainWindow.webContents.on("render-process-gone", (_event, details) => {
+      logCrash(`render-process-gone: reason=${details.reason} exitCode=${details.exitCode}`);
+    });
     mainWindow.on("closed", () => {
       mainWindow = null;
     });
@@ -178,7 +243,11 @@ async function bootstrap(): Promise<void> {
     // el trabajo a la instancia elevada ya relanzada. Se usa app.quit() (NO
     // app.exit) para disparar el `before-quit` que cierra limpio la DB de
     // better-sqlite3 (ver el `app.on("before-quit", () => db.close())` de arriba).
-    onElevatedHandoff: () => app.quit(),
+    onElevatedHandoff: () => {
+      // (DIAGNOSTICO crash.log) Motivo exacto del cierre: handoff de elevacion.
+      logCrash("quit: onElevatedHandoff disparado (cesion a instancia elevada)");
+      app.quit();
+    },
   });
 
   // (BUG-004, A1) Disparar el resume DESPUES de crear la ventana y registrar los
@@ -206,6 +275,13 @@ async function bootstrap(): Promise<void> {
 
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {
+      // (DIAGNOSTICO crash.log) Motivo exacto del cierre: se cerraron todas las
+      // ventanas. Se registra el estado de mainWindow para distinguir un cierre
+      // normal del usuario de un cierre por ventana que nunca llego a existir /
+      // se destruyo sola (mainWindow === null).
+      logCrash(
+        `quit: window-all-closed, mainWindow era ${mainWindow === null ? "null" : "no-null"}`,
+      );
       app.quit();
     }
   });
