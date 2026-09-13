@@ -214,3 +214,99 @@ Reporte QA V3 (jornada 2): "la vista Activos solo renderiza el ID del addon al a
 2. **El sintoma de titulo (ID crudo en vez del nombre real) coincide exactamente con el fallback INTENCIONAL de BUG-001/P-24** (ver entrada arriba, resuelta el mismo dia 2026-09-11): `getTitles()` devuelve un snapshot en memoria poblado solo por el ULTIMO `scanAddons()` de la sesion, sin disparar ningun escaneo nuevo; si un `addonId` no esta cacheado todavia, se muestra crudo A PROPOSITO (documentado en el propio codigo). `ActiveSetPanel` remonta entero en cada cambio de pestaña (mismo mecanismo que P-27), asi que en el flujo normal (agregar desde Biblioteca, que ya escaneo, y despues abrir "Activos") el titulo YA deberia estar cacheado desde el primer montaje - no se encontro una ruta de codigo donde "cambiar a Biblioteca y volver" cambie el resultado de una forma que el simple hecho de abrir "Activos" ya montado por primera vez no diera.
 
 **Sin cambio de codigo.** No se reprodujo un defecto de reactividad real contra el estado actual del repo (post P-24). Se registra por las dudas de que el reporte QA haya sido tomado contra un build anterior a esa resolucion (mismo dia). Si QA puede reproducirlo de nuevo contra el build actual, documentar los pasos EXACTOS (¿el addon se agrego via "Agregar a Activos" en lote, o via "Forzar inclusion"? ¿la sesion habia pasado por "Biblioteca" antes de abrir "Activos" por primera vez?) para poder aislar la causa real.
+
+---
+
+### P-30 - Múltiples sets de addons (presets intercambiables)
+
+**Descripción:** Permitir guardar y cambiar entre varios modpacks con nombre propio (ej. "armas", "skins") vía un desplegable en la UI.
+
+**Decisión de diseño (2026-09-12):** el nombre visible que el usuario le pone al preset es solo una etiqueta almacenada en la base de datos local (LocalStore); internamente cada preset usa su propia carpeta técnica con un identificador generado (ej. `preset-a1b2c3`), sin relación con el nombre visible. Esto evita problemas de caracteres especiales/espacios/duplicados en nombres de carpeta y permite renombrar un preset sin tocar el sistema de archivos.
+
+**Implica:**
+
+- Generalizar `GameInfoEditor` (hoy tiene el nombre de carpeta "modsvs" fijo/hardcodeado) para aceptar el nombre de carpeta del preset activo.
+
+- Al cambiar de preset activo, quitar la entrada de `SearchPaths` del preset anterior en `gameinfo.txt` y agregar la del nuevo — solo un preset puede estar referenciado a la vez (nunca dos mezclados).
+
+- Nueva tabla/estructura de persistencia en LocalStore para presets: `{ id, nombre, entries: AddonManifestEntry[] }`.
+
+- Optimización a evaluar en implementación: si el preset destino ya fue fusionado antes y no cambió desde entonces, cambiar a él podría ser solo reescribir `gameinfo.txt` sin rehacer toda la fusión (list/extract/pack).
+
+- Cada cambio de addon (agregar/quitar) se aplica directamente sobre el preset actualmente seleccionado — no hay estado "sin guardar" intermedio, mismo comportamiento de persistencia inmediata que existe hoy, pero ahora por preset.
+
+---
+
+### P-31 - Ordenamiento de listas estilo Explorador de archivos (Biblioteca/Activos)
+
+**Descripción:** Encabezados de columna clicables junto a "Seleccionar todos", para ordenar ascendente/descendente por:
+
+- **Nombre**: alfabético (ya disponible vía `addoninfo.txt`).
+
+- **Fecha de modificación**: mtime del `.vpk` en disco — dato que `AddonScanner` NO captura hoy, hay que agregarlo al escaneo.
+
+- **Tamaño**: tamaño del `.vpk` en disco — tampoco capturado hoy, hay que agregarlo.
+
+- **Tipo**: Normal vs VScript (decidido 2026-09-12) — ya clasificado por `VScriptDetector`, solo falta conectarlo al criterio de sort.
+
+---
+
+### P-32 - Quitar la barra de menú nativa de Electron
+
+**Descripción:** Ocultar/eliminar el menú "File / Edit / View / Window" por defecto de Electron. No forma parte del diseño (que ya usa un titlebar personalizado, decidido en la sesión de Claude Design) — es sobrante del boilerplate inicial. Cambio acotado a `main.ts` (`Menu.setApplicationMenu(null)` o equivalente), sin impacto en el resto de la arquitectura.
+
+---
+
+### P-33 - Simplificar el lenguaje técnico de la sección "Avisos"
+
+**Descripción:** Reescribir los 4 avisos actuales (sv_pure estricto, Prompt de UAC/SmartScreen, Proyecto no oficial, Posible reversión por Steam) con lenguaje llano, sin términos técnicos, para usuarios sin experiencia.
+
+**Propuesta de redacción (borrador a confirmar antes de implementar, 2026-09-12):**
+
+- sv_pure → "Puede que no te dejen entrar a algunos servidores": "Algunos servidores con reglas estrictas pueden rechazarte o expulsarte si usas addons combinados con esta app, porque detectan que tus archivos del juego son distintos a los oficiales."
+
+- UAC/SmartScreen → "Windows puede pedirte confirmación al instalar": "Es normal que te pregunte si confías en este programa (puede decir 'editor desconocido'). No significa que sea peligroso, solo que no está registrado como una app comercial."
+
+- Proyecto no oficial → "No somos parte de Valve": "Esta aplicación la hace un fan, sin ninguna relación oficial con Valve ni con Left 4 Dead 2."
+
+- Reversión por Steam → "Steam puede deshacer los cambios sin avisar": "A veces Steam revisa y repara el juego automáticamente, y eso puede borrar lo que hizo esta app. Si un día ves que tus addons ya no están, puede ser por esto — solo hay que volver a aplicarlos."
+
+---
+
+### P-34 - Simplificar "Resumen de fusión" y ocultar el detalle técnico de colisiones
+
+**Descripción:** Confirmado con captura real (2026-09-12): hoy el panel muestra "N addon(s) en la cadena" / "N archivo(s) a empaquetar" seguido de una lista COMPLETA y scrolleable de cada archivo en colisión, identificando al addon ganador por su Workshop ID crudo (ej. "gana 3776602410") en vez de su nombre — puro ruido técnico incluso para usuarios avanzados.
+
+**Cambio propuesto:**
+
+- Reemplazar el conteo técnico por algo simple tipo "Tienes 12 addons activos".
+
+- Ocultar/colapsar por defecto la lista archivo por archivo de colisiones.
+
+- Si hay colisiones relevantes que avisar, mostrar un resumen agregado en lenguaje llano (ej. "3 de tus addons comparten archivos — se aplicó el que tiene más prioridad en cada caso"), identificando addons por NOMBRE, no por ID (depende de tener el título disponible — ver P-35).
+
+---
+
+### P-35 - Mostrar Addon_Cover (imagen) en la lista de Activos
+
+**Descripción:** Ya había quedado explícitamente diferido como backlog en la sesión de BUG-012 (2026-09-11/12): se decidió NO agregar imagen+autor a `PriorityRow` como parte de ese bugfix, dejando anotado que si se quería esa función debía ser su propio ítem de backlog. Este es ese ítem, formalizado.
+
+**Motivación de UX:** un usuario que usó el mismo modpack por meses puede recordar cómo se ve un addon sin recordar su nombre — la imagen ayuda a ubicarlo para quitarlo desde Activos.
+
+**Implementación:** reutilizar el protocolo `l4d2cover://` ya funcionando en Biblioteca.
+
+---
+
+### P-36 - Onboarding / tutorial paso a paso para usuarios sin experiencia
+
+**Descripción:** Proyecto de UX más grande, separado del resto de los ítems de esta sesión. Cubriría guiar a un usuario con cero experiencia a través de: detección de rutas, primera selección de addons, explicación de qué es y por qué aparece el prompt de UAC, etc.
+
+**Pendiente de decidir:** alcance — tooltips puntuales vs. un wizard modal completo de varios pasos. A definir cuando se priorice.
+
+---
+
+### P-37 - Pantalla de configuración: ver/corregir rutas del sistema
+
+**Descripción:** Sección de configuración pensada para usuarios técnicos, que expone las `GamePaths` ya detectadas (steamPath, gameRoot, left4dead2Dir, workshopFolder, vpkToolPath, gameInfoFile, modsvsFolder) con opción de re-detectar automáticamente o sobrescribir manualmente cada ruta.
+
+**Implementación:** reutiliza el canal IPC `paths:detect` y el `PathDetectorLocalStore.savePaths` ya existentes; falta la UI dedicada.
