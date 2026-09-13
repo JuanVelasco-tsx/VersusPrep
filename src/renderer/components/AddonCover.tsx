@@ -16,6 +16,12 @@ interface AddonCoverProps {
   addonId: string;
   hasCover: boolean;
   title: string | undefined;
+  /**
+   * Tamaño visual (P-35): `"md"` (default, 64px) es la miniatura de Biblioteca
+   * (`AddonRow`); `"sm"` (32px) es la variante compacta que usa `PriorityRow`
+   * en "Activos", para no romper la altura de esa fila de una sola línea.
+   */
+  size?: "md" | "sm";
 }
 
 /** Primeras 2 letras (sin espacios) del label, en mayusculas; "?" si vacio. */
@@ -25,13 +31,14 @@ function initialsFor(label: string): string {
   return initials.length > 0 ? initials : "?";
 }
 
-export function AddonCover({ addonId, hasCover, title }: AddonCoverProps) {
+export function AddonCover({ addonId, hasCover, title, size = "md" }: AddonCoverProps) {
   const [failed, setFailed] = useState(false);
   const label = title ?? addonId;
+  const sizeClass = size === "sm" ? styles.sm : "";
 
   if (!hasCover || failed) {
     return (
-      <div className={styles.fallback} aria-hidden="true">
+      <div className={`${styles.fallback} ${sizeClass}`} aria-hidden="true">
         {initialsFor(label)}
       </div>
     );
@@ -42,7 +49,7 @@ export function AddonCover({ addonId, hasCover, title }: AddonCoverProps) {
   // "local" (ver Context/04-historial-decisiones.md, fix confirmado via CDP).
   return (
     <img
-      className={styles.image}
+      className={`${styles.image} ${sizeClass}`}
       src={`l4d2cover://local/${addonId}`}
       alt={label}
       onError={() => setFailed(true)}

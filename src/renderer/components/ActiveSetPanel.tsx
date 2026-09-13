@@ -342,6 +342,7 @@ export function ActiveSetPanel({
         {entries.map((entry, index) => (
           <PriorityRow
             key={entry.addonId}
+            addonId={entry.addonId}
             title={titles[entry.addonId] ?? entry.addonId}
             index={index}
             total={entries.length}

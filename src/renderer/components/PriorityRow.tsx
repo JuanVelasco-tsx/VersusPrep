@@ -1,3 +1,4 @@
+import { AddonCover } from "./AddonCover.js";
 import styles from "./PriorityRow.module.css";
 
 /** Cuantos archivos gana/pierde este addon en las colisiones del preview actual. */
@@ -7,6 +8,7 @@ export interface CollisionSummary {
 }
 
 interface PriorityRowProps {
+  addonId: string;
   title: string;
   index: number;
   total: number;
@@ -30,12 +32,23 @@ function collisionTag(summary: CollisionSummary | null): string | null {
 
 /**
  * Fila compacta del Priority_Order (mockup "2b - Compacto con flechas"):
- * posicion / titulo / tag de colision / flechas subir-bajar, deshabilitadas
- * en los extremos. Puramente presentacional - `ActiveSetPanel` es el unico
- * dueno del estado y de las llamadas a la API; esta fila solo dispara los
- * callbacks que le pasan.
+ * miniatura / posicion / titulo / tag de colision / flechas subir-bajar,
+ * deshabilitadas en los extremos. Puramente presentacional - `ActiveSetPanel`
+ * es el unico dueno del estado y de las llamadas a la API; esta fila solo
+ * dispara los callbacks que le pasan.
+ *
+ * Miniatura de portada (P-35): reutiliza `AddonCover`, el mismo componente de
+ * Biblioteca (`AddonRow`), en su variante compacta (`size="sm"`). A diferencia
+ * de `AddonList` (que trae `ScannedAddon` completo del escaneo, con
+ * `coverPath`), `ActiveSetPanel` solo carga `getActiveSet()` + `getTitles()` -
+ * NO sabe de antemano si el addon tiene portada en disco. Por eso pasa
+ * `hasCover` fijo en `true`: el `<img>` siempre se intenta, y si el archivo no
+ * existe (`l4d2cover://` devuelve 404) el `onError` de `AddonCover` cae al
+ * MISMO fallback de iniciales que usaria un `hasCover={false}` conocido -
+ * comportamiento visual identico, sin necesitar traer el escaneo completo acá.
  */
 export function PriorityRow({
+  addonId,
   title,
   index,
   total,
@@ -48,6 +61,7 @@ export function PriorityRow({
 
   return (
     <li className={styles.row}>
+      <AddonCover addonId={addonId} hasCover title={title} size="sm" />
       <span className={styles.position}>{index + 1}</span>
       <span className={styles.title}>{title}</span>
       {unavailable && <span className={styles.tagUnavailable}>no disponible</span>}

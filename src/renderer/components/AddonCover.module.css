@@ -21,3 +21,12 @@
   font-size: 18px;
   letter-spacing: 0.5px;
 }
+
+/* Variante compacta (P-35): PriorityRow ("Activos") es una fila de una sola
+   línea; 64px rompería esa altura. .sm se combina con .image/.fallback (no
+   los reemplaza) para heredar object-fit/radius/colores y solo pisar tamaño. */
+.sm {
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+}
