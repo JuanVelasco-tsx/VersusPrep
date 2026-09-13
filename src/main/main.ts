@@ -39,7 +39,7 @@ import { createProgressBroadcaster, registerIpcHandlers } from "./app/ipc-handle
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function bootstrap(): Promise<void> {
-  const { app, BrowserWindow: BrowserWindowCtor, dialog, ipcMain, net, protocol } =
+  const { app, BrowserWindow: BrowserWindowCtor, dialog, ipcMain, Menu, net, protocol } =
     await import("electron");
 
   // ---------------------------------------------------------------------------
@@ -98,6 +98,17 @@ async function bootstrap(): Promise<void> {
   process.on("unhandledRejection", (reason) => {
     logCrash("unhandledRejection", reason);
   });
+
+  // (P-32) Quitar la barra de menu nativa de Electron ("File / Edit / View /
+  // Window" del boilerplate por defecto). La app usa un titlebar propio
+  // (sesion de Claude Design), asi que el menu nativo es sobrante y no forma
+  // parte del diseno. `setApplicationMenu(null)` elimina el menu de la ventana
+  // (en Windows/Linux tambien remueve la franja de menu del marco). NO se
+  // pierden atajos: la app NO define aceleradores/roles propios via Menu ni
+  // globalShortcut (los atajos de edicion estandar -copiar/pegar/seleccionar-
+  // siguen funcionando en los inputs del renderer, porque los provee Chromium
+  // a nivel de webContents, no el menu de aplicacion).
+  Menu.setApplicationMenu(null);
 
   // Esquema del protocolo custom de covers (Tarea 21.1, Bloque 1). DEBE
   // registrarse como privileged ANTES de app.whenReady() para que un
