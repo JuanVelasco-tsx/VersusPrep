@@ -31,6 +31,20 @@
   padding: 0;
 }
 
+.details {
+  margin: 0 0 var(--space-3);
+}
+
+.detailsSummary {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-subtle);
+  cursor: pointer;
+}
+
+.details .list {
+  margin: var(--space-2) 0 0;
+}
+
 .listItem {
   font-size: var(--font-size-sm);
   color: var(--color-text-subtle);

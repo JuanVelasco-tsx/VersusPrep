@@ -357,6 +357,7 @@ export function ActiveSetPanel({
         entryCount={entries.length}
         previewState={previewState}
         applyState={applyState}
+        titles={titles}
         onApply={handleApply}
         onDiscard={handleDiscard}
       />
