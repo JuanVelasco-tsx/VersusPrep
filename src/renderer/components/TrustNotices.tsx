@@ -19,35 +19,35 @@ const NOTICES: Notice[] = [
   {
     id: "sv-pure",
     tone: "warning",
-    title: "sv_pure estricto",
+    title: "Puede que no te dejen entrar a algunos servidores",
     text:
-      "El Versus_Mode con addons fusionados puede no funcionar en servidores " +
-      "comunitarios con sv_pure estricto: esos servidores pueden rechazar o " +
-      "expulsar por archivos que no coinciden con los oficiales.",
+      "Algunos servidores con reglas estrictas pueden rechazarte o expulsarte " +
+      "si usas addons combinados con esta app, porque detectan que tus " +
+      "archivos del juego son distintos a los oficiales.",
   },
   {
     id: "uac-smartscreen",
     tone: "warning",
-    title: "Prompt de UAC / SmartScreen",
+    title: "Windows puede pedirte confirmación al instalar",
     text:
-      "Al escribir sobre Program Files puede aparecer el prompt de UAC como " +
-      "\"editor desconocido\" (el ejecutable no esta firmado), junto con la " +
-      "advertencia de SmartScreen de Windows. Es un comportamiento esperado, " +
-      "no un error.",
+      "Es normal que te pregunte si confías en este programa (puede decir " +
+      "\"editor desconocido\"). No significa que sea peligroso, solo que no " +
+      "está registrado como una app comercial.",
   },
   {
     id: "fan-made",
     tone: "info",
-    title: "Proyecto no oficial",
-    text: "Este gestor de addons es un proyecto de fans, sin afiliacion con Valve.",
+    title: "No somos parte de Valve",
+    text: "Esta aplicación la hace un fan, sin ninguna relación oficial con Valve ni con Left 4 Dead 2.",
   },
   {
     id: "steam-revert",
     tone: "warning",
-    title: "Posible reversion por Steam",
+    title: "Steam puede deshacer los cambios sin avisar",
     text:
-      "Steam puede re-verificar la integridad de los archivos del juego y " +
-      "pisar los cambios de este gestor sin avisar.",
+      "A veces Steam revisa y repara el juego automáticamente, y eso puede " +
+      "borrar lo que hizo esta app. Si un día ves que tus addons ya no están, " +
+      "puede ser por esto — solo hay que volver a aplicarlos.",
   },
 ];
 
