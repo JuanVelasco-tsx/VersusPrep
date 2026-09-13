@@ -10,10 +10,11 @@ import { ActiveSetPanel } from "./components/ActiveSetPanel.js";
 import { AddonList } from "./components/AddonList.js";
 import { LoadingIndicator } from "./components/LoadingIndicator.js";
 import { OperationOverlay, publishOperation } from "./components/OperationOverlay.js";
+import { SettingsPanel } from "./components/SettingsPanel.js";
 import { TrustNotices } from "./components/TrustNotices.js";
 import styles from "./App.module.css";
 
-type View = "library" | "active";
+type View = "library" | "active" | "settings";
 
 /**
  * `null` mientras no se determino si esta instancia arranco por un relanzo
@@ -211,6 +212,13 @@ export function App() {
         >
           Activos
         </button>
+        <button
+          type="button"
+          className={view === "settings" ? styles.navButtonActive : styles.navButton}
+          onClick={() => setView("settings")}
+        >
+          Configuración
+        </button>
       </nav>
       <TrustNotices />
       <OperationOverlay />
@@ -231,6 +239,7 @@ export function App() {
           onPendingConsumed={handleActiveSetPendingConsumed}
         />
       )}
+      {resuming !== null && view === "settings" && <SettingsPanel />}
     </main>
   );
 }

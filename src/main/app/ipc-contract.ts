@@ -10,15 +10,47 @@
 import type {
   ActiveSetPreview,
   AddonManifestEntry,
+  GamePaths,
   MergeProgressEvent,
   OperationResult,
   PathDetectionResult,
+  RequiredPathKey,
   ScannedAddon,
   VScriptClassification,
 } from "../domain/index.js";
 
+/**
+ * Campos de `GamePaths` que tienen un diálogo nativo de selección manual
+ * asociado (pantalla de Configuración, P-37): los cinco `RequiredPathKey`
+ * (`toRequiredPathOptions`, `manual-path-provider.ts`) más `steamPath`
+ * (`ManualPathRequest.kind: "steam-path"`). `left4dead2Dir` queda AFUERA a
+ * propósito: es un valor puramente DERIVADO (`<gameRoot>\left4dead2`,
+ * `path-detector.ts#derivePaths`), nunca una ruta que el flujo existente
+ * (arranque o esta pantalla) pida seleccionar de forma independiente — no hay
+ * ningún `ManualPathRequest.kind` para pedirla sin inventar uno nuevo, que es
+ * justo lo que esta tarea evita ("no dupliques esa lógica, reusala").
+ */
+export type SettablePathField = "steamPath" | RequiredPathKey;
+
+/** Resultado de `paths:setManual` (pantalla de Configuración, P-37). */
+export type SetManualPathResult =
+  | {
+      kind: "selected";
+      /**
+       * Snapshot de `LocalStore.getPaths()` INMEDIATAMENTE después de
+       * persistir la ruta elegida (mismo mecanismo que ya usa el flujo de
+       * detección inicial, `LocalStore.savePaths`). Puede seguir siendo
+       * `null` en el caso extremo de que otras rutas requeridas todavía no
+       * estén completas (ver DECISIÓN 4 en `local-store.ts`).
+       */
+      paths: GamePaths | null;
+    }
+  | { kind: "cancelled" };
+
 export const IPC_CHANNELS = {
   detectPaths: "paths:detect",
+  getPaths: "paths:get",
+  setManualPath: "paths:setManual",
   scanAddons: "addons:scan",
   classifyVScript: "addons:classifyVScript",
   getActiveSet: "activeSet:get",
@@ -71,6 +103,21 @@ export interface ResumeState {
 /** API tipada que el preload expone en `window.l4d2Api`. */
 export interface L4d2Api {
   detectPaths(): Promise<PathDetectionResult>;
+  /**
+   * Rutas actualmente persistidas (pantalla de Configuración, P-37), o `null`
+   * si todavía no hay un `GamePaths` completo guardado. LECTURA PURA: a
+   * diferencia de `detectPaths()`, NO dispara ningún diálogo nativo ni
+   * re-detección — solo lee lo que `LocalStore.getPaths()` ya tiene.
+   */
+  getPaths(): Promise<GamePaths | null>;
+  /**
+   * Abre el diálogo nativo de selección manual para UN campo puntual de
+   * `GamePaths` (pantalla de Configuración, P-37) y, si el usuario elige una
+   * ruta existente, la persiste con `LocalStore.savePaths` (mismo mecanismo
+   * que ya usa la detección inicial). `{ kind: "cancelled" }` si el usuario
+   * cierra el diálogo sin elegir nada.
+   */
+  setManualPath(field: SettablePathField): Promise<SetManualPathResult>;
   scanAddons(): Promise<ScannedAddon[]>;
   classifyVScript(addons: ScannedAddon[]): Promise<VScriptClassification[]>;
   getActiveSet(): Promise<AddonManifestEntry[]>;

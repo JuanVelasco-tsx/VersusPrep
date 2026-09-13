@@ -213,11 +213,16 @@ describe("BUG-007 (preservación) — baseline que el fix NO debe romper", () =>
 
   // Caso 4 — bugfix 3.6: resultado terminal sin canal IPC nuevo.
   test("Caso 4 (3.6) — IPC_CHANNELS es el set ACTUAL, sin ningún canal de pendingOperation/getPendingOperation", () => {
-    // El conjunto de claves de IPC_CHANNELS ACTUAL (sin fix). Este test es una
-    // GUARDIA: si el fix agregara un canal (p. ej. getPendingOperation), fallaría,
-    // recordando que el fix NO debe introducir canales nuevos (P-25 / 3.6).
+    // El conjunto de claves de IPC_CHANNELS ACTUAL. Esta GUARDIA es especifica del
+    // fix de BUG-007 (P-25/3.6): verifica que ESE fix en particular no haya
+    // introducido un canal de pendingOperation/getPendingOperation (ver el chequeo
+    // explicito mas abajo). No es una prohibicion general de agregar canales para
+    // features NUEVAS y no relacionadas (P-37 sumo getPaths/setManualPath para la
+    // pantalla de Configuracion) - esta lista se actualiza cuando eso pasa.
     const expectedKeys = [
       "detectPaths",
+      "getPaths",
+      "setManualPath",
       "scanAddons",
       "classifyVScript",
       "getActiveSet",

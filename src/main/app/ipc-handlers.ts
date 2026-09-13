@@ -11,12 +11,14 @@
 import type { IpcMain, WebContents } from "electron";
 
 import { IPC_CHANNELS } from "./ipc-contract.js";
-import type { ResumeState } from "./ipc-contract.js";
+import type { ResumeState, SettablePathField } from "./ipc-contract.js";
 import { DEFAULT_VPK_CONCURRENCY } from "../domain/index.js";
 import type {
   AddonManifestEntry,
   AddonScanner,
+  GamePaths,
   LocalStore,
+  ManualPathRequest,
   MergeOrchestrator,
   MergeProgressListener,
   PathDetector,
@@ -102,6 +104,22 @@ async function classifyWithBoundedConcurrency(
 }
 
 /**
+ * Traduce un `SettablePathField` (pantalla de Configuración, P-37) al
+ * `ManualPathRequest` que ya entiende `PathDetector`/`ManualPathProvider`: NO
+ * duplica el mapeo campo->diálogo (eso sigue siendo exclusivo de
+ * `manual-path-provider.ts#toRequiredPathOptions`), solo decide qué `kind` de
+ * request corresponde a cada campo. `steamPath` es el único caso especial
+ * (`kind: "steam-path"`); el resto de `SettablePathField` ES un
+ * `RequiredPathKey`, así que cae directo en `kind: "required-path"`.
+ */
+function toManualPathRequest(field: SettablePathField): ManualPathRequest {
+  if (field === "steamPath") {
+    return { kind: "steam-path" };
+  }
+  return { kind: "required-path", pathKey: field };
+}
+
+/**
  * Traduce eventos de progreso del MergeOrchestrator a `webContents.send`
  * (Decisión previa de la sesión 20: el broadcaster vive acá para que la 20.3
  * lo pueda testear sin un MergeOrchestrator real). La 20.4 la usa al construir
@@ -119,7 +137,9 @@ export function createProgressBroadcaster(
 }
 
 /**
- * Registra los nueve canales `invoke` sobre el `ipcMain` inyectado. NO incluye
+ * Registra los catorce canales `invoke` sobre el `ipcMain` inyectado (conteo ya
+ * desactualizado antes de P-37, que sumó `paths:get`/`paths:setManual` para la
+ * pantalla de Configuración). NO incluye
  * `merge:onProgress`: ese es un canal push (`webContents.send`), sin `handle`
  * asociado; ver `createProgressBroadcaster`.
  *
@@ -185,6 +205,25 @@ export function registerIpcHandlers(
       deps.localStore.savePaths(result.paths);
     }
     return result;
+  });
+
+  // (P-37) LECTURA PURA de las rutas persistidas: a diferencia de
+  // `paths:detect`, no dispara ningún diálogo nativo ni re-detección. La
+  // pantalla de Configuración la usa para pintar el estado ACTUAL al montar.
+  ipcMain.handle(IPC_CHANNELS.getPaths, () => deps.localStore.getPaths());
+
+  // (P-37) Selección manual de UN campo puntual desde la pantalla de
+  // Configuración. Reusa `PathDetector.resolveManualPath` (mismo diálogo +
+  // misma re-verificación en disco que ya usa `detect()` internamente) y, si
+  // el usuario elige una ruta, la persiste con el MISMO `savePaths` que usa
+  // el flujo de detección inicial (decisión D1 de arriba).
+  ipcMain.handle(IPC_CHANNELS.setManualPath, async (_event, field: SettablePathField) => {
+    const chosen = await deps.pathDetector.resolveManualPath(toManualPathRequest(field));
+    if (chosen === null) {
+      return { kind: "cancelled" };
+    }
+    deps.localStore.savePaths({ [field]: chosen } as Partial<GamePaths>);
+    return { kind: "selected", paths: deps.localStore.getPaths() };
   });
 
   ipcMain.handle(IPC_CHANNELS.scanAddons, async () => {

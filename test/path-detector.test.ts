@@ -638,3 +638,65 @@ describe("detect: flujo completo (AC 1.1–1.12)", () => {
     expect(manual.requests.filter((r) => r.kind === "steam-path").length).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// resolveManualPath (P-37): wrapper público reusado por la pantalla de
+// Configuración para pedir UNA ruta puntual fuera del flujo de arranque.
+// Reusa el MISMO `#requestExisting` privado que ya ejercitan los tests de
+// `detect` de arriba (re-verificación en disco AC 1.11/1.12 incluida); estos
+// tests lo ejercitan DIRECTO, sin pasar por `detect()`.
+// ---------------------------------------------------------------------------
+
+describe("resolveManualPath (P-37): selección manual puntual fuera del arranque", () => {
+  test("devuelve la ruta elegida cuando existe en disco", async () => {
+    const fs = new MockFs([WORKSHOP]);
+    const manual = new MockManual().onRequiredPath("workshopFolder", selected(WORKSHOP));
+    const detector = makeDetector({ fs, manual });
+
+    const result = await detector.resolveManualPath({
+      kind: "required-path",
+      pathKey: "workshopFolder",
+    });
+
+    expect(result).toBe(WORKSHOP);
+    expect(manual.requests).toEqual([{ kind: "required-path", pathKey: "workshopFolder" }]);
+  });
+
+  test("re-solicita (AC 1.11/1.12) si la primera ruta elegida no existe, hasta que exista", async () => {
+    const BAD = "C:\\no-existe\\workshop";
+    const fs = new MockFs([WORKSHOP]);
+    const manual = new MockManual().onRequiredPath(
+      "workshopFolder",
+      selected(BAD),
+      selected(WORKSHOP),
+    );
+    const detector = makeDetector({ fs, manual });
+
+    const result = await detector.resolveManualPath({
+      kind: "required-path",
+      pathKey: "workshopFolder",
+    });
+
+    expect(result).toBe(WORKSHOP);
+    expect(fs.existsCalls).toEqual([BAD, WORKSHOP]);
+  });
+
+  test("devuelve null si el usuario cancela", async () => {
+    const manual = new MockManual().onSteamPath(cancelled);
+    const detector = makeDetector({ manual });
+
+    const result = await detector.resolveManualPath({ kind: "steam-path" });
+
+    expect(result).toBeNull();
+  });
+
+  test("soporta el kind steam-path (no solo required-path)", async () => {
+    const fs = new MockFs([STEAM]);
+    const manual = new MockManual().onSteamPath(selected(STEAM));
+    const detector = makeDetector({ fs, manual });
+
+    const result = await detector.resolveManualPath({ kind: "steam-path" });
+
+    expect(result).toBe(STEAM);
+  });
+});

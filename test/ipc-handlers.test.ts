@@ -8,10 +8,11 @@ import { IPC_CHANNELS } from "../src/main/app/ipc-contract.js";
 import { TitleCache } from "../src/main/domain/index.js";
 import type { IpcMain } from "electron";
 import type { IpcHandlersDeps } from "../src/main/app/ipc-handlers.js";
-import type { ResumeState } from "../src/main/app/ipc-contract.js";
+import type { ResumeState, SetManualPathResult } from "../src/main/app/ipc-contract.js";
 import type {
   AddonManifestEntry,
   GamePaths,
+  ManualPathRequest,
   MergeProgressEvent,
   OperationResult,
   PathDetectionResult,
@@ -106,8 +107,12 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 interface Doubles {
   deps: IpcHandlersDeps;
   detectResult: { value: PathDetectionResult };
-  savePathsCalls: GamePaths[];
+  savePathsCalls: Array<Partial<GamePaths>>;
   getPathsValue: { value: GamePaths | null };
+  /** Peticiones que recibió el `ManualPathProvider` vía `pathDetector.resolveManualPath`. */
+  resolveManualPathCalls: ManualPathRequest[];
+  /** Ruta que devuelve `resolveManualPath` (o `null` para simular cancelación). */
+  resolveManualPathValue: { value: string | null };
   manifestValue: { value: AddonManifestEntry[] };
   scanCalls: string[];
   classifyOrder: string[];
@@ -132,6 +137,8 @@ function buildDoubles(): Doubles {
     detectResult: { value: { kind: "needs-manual", reason: "steam-not-installed" } },
     savePathsCalls: [],
     getPathsValue: { value: PATHS },
+    resolveManualPathCalls: [],
+    resolveManualPathValue: { value: null },
     manifestValue: { value: [] },
     scanCalls: [],
     classifyOrder: [],
@@ -152,6 +159,10 @@ function buildDoubles(): Doubles {
   d.deps = {
     pathDetector: {
       detect: () => Promise.resolve(d.detectResult.value),
+      resolveManualPath: (request: ManualPathRequest) => {
+        d.resolveManualPathCalls.push(request);
+        return Promise.resolve(d.resolveManualPathValue.value);
+      },
     } as IpcHandlersDeps["pathDetector"],
     addonScanner: {
       scan: (workshopFolder: string) => {
@@ -166,7 +177,7 @@ function buildDoubles(): Doubles {
       },
     } as IpcHandlersDeps["vscriptDetector"],
     localStore: {
-      savePaths: (paths: GamePaths) => {
+      savePaths: (paths: Partial<GamePaths>) => {
         d.savePathsCalls.push(paths);
       },
       getPaths: () => d.getPathsValue.value,
@@ -227,7 +238,7 @@ function readyResult(source: "auto" | "manual"): PathDetectionResult {
 // Ruteo canal -> componente (los OCHO canales invoke, uno por uno).
 // ---------------------------------------------------------------------------
 
-describe("IPC — ruteo canal->componente (ocho canales)", () => {
+describe("IPC — ruteo canal->componente (catorce canales)", () => {
   test("paths:detect llama detect() y devuelve exactamente su resultado (ready)", async () => {
     const { ipc, d } = setup();
     const ready = readyResult("auto");
@@ -242,6 +253,54 @@ describe("IPC — ruteo canal->componente (ocho canales)", () => {
     d.detectResult.value = needsManual;
     const res = await ipc.invoke(IPC_CHANNELS.detectPaths);
     expect(res).toBe(needsManual);
+  });
+
+  test("paths:get devuelve localStore.getPaths() tal cual (P-37, sin detección ni diálogos)", async () => {
+    const { ipc, d } = setup();
+    d.getPathsValue.value = PATHS;
+    expect(await ipc.invoke(IPC_CHANNELS.getPaths)).toBe(PATHS);
+    // Lectura pura: no dispara resolveManualPath ni detect.
+    expect(d.resolveManualPathCalls).toEqual([]);
+  });
+
+  test("paths:get devuelve null si todavia no hay un GamePaths completo", async () => {
+    const { ipc, d } = setup();
+    d.getPathsValue.value = null;
+    expect(await ipc.invoke(IPC_CHANNELS.getPaths)).toBeNull();
+  });
+
+  test("paths:setManual (steamPath) pide kind steam-path y persiste+devuelve el snapshot actualizado (P-37)", async () => {
+    const { ipc, d } = setup();
+    d.resolveManualPathValue.value = "D:\\OtroSteam";
+    d.getPathsValue.value = { ...PATHS, steamPath: "D:\\OtroSteam" };
+
+    const res = (await ipc.invoke(IPC_CHANNELS.setManualPath, "steamPath")) as SetManualPathResult;
+
+    expect(d.resolveManualPathCalls).toEqual([{ kind: "steam-path" }]);
+    expect(d.savePathsCalls).toEqual([{ steamPath: "D:\\OtroSteam" }]);
+    expect(res).toEqual({ kind: "selected", paths: d.getPathsValue.value });
+  });
+
+  test("paths:setManual (un RequiredPathKey) pide kind required-path con el pathKey correcto (P-37)", async () => {
+    const { ipc, d } = setup();
+    d.resolveManualPathValue.value = "D:\\OtraWorkshop";
+
+    await ipc.invoke(IPC_CHANNELS.setManualPath, "workshopFolder");
+
+    expect(d.resolveManualPathCalls).toEqual([
+      { kind: "required-path", pathKey: "workshopFolder" },
+    ]);
+    expect(d.savePathsCalls).toEqual([{ workshopFolder: "D:\\OtraWorkshop" }]);
+  });
+
+  test("paths:setManual devuelve cancelled y NO persiste nada si el usuario cancela el diálogo (P-37)", async () => {
+    const { ipc, d } = setup();
+    d.resolveManualPathValue.value = null;
+
+    const res = (await ipc.invoke(IPC_CHANNELS.setManualPath, "vpkToolPath")) as SetManualPathResult;
+
+    expect(res).toEqual({ kind: "cancelled" });
+    expect(d.savePathsCalls).toEqual([]);
   });
 
   test("addons:scan llama scan(paths.workshopFolder) con el workshopFolder correcto", async () => {

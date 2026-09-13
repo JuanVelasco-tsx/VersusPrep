@@ -492,6 +492,18 @@ export class PathDetector {
   }
 
   /**
+   * Resuelve manualmente UNA ruta puntual pedida FUERA del flujo de arranque
+   * (pantalla de Configuración, P-37): abre el mismo diálogo nativo y
+   * re-verifica en disco antes de aceptarla (AC 1.11/1.12), delegando en
+   * `#requestExisting` — el MISMO helper que ya usa `detect()` internamente
+   * para cada selección manual, sin duplicar el bucle de re-solicitud ni el
+   * criterio de verificación. Devuelve `null` si el usuario cancela.
+   */
+  async resolveManualPath(request: ManualPathRequest): Promise<string | null> {
+    return this.#requestExisting(request);
+  }
+
+  /**
    * Pide una ruta al usuario y NO la acepta hasta que exista en disco (AC 1.11,
    * 1.12): si la ruta elegida no existe, informa implícitamente volviendo a
    * solicitarla (bucle) hasta que exista o el usuario cancele. Devuelve la ruta

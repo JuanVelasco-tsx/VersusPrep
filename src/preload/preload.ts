@@ -1,10 +1,11 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 import { IPC_CHANNELS } from "../main/app/ipc-contract.js";
-import type { L4d2Api, ResumeState } from "../main/app/ipc-contract.js";
+import type { L4d2Api, ResumeState, SetManualPathResult, SettablePathField } from "../main/app/ipc-contract.js";
 import type {
   ActiveSetPreview,
   AddonManifestEntry,
+  GamePaths,
   MergeProgressEvent,
   OperationResult,
   PathDetectionResult,
@@ -15,6 +16,9 @@ import type {
 const api: L4d2Api = {
   detectPaths: () =>
     ipcRenderer.invoke(IPC_CHANNELS.detectPaths) as Promise<PathDetectionResult>,
+  getPaths: () => ipcRenderer.invoke(IPC_CHANNELS.getPaths) as Promise<GamePaths | null>,
+  setManualPath: (field: SettablePathField) =>
+    ipcRenderer.invoke(IPC_CHANNELS.setManualPath, field) as Promise<SetManualPathResult>,
   scanAddons: () =>
     ipcRenderer.invoke(IPC_CHANNELS.scanAddons) as Promise<ScannedAddon[]>,
   classifyVScript: (addons) =>
