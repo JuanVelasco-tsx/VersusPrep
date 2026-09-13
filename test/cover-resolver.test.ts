@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  decodeCoverId,
   isValidCoverId,
   isWithinBase,
   resolveCoverPath,
@@ -47,6 +48,28 @@ describe("isValidCoverId", () => {
     ["con dos puntos de unidad", "C:"],
   ])("rechaza id invalido: %s", (_label, id) => {
     expect(isValidCoverId(id)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// decodeCoverId (P-21: decodeURIComponent seguro, sin propagar URIError)
+// ---------------------------------------------------------------------------
+
+describe("decodeCoverId", () => {
+  test("decodifica un id sin caracteres especiales tal cual", () => {
+    expect(decodeCoverId("123456789")).toBe("123456789");
+  });
+
+  test("decodifica secuencias % validas", () => {
+    expect(decodeCoverId("abc%2D123")).toBe("abc-123");
+  });
+
+  test.each([
+    ["% suelto (sin digitos hex)", "abc%"],
+    ["%FF (no es UTF-8 valido)", "abc%FFdef"],
+    ["secuencia UTF-8 truncada", "%E0%A4%A"],
+  ])("id con %% mal formado (%s) -> null, SIN lanzar URIError", (_label, raw) => {
+    expect(decodeCoverId(raw)).toBeNull();
   });
 });
 

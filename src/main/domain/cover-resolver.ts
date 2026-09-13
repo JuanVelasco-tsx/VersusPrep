@@ -68,6 +68,23 @@ export function isValidCoverId(id: string): boolean {
 }
 
 /**
+ * Decodifica el segmento crudo del pathname de forma segura (P-21).
+ * `decodeURIComponent` lanza `URIError` ante un `%` mal formado (`%`, `%FF`,
+ * una secuencia UTF-8 truncada), alcanzable en la practica porque
+ * AddonScanner solo valida la extension `.vpk` del nombre de archivo (no
+ * filtra caracteres) y Windows permite `%` en nombres de archivo. Devuelve
+ * `null` en vez de propagar el throw, para que el handler de protocolo lo
+ * trate como un id invalido (400) sin tumbarse.
+ */
+export function decodeCoverId(rawPathname: string): string | null {
+  try {
+    return decodeURIComponent(rawPathname);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Confirma que `candidate` queda DENTRO de `baseDir` (capa 2 de la defensa).
  * Normaliza ambos con `path.win32` (rutas de disco Windows, coherente con el
  * resto del dominio) y compara por prefijo de segmento: `candidate` debe ser el

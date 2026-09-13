@@ -332,6 +332,7 @@ export {
   COVER_ID_PATTERN,
   isValidCoverId,
   isWithinBase,
+  decodeCoverId,
   resolveCoverPath,
 } from "./cover-resolver.js";
 export type {

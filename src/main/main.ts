@@ -28,7 +28,7 @@ import type { BrowserWindow } from "electron";
 
 import { ChildProcessCommandRunner } from "./data/child-process-command-runner.js";
 import { pathExists } from "./data/node-fs-helpers.js";
-import { resolveCoverPath, TitleCache } from "./domain/index.js";
+import { decodeCoverId, resolveCoverPath, TitleCache } from "./domain/index.js";
 import {
   buildPathIndependentDomain,
   runStartupSequence,
@@ -173,7 +173,16 @@ async function bootstrap(): Promise<void> {
     // FIJO no numerico evita esa heuristica por completo. El pathname sigue
     // siendo la unica fuente del id; NO leer el id del host.
     const { pathname } = new URL(request.url);
-    const id = decodeURIComponent(pathname.replace(/^\//, ""));
+    // (P-21) decodeURIComponent lanza URIError ante un % mal formado (id que
+    // trae ese caracter porque AddonScanner no filtra el nombre del archivo
+    // de cover, solo valida la extension .vpk). decodeCoverId lo capta y
+    // devuelve null para que ESTE handler responda el 400 controlado, en vez
+    // de dejar propagar el throw (violaria el invariante del comentario de
+    // arriba: nunca un throw que tumbe el handler).
+    const id = decodeCoverId(pathname.replace(/^\//, ""));
+    if (id === null) {
+      return new Response(null, { status: 400 });
+    }
     const workshopFolder = base.localStore.getPaths()?.workshopFolder ?? null;
     const resolution = await resolveCoverPath(id, workshopFolder, pathExists);
     if (!resolution.ok) {
