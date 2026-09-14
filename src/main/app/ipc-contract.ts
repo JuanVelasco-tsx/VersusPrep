@@ -14,6 +14,7 @@ import type {
   MergeProgressEvent,
   OperationResult,
   PathDetectionResult,
+  Preset,
   RequiredPathKey,
   ScannedAddon,
   VScriptClassification,
@@ -63,6 +64,15 @@ export const IPC_CHANNELS = {
   willNeedElevation: "willNeedElevation",
   isResuming: "activeSet:isResuming",
   getTitles: "addons:titles",
+  // (P-30, Paso 4) Gestión de presets — ver LocalStore.listPresets/getPreset/
+  // createPreset/renamePreset/deletePreset/getActivePresetId/setActivePresetId
+  // y MergeOrchestrator.switchActivePreset (Pasos 1-3.5, ya cerrados).
+  listPresets: "presets:list",
+  createPreset: "presets:create",
+  renamePreset: "presets:rename",
+  deletePreset: "presets:delete",
+  switchActivePreset: "presets:switch",
+  getActivePresetId: "presets:getActive",
 } as const;
 
 /**
@@ -159,4 +169,43 @@ export interface L4d2Api {
   getTitles(): Promise<Record<string, string>>;
   /** Se suscribe al progreso; devuelve la función de desuscripción. */
   onProgress(listener: (event: MergeProgressEvent) => void): () => void;
+
+  // ---------------------------------------------------------------------------
+  // Presets (P-30, Paso 4). Capa de dominio completa desde los Pasos 1-3.5:
+  // LocalStore.listPresets/getPreset/createPreset/renamePreset/deletePreset/
+  // getActivePresetId/setActivePresetId, y MergeOrchestrator.switchActivePreset
+  // (con manejo correcto de elevación UAC, ver DECISIÓN 8 en
+  // merge-orchestrator.ts). Este paso SOLO expone esa capa vía IPC.
+  // ---------------------------------------------------------------------------
+
+  /** Todos los presets guardados, en orden de creación. */
+  listPresets(): Promise<Preset[]>;
+  /**
+   * Crea un preset nuevo con el `name` dado. `entries` es OPCIONAL: si se omite,
+   * el preset arranca VACÍO (P-30, Paso 4, DECISIÓN documentada en
+   * `ipc-handlers.ts`) — es la opción que requiere MENOS cambios en el flujo
+   * existente de Biblioteca/Activos; agregarle addons a un preset recién creado
+   * queda pendiente de cablear (ver el hallazgo de alcance reportado en el Paso
+   * 4, todavía sin resolver). Lanza si `name` está vacío/solo espacios.
+   */
+  createPreset(name: string, entries?: AddonManifestEntry[]): Promise<Preset>;
+  /** Renombra un preset existente (no-op si `id` no existe). Lanza si `newName` está vacío/solo espacios. */
+  renamePreset(id: string, newName: string): Promise<void>;
+  /**
+   * Borra un preset (no-op si `id` no existe). Lanza si `id` es el preset
+   * ACTIVO (P-30, Paso 4, DECISIÓN documentada en `ipc-handlers.ts`): se
+   * bloquea en vez de permitirlo, porque hoy nada reescribe gameinfo.txt ni
+   * limpia la carpeta técnica al borrar — permitirlo dejaría el juego
+   * apuntando a una carpeta de un preset que ya no existe en la app.
+   */
+  deletePreset(id: string): Promise<void>;
+  /**
+   * Cambia el preset ACTIVO a `id` (fusiona sus addons hacia su carpeta técnica,
+   * actualiza gameinfo.txt). Mismo canal de progreso `onProgress` y el mismo
+   * manejo de elevación UAC que `applyActiveSet`/`addAddon`/`removeAddon` — NO
+   * hay un canal de progreso separado para presets.
+   */
+  switchActivePreset(id: string): Promise<OperationResult>;
+  /** Id del preset ACTIVO, o `null` si ninguno lo es todavía. */
+  getActivePresetId(): Promise<string | null>;
 }

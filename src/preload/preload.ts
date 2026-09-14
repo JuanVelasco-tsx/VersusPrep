@@ -9,6 +9,7 @@ import type {
   MergeProgressEvent,
   OperationResult,
   PathDetectionResult,
+  Preset,
   ScannedAddon,
   VScriptClassification,
 } from "../main/domain/index.js";
@@ -51,6 +52,16 @@ const api: L4d2Api = {
     ipcRenderer.on(IPC_CHANNELS.mergeProgress, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.mergeProgress, handler);
   },
+  listPresets: () => ipcRenderer.invoke(IPC_CHANNELS.listPresets) as Promise<Preset[]>,
+  createPreset: (name, entries) =>
+    ipcRenderer.invoke(IPC_CHANNELS.createPreset, name, entries) as Promise<Preset>,
+  renamePreset: (id, newName) =>
+    ipcRenderer.invoke(IPC_CHANNELS.renamePreset, id, newName) as Promise<void>,
+  deletePreset: (id) => ipcRenderer.invoke(IPC_CHANNELS.deletePreset, id) as Promise<void>,
+  switchActivePreset: (id) =>
+    ipcRenderer.invoke(IPC_CHANNELS.switchActivePreset, id) as Promise<OperationResult>,
+  getActivePresetId: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.getActivePresetId) as Promise<string | null>,
 };
 
 contextBridge.exposeInMainWorld("l4d2Api", api);

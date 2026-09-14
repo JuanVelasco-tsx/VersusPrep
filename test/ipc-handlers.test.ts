@@ -17,6 +17,7 @@ import type {
   OperationResult,
   PathDetectionResult,
   PathVerification,
+  Preset,
   ScannedAddon,
   VScriptClassification,
 } from "../src/main/domain/index.js";
@@ -67,7 +68,19 @@ function createFakeIpcMain(): FakeIpcMain {
       if (handler === undefined) {
         throw new Error("No hay handler registrado para el canal " + channel);
       }
-      return Promise.resolve(handler(dummyEvent, ...args));
+      // (P-30, Paso 4) Un handler NO-async que hace `throw` directo (p. ej.
+      // los de validación de presets:create/rename/delete) lanza de forma
+      // SÍNCRONA al evaluarse acá; sin este try/catch ese throw escapaba de
+      // `invoke()` como excepción real en vez de como promesa rechazada,
+      // rompiendo `expect(ipc.invoke(...)).rejects.toThrow(...)`. El
+      // Electron real SÍ convierte un throw síncrono del listener en un
+      // rechazo de la promesa de `ipcRenderer.invoke` — este try/catch
+      // replica ese comportamiento para que el arnés sea fiel a la API real.
+      try {
+        return Promise.resolve(handler(dummyEvent, ...args));
+      } catch (err) {
+        return Promise.reject(err);
+      }
     },
   };
 }
@@ -129,6 +142,15 @@ interface Doubles {
   applyGate: { promise: Promise<OperationResult> } | null;
   /** Doble de classify configurable: por defecto resuelve sincrono. */
   classifyImpl: { fn: (addon: ScannedAddon) => Promise<VScriptClassification> };
+  // --- Presets (P-30, Paso 4) ---
+  presetsValue: { value: Preset[] };
+  createPresetCalls: Array<{ name: string; entries: AddonManifestEntry[] }>;
+  renamePresetCalls: Array<{ id: string; newName: string }>;
+  deletePresetCalls: string[];
+  activePresetIdValue: { value: string | null };
+  switchActivePresetCalls: string[];
+  /** Resultado que devuelve mergeOrchestrator.switchActivePreset; configurable por test. */
+  switchActivePresetResult: { value: OperationResult };
 }
 
 function buildDoubles(): Doubles {
@@ -154,6 +176,13 @@ function buildDoubles(): Doubles {
     classifyImpl: {
       fn: (addon) => Promise.resolve(classification(addon.id)),
     },
+    presetsValue: { value: [] },
+    createPresetCalls: [],
+    renamePresetCalls: [],
+    deletePresetCalls: [],
+    activePresetIdValue: { value: null },
+    switchActivePresetCalls: [],
+    switchActivePresetResult: { value: { status: "success" } },
   };
 
   d.deps = {
@@ -182,6 +211,20 @@ function buildDoubles(): Doubles {
       },
       getPaths: () => d.getPathsValue.value,
       getManifest: () => d.manifestValue.value,
+      listPresets: () => d.presetsValue.value,
+      createPreset: (name: string, entries: AddonManifestEntry[]) => {
+        d.createPresetCalls.push({ name, entries: [...entries] });
+        const preset: Preset = { id: `preset-fake-${d.createPresetCalls.length}`, name, entries };
+        d.presetsValue.value = [...d.presetsValue.value, preset];
+        return preset;
+      },
+      renamePreset: (id: string, newName: string) => {
+        d.renamePresetCalls.push({ id, newName });
+      },
+      deletePreset: (id: string) => {
+        d.deletePresetCalls.push(id);
+      },
+      getActivePresetId: () => d.activePresetIdValue.value,
     } as IpcHandlersDeps["localStore"],
     mergeOrchestrator: {
       applyActiveSet: (entries: readonly AddonManifestEntry[]) => {
@@ -196,6 +239,10 @@ function buildDoubles(): Doubles {
       removeAddon: (addonId: string) => {
         d.removeCalls.push(addonId);
         return Promise.resolve<OperationResult>({ status: "success" });
+      },
+      switchActivePreset: (id: string) => {
+        d.switchActivePresetCalls.push(id);
+        return Promise.resolve(d.switchActivePresetResult.value);
       },
     } as IpcHandlersDeps["mergeOrchestrator"],
     getResumeState: () => d.resumeValue.value,
@@ -640,5 +687,161 @@ describe("IPC — createProgressBroadcaster", () => {
   test("getWebContents() devuelve null -> no-op (igual que undefined)", () => {
     const listener = createProgressBroadcaster(() => null);
     expect(() => listener(EVENT)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Presets (P-30, Paso 4): los seis canales presets:*.
+// ---------------------------------------------------------------------------
+
+describe("IPC — presets:list", () => {
+  test("caso feliz: devuelve exactamente lo que listPresets() del store trae", async () => {
+    const { ipc, d } = setup();
+    const preset: Preset = { id: "preset-1", name: "Armas", entries: [] };
+    d.presetsValue.value = [preset];
+
+    const res = await ipc.invoke(IPC_CHANNELS.listPresets);
+
+    expect(res).toEqual([preset]);
+  });
+
+  test("caso vacío: sin presets guardados -> []", async () => {
+    const { ipc, d } = setup();
+    d.presetsValue.value = [];
+
+    expect(await ipc.invoke(IPC_CHANNELS.listPresets)).toEqual([]);
+  });
+});
+
+describe("IPC — presets:create", () => {
+  test("caso feliz: crea con el nombre recortado y las entries dadas", async () => {
+    const { ipc, d } = setup();
+    const entries: AddonManifestEntry[] = [{ addonId: "111", priorityOrder: 0 }];
+
+    const res = (await ipc.invoke(IPC_CHANNELS.createPreset, "  Armas  ", entries)) as Preset;
+
+    expect(d.createPresetCalls).toEqual([{ name: "Armas", entries }]);
+    expect(res.name).toBe("Armas");
+    expect(res.entries).toEqual(entries);
+  });
+
+  test("entries omitido -> arranca vacío (P-30, Paso 4, DECISIÓN: menos cambio al flujo existente)", async () => {
+    const { ipc, d } = setup();
+
+    await ipc.invoke(IPC_CHANNELS.createPreset, "Skins");
+
+    expect(d.createPresetCalls).toEqual([{ name: "Skins", entries: [] }]);
+  });
+
+  test("caso de error: nombre vacío/solo espacios -> rechaza, NO llama a createPreset", async () => {
+    const { ipc, d } = setup();
+
+    await expect(ipc.invoke(IPC_CHANNELS.createPreset, "   ")).rejects.toThrow(
+      /nombre.*vacío/i,
+    );
+    expect(d.createPresetCalls).toEqual([]);
+  });
+});
+
+describe("IPC — presets:rename", () => {
+  test("caso feliz: renombra con el nombre recortado", async () => {
+    const { ipc, d } = setup();
+
+    await ipc.invoke(IPC_CHANNELS.renamePreset, "preset-1", "  Armas v2  ");
+
+    expect(d.renamePresetCalls).toEqual([{ id: "preset-1", newName: "Armas v2" }]);
+  });
+
+  test("caso de error: nombre nuevo vacío/solo espacios -> rechaza, NO llama a renamePreset", async () => {
+    const { ipc, d } = setup();
+
+    await expect(ipc.invoke(IPC_CHANNELS.renamePreset, "preset-1", "  ")).rejects.toThrow(
+      /nombre.*vacío/i,
+    );
+    expect(d.renamePresetCalls).toEqual([]);
+  });
+
+  test("id inexistente: pasa tal cual a LocalStore (no-op silencioso, mismo criterio que local-store.ts)", async () => {
+    const { ipc, d } = setup();
+
+    await ipc.invoke(IPC_CHANNELS.renamePreset, "preset-no-existe", "Nuevo nombre");
+
+    expect(d.renamePresetCalls).toEqual([{ id: "preset-no-existe", newName: "Nuevo nombre" }]);
+  });
+});
+
+describe("IPC — presets:delete", () => {
+  test("caso feliz: borra un preset que NO es el activo", async () => {
+    const { ipc, d } = setup();
+    d.activePresetIdValue.value = "preset-activo";
+
+    await ipc.invoke(IPC_CHANNELS.deletePreset, "preset-otro");
+
+    expect(d.deletePresetCalls).toEqual(["preset-otro"]);
+  });
+
+  test("caso de error: borrar el preset ACTIVO se bloquea, NO llama a deletePreset (P-30, Paso 4, DECISIÓN)", async () => {
+    const { ipc, d } = setup();
+    d.activePresetIdValue.value = "preset-activo";
+
+    await expect(ipc.invoke(IPC_CHANNELS.deletePreset, "preset-activo")).rejects.toThrow(
+      /preset activo/i,
+    );
+    expect(d.deletePresetCalls).toEqual([]);
+  });
+});
+
+describe("IPC — presets:switch", () => {
+  test("caso feliz: delega en mergeOrchestrator.switchActivePreset y devuelve su resultado tal cual", async () => {
+    const { ipc, d } = setup();
+    const success: OperationResult = { status: "success", installedManifest: [] };
+    d.switchActivePresetResult.value = success;
+
+    const res = await ipc.invoke(IPC_CHANNELS.switchActivePreset, "preset-1");
+
+    expect(d.switchActivePresetCalls).toEqual(["preset-1"]);
+    expect(res).toBe(success);
+  });
+
+  test("caso de error: presetId inexistente -> el failure de switchActivePreset pasa tal cual (sin excepción IPC)", async () => {
+    const { ipc, d } = setup();
+    const failure: OperationResult = {
+      status: "failure",
+      error: "El preset preset-no-existe no existe.",
+    };
+    d.switchActivePresetResult.value = failure;
+
+    const res = await ipc.invoke(IPC_CHANNELS.switchActivePreset, "preset-no-existe");
+
+    expect(res).toEqual(failure);
+  });
+
+  test("respeta guardedWrite: una segunda invocación mientras la primera está en curso devuelve el fallo de concurrencia (D4)", async () => {
+    const { ipc, d } = setup();
+    const gate = deferred<OperationResult>();
+    d.deps.mergeOrchestrator.switchActivePreset = () => gate.promise;
+
+    const first = ipc.invoke(IPC_CHANNELS.switchActivePreset, "preset-1");
+    const second = await ipc.invoke(IPC_CHANNELS.switchActivePreset, "preset-2");
+
+    expect(second).toEqual({ status: "failure", error: GUARD_ERROR });
+    gate.resolve({ status: "success" });
+    await first;
+  });
+});
+
+describe("IPC — presets:getActive", () => {
+  test("caso feliz: devuelve el id activo tal cual", async () => {
+    const { ipc, d } = setup();
+    d.activePresetIdValue.value = "preset-1";
+
+    expect(await ipc.invoke(IPC_CHANNELS.getActivePresetId)).toBe("preset-1");
+  });
+
+  test("sin preset activo -> null", async () => {
+    const { ipc, d } = setup();
+    d.activePresetIdValue.value = null;
+
+    expect(await ipc.invoke(IPC_CHANNELS.getActivePresetId)).toBeNull();
   });
 });

@@ -218,7 +218,8 @@ describe("BUG-007 (preservación) — baseline que el fix NO debe romper", () =>
     // introducido un canal de pendingOperation/getPendingOperation (ver el chequeo
     // explicito mas abajo). No es una prohibicion general de agregar canales para
     // features NUEVAS y no relacionadas (P-37 sumo getPaths/setManualPath para la
-    // pantalla de Configuracion) - esta lista se actualiza cuando eso pasa.
+    // pantalla de Configuracion; P-30 sumo los seis canales presets:* del Paso 4)
+    // - esta lista se actualiza cuando eso pasa.
     const expectedKeys = [
       "detectPaths",
       "getPaths",
@@ -235,6 +236,12 @@ describe("BUG-007 (preservación) — baseline que el fix NO debe romper", () =>
       "willNeedElevation",
       "isResuming",
       "getTitles",
+      "listPresets",
+      "createPreset",
+      "renamePreset",
+      "deletePreset",
+      "switchActivePreset",
+      "getActivePresetId",
     ].sort();
 
     expect(Object.keys(IPC_CHANNELS).sort()).toEqual(expectedKeys);

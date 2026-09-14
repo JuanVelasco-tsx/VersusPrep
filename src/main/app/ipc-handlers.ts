@@ -137,9 +137,9 @@ export function createProgressBroadcaster(
 }
 
 /**
- * Registra los catorce canales `invoke` sobre el `ipcMain` inyectado (conteo ya
- * desactualizado antes de P-37, que sumó `paths:get`/`paths:setManual` para la
- * pantalla de Configuración). NO incluye
+ * Registra los veinte canales `invoke` sobre el `ipcMain` inyectado (conteo ya
+ * desactualizado antes de P-37/P-30, que sumaron `paths:get`/`paths:setManual`
+ * para la pantalla de Configuración y los seis canales `presets:*`). NO incluye
  * `merge:onProgress`: ese es un canal push (`webContents.send`), sin `handle`
  * asociado; ver `createProgressBroadcaster`.
  *
@@ -279,4 +279,72 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.isResuming, () => deps.getIsResuming());
 
   ipcMain.handle(IPC_CHANNELS.getTitles, () => deps.titleCache.snapshot());
+
+  // ---------------------------------------------------------------------------
+  // Presets (P-30, Paso 4). La capa de dominio (LocalStore/MergeOrchestrator) ya
+  // está completa desde los Pasos 1-3.5; estos seis handlers SOLO la exponen.
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle(IPC_CHANNELS.listPresets, () => deps.localStore.listPresets());
+
+  // DECISIÓN (P-30, Paso 4, punto 3 del pedido) — `entries` es OPCIONAL, con
+  // default `[]`: un preset se puede crear VACÍO y (una vez que el resto del
+  // sistema sepa editar el preset activo — ver el hallazgo de alcance
+  // reportado en este mismo paso) completarse después vía el flujo normal de
+  // Biblioteca/Activos. Se eligió esta opción, en vez de exigir `entries`
+  // completo al crear, porque es la que MENOS cambia el flujo existente: no
+  // hace falta ningún selector nuevo de addons ANTES de poder crear un
+  // preset. `name` se valida no-vacío (mismo criterio que `renamePreset`
+  // abajo): un preset sin nombre es un error de UI evidente, no un estado
+  // válido a persistir.
+  ipcMain.handle(
+    IPC_CHANNELS.createPreset,
+    (_event, name: string, entries?: AddonManifestEntry[]) => {
+      const trimmedName = name.trim();
+      if (trimmedName.length === 0) {
+        throw new Error("El nombre del preset no puede estar vacío.");
+      }
+      return deps.localStore.createPreset(trimmedName, entries ?? []);
+    },
+  );
+
+  ipcMain.handle(IPC_CHANNELS.renamePreset, (_event, id: string, newName: string) => {
+    const trimmedName = newName.trim();
+    if (trimmedName.length === 0) {
+      throw new Error("El nombre del preset no puede estar vacío.");
+    }
+    deps.localStore.renamePreset(id, trimmedName);
+  });
+
+  // DECISIÓN (P-30, Paso 4, punto 5 del pedido) — SE BLOQUEA borrar el preset
+  // ACTIVO, en vez de permitirlo y dejar "sin preset activo". Es la opción
+  // más segura: `LocalStore.deletePreset` (Paso 1) solo toca la fila de la
+  // base — NO reescribe gameinfo.txt ni borra la carpeta técnica del preset
+  // en disco. Si se permitiera borrar el activo, gameinfo.txt (y el juego)
+  // seguirían apuntando a una carpeta que la app ya no reconoce como ningún
+  // preset — un estado inconsistente sin forma de corregirlo desde la UI
+  // hasta que existiera esa limpieza física (fuera del alcance de este
+  // paso). Bloquear con un error claro obliga a cambiar de preset activo
+  // PRIMERO (`presets:switch`, que sí actualiza gameinfo.txt correctamente),
+  // momento en el que borrar el que quedó atrás ya es seguro.
+  ipcMain.handle(IPC_CHANNELS.deletePreset, (_event, id: string) => {
+    if (deps.localStore.getActivePresetId() === id) {
+      throw new Error(
+        "No se puede borrar el preset activo. Cambiá a otro preset primero.",
+      );
+    }
+    deps.localStore.deletePreset(id);
+  });
+
+  // Mismo guardedWrite que apply/add/remove (DECISIÓN, punto 6 del pedido):
+  // switchActivePreset también escribe en el Game_Root y puede disparar
+  // elevación UAC, compitiendo por el ÚNICO slot de sesión pendiente del
+  // LocalStore — nunca debe solaparse con apply/add/remove ni con otro
+  // switch. El progreso viaja por el MISMO merge:onProgress (el
+  // MergeOrchestrator ya inyectado emite por ahí, sin canal nuevo).
+  ipcMain.handle(IPC_CHANNELS.switchActivePreset, async (_event, id: string) =>
+    guardedWrite(() => deps.mergeOrchestrator.switchActivePreset(id)),
+  );
+
+  ipcMain.handle(IPC_CHANNELS.getActivePresetId, () => deps.localStore.getActivePresetId());
 }
