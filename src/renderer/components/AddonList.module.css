@@ -24,18 +24,27 @@
   background: #324a5a;
 }
 
-.selectAllBar {
-  display: flex;
+.headerRow {
+  display: grid;
+  align-items: center;
+  gap: 12px;
   padding: 0 12px 8px;
 }
 
-.selectAllLabel {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  color: #cfcfcf;
+.sortHeader {
+  background: transparent;
+  border: none;
+  color: #9a9a9a;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  padding: 0;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.sortHeader:hover {
+  color: #cfcfcf;
 }
 
 .bulkBar {
@@ -86,8 +95,24 @@
   background: #325a32;
 }
 
+.bulkExcludeButton {
+  font-size: 13px;
+  font-weight: 600;
+  background: #4a2a2a;
+  color: #f0d0d0;
+  border: 1px solid #6a3a3a;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.bulkExcludeButton:hover {
+  background: #5a3232;
+}
+
 .bulkClearButton:disabled,
-.bulkAddButton:disabled {
+.bulkAddButton:disabled,
+.bulkExcludeButton:disabled {
   opacity: 0.6;
   cursor: default;
 }

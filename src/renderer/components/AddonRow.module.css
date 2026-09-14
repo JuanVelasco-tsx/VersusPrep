@@ -1,9 +1,21 @@
 .row {
-  display: flex;
+  display: grid;
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
   border-bottom: 1px solid #2a2a2a;
+}
+
+.selectCheckbox {
+  justify-self: center;
+}
+
+.cell {
+  font-size: 12px;
+  color: #9a9a9a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .info {
