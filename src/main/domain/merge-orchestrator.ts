@@ -12,9 +12,13 @@
  *      elevated-handoff, esta instancia cede el trabajo y NO sigue.
  *   4. BackupManager.backupExisting()    -> si falla (no-permisos), abortar (Req 5).
  *   5. MergeEngine.merge()               -> genera pak01_dir.vpk en un workDir temporal.
- *   6. Instalar en modsvs/               -> copiar el .vpk a modsvs/pak01_dir.vpk (Req 6.9).
- *   7. GameInfoEditor.ensureModsvsFirst()-> (Req 6.10).
- *   8. LocalStore.saveManifest()         -> (Req 8.1, 8.6).
+ *   6. Instalar en modsvs/ (o la carpeta técnica del preset activo, P-30) ->
+ *      copiar el .vpk a `<destFolder>\pak01_dir.vpk` (Req 6.9).
+ *   7. GameInfoEditor.switchFolderEntry()-> (Req 6.10; generalización de
+ *      `ensureModsvsFirst`, P-30 Pasos 2-3).
+ *   8. LocalStore.updatePresetEntries() sobre el preset ACTIVO -> (Req 8.1,
+ *      8.6; P-30, Paso 4.5b — reemplaza al `saveManifest` DEPRECADO, ver
+ *      `local-store.ts`).
  *   9. Notificar resultado (Req 6.11) — vía el OperationResult devuelto.
  *
  * Los pasos 4, 6 y 7 son las ÚNICAS escrituras reales en el Game_Root; van
@@ -23,8 +27,8 @@
  * reintentar en la instancia elevada en vez de abortar. El paso 5 (MergeEngine)
  * opera en el workDir temporal FUERA del Game_Root: sus errores (`VpkToolError`)
  * NO son de permisos y se propagan directo como fallo definitivo. El paso 8
- * (saveManifest) escribe en la base local del Manager, no en el Game_Root, así
- * que tampoco va envuelto.
+ * escribe en la base local del Manager, no en el Game_Root, así que tampoco va
+ * envuelto.
  *
  * ---------------------------------------------------------------------------
  * DECISIÓN 1 — Dependencias inyectadas por constructor (mismo patrón de todo el
@@ -71,17 +75,18 @@
  * DECISIÓN 4 — Resolución de `entries` candidatas de `addAddon`/`removeAddon`
  * (decisiones INFERIDAS; no fijadas por ningún AC ni por tasks.md).
  *
- *  - `addAddon(addonId, priorityOrder)`: UPSERT sobre `LocalStore.getManifest()`
- *    (el Active_Set instalado). Si `addonId` ya está, se ACTUALIZA su
- *    `priorityOrder`; si no, se AGREGA. Motivo: "agregar" un addon ya presente es,
- *    naturalmente, reubicarlo en el Priority_Order; duplicarlo produciría un
- *    manifest inconsistente (el manifest usa `addonId` como clave única, ver
- *    `local-store.ts` DECISIÓN 3).
- *  - `removeAddon(addonId)`: FILTRA ese `addonId` de `LocalStore.getManifest()`.
- *    Es NO-OP (sin error) si el addon no estaba presente. Motivo: quitar algo que
- *    no está es un no-op idempotente, no un error; el resultado deseado (ese addon
- *    ausente del Active_Set) ya se cumple.
- *  - Ambas derivan el candidato del manifest INSTALADO y luego materializan una
+ *  - `addAddon(addonId, priorityOrder)`: UPSERT sobre las entries del preset
+ *    ACTIVO (P-30, Paso 4.5b; `#currentPresetEntries`, antes
+ *    `LocalStore.getManifest()`, DEPRECADO). Si `addonId` ya está, se ACTUALIZA
+ *    su `priorityOrder`; si no, se AGREGA. Motivo: "agregar" un addon ya
+ *    presente es, naturalmente, reubicarlo en el Priority_Order; duplicarlo
+ *    produciría un preset inconsistente (`preset_entries` usa `addonId` como
+ *    parte de su clave única, ver `local-store.ts` DECISIÓN 6).
+ *  - `removeAddon(addonId)`: FILTRA ese `addonId` de las entries del preset
+ *    ACTIVO. Es NO-OP (sin error) si el addon no estaba presente. Motivo:
+ *    quitar algo que no está es un no-op idempotente, no un error; el
+ *    resultado deseado (ese addon ausente del Active_Set) ya se cumple.
+ *  - Ambas derivan el candidato del preset ACTIVO y luego materializan una
  *    fusión completa desde cero con el Active_Set resultante (Req 8.3-8.5): add y
  *    remove NO son operaciones incrementales sobre el `.vpk`, son una nueva fusión
  *    del conjunto final. Esto es lo que valida la Property 13 (tarea 18.3).
@@ -228,16 +233,6 @@ const DISK_SEPARATOR = "\\";
 /** Nombre canónico del Merged_Package instalado en modsvs/ (o en la carpeta técnica de un preset, P-30). */
 const INSTALLED_VPK_NAME = "pak01_dir.vpk";
 
-/**
- * Nombre de carpeta del SearchPath para el camino LEGADO (`applyActiveSet`/
- * `addAddon`/`removeAddon`/resume), que instala en `this.#paths.modsvsFolder`
- * (P-30, Paso 3: generaliza el uso que antes vivía en la constante temporal
- * `GAMEINFO_SEARCH_PATH_FOLDER` del Paso 2, ya eliminada — mismo valor,
- * comportamiento observable idéntico). `switchActivePreset` NO usa esta
- * constante: pasa la carpeta técnica del preset destino en su lugar.
- */
-const LEGACY_GAMEINFO_FOLDER_NAME = "modsvs";
-
 /** Une un directorio y un segmento con el separador de Windows (sin duplicarlo). */
 function joinWindowsPath(dir: string, segment: string): string {
   const trimmed = dir.replace(/[\\/]+$/, "");
@@ -370,24 +365,42 @@ export class MergeOrchestrator {
   }
 
   /**
-   * Agrega un addon al Active_Set instalado (UPSERT por `priorityOrder`, DECISIÓN
-   * 4) y materializa la fusión completa del conjunto resultante.
+   * Agrega un addon al preset ACTIVO (UPSERT por `priorityOrder`, DECISIÓN 4;
+   * P-30, Paso 4.5b: ya NO opera sobre `LocalStore.getManifest()` —deprecado—
+   * sino sobre las entries del preset ACTUALMENTE activo, vía
+   * `#currentPresetEntries`) y materializa la fusión completa del conjunto
+   * resultante.
    */
   async addAddon(addonId: string, priorityOrder: number): Promise<OperationResult> {
-    const current = this.#store.getManifest();
+    const current = this.#currentPresetEntries();
     const next = current.filter((e) => e.addonId !== addonId);
     next.push({ addonId, priorityOrder });
     return this.#runPublic(next, "addAddon");
   }
 
   /**
-   * Quita un addon del Active_Set instalado (filtra; no-op si ausente, DECISIÓN 4)
-   * y materializa la fusión completa del conjunto resultante.
+   * Quita un addon del preset ACTIVO (filtra; no-op si ausente, DECISIÓN 4;
+   * P-30, Paso 4.5b: mismo cambio de fuente que `addAddon`, ver
+   * `#currentPresetEntries`) y materializa la fusión completa del conjunto
+   * resultante.
    */
   async removeAddon(addonId: string): Promise<OperationResult> {
-    const current = this.#store.getManifest();
+    const current = this.#currentPresetEntries();
     const next = current.filter((e) => e.addonId !== addonId);
     return this.#runPublic(next, "removeAddon");
+  }
+
+  /**
+   * Entries del preset ACTUALMENTE activo (P-30, Paso 4.5b), o `[]` si no hay
+   * ninguno activo — un edge case que no debería ocurrir en una instalación
+   * normal (la migración de `LocalStore` siempre deja un preset activo) y que
+   * `#runPublic` rechaza explícitamente ANTES de escribir nada (ver su Paso 0),
+   * así que devolver `[]` acá es inofensivo: la operación no llega a progresar.
+   */
+  #currentPresetEntries(): AddonManifestEntry[] {
+    const activePresetId = this.#store.getActivePresetId();
+    if (activePresetId === null) return [];
+    return this.#store.getPreset(activePresetId)?.entries ?? [];
   }
 
   /**
@@ -553,17 +566,26 @@ export class MergeOrchestrator {
         );
       }
 
-      // Camino LEGADO (sin pendingOperation, o con un type distinto de
-      // "switchActivePreset"): el operationType de resume es "applyActiveSet"
-      // (la instancia elevada rehidrata el Active_Set candidato y lo aplica
-      // como fusión completa hacia modsvs).
-      return await this.#materialize(
+      // Camino de apply/add/remove (sin pendingOperation, o con un type
+      // distinto de "switchActivePreset"): el operationType de resume es
+      // "applyActiveSet" (la instancia elevada rehidrata el Active_Set
+      // candidato y lo aplica como fusión completa). P-30, Paso 4.5b: hacia
+      // el preset ACTIVO, resuelto FRESCO acá — a diferencia de
+      // `switchActivePreset` (que SÍ necesita el `presetId` viajado en la
+      // `PendingOperation`, porque el destino es DISTINTO del activo actual),
+      // acá el preset activo NO cambió durante la elevación (nadie más pudo
+      // tocarlo en el ínterin), así que releerlo de `LocalStore` alcanza.
+      const activePresetId = this.#store.getActivePresetId();
+      if (activePresetId === null) {
+        return this.#failure(
+          "No hay ningún preset activo. Esto no debería pasar en una instalación normal.",
+        );
+      }
+      return await this.#materializeActivePreset(
+        activePresetId,
         candidateEntries,
         resolved.addons,
         "applyActiveSet",
-        this.#paths.modsvsFolder,
-        LEGACY_GAMEINFO_FOLDER_NAME,
-        null,
       );
     } finally {
       // El resume no debería producir "elevating" (se salteó el chequeo); en
@@ -575,11 +597,27 @@ export class MergeOrchestrator {
   /**
    * Camino común de los 3 métodos públicos (18.1): chequea el juego, dispara la
    * elevación PROACTIVA y, si procede, materializa. Devuelve el OperationResult.
+   *
+   * Paso 0 (P-30, Paso 4.5b): resuelve el preset ACTIVO ANTES de cualquier
+   * otra cosa — `applyActiveSet`/`addAddon`/`removeAddon` ya NO materializan
+   * hacia un `modsvsFolder` fijo, sino hacia la carpeta técnica del preset
+   * activo (`#materializeActivePreset`), igual que `switchActivePreset` lo
+   * hace para su destino. Si no hay preset activo (edge case que no debería
+   * ocurrir en una instalación normal: la migración de `LocalStore` siempre
+   * deja uno), corta con un fallo definitivo ANTES de emitir "guard" — ni
+   * siquiera vale la pena chequear el juego si no hay dónde materializar.
    */
   async #runPublic(
     entries: AddonManifestEntry[],
     operationType: PendingOperation["type"],
   ): Promise<OperationResult> {
+    const activePresetId = this.#store.getActivePresetId();
+    if (activePresetId === null) {
+      return this.#failure(
+        "No hay ningún preset activo. Esto no debería pasar en una instalación normal.",
+      );
+    }
+
     // Paso 1 — Precondición: el juego no puede estar corriendo (Req 4.1, 4.2).
     this.#emit("guard");
     if (await this.#processGuard.isGameRunning()) {
@@ -612,15 +650,9 @@ export class MergeOrchestrator {
       );
     }
 
-    // proactive.kind === "already-writable" -> se puede escribir; materializar.
-    return this.#materialize(
-      entries,
-      resolved.addons,
-      operationType,
-      this.#paths.modsvsFolder,
-      LEGACY_GAMEINFO_FOLDER_NAME,
-      null,
-    );
+    // proactive.kind === "already-writable" -> se puede escribir; materializar
+    // hacia la carpeta técnica del preset activo (P-30, Paso 4.5b).
+    return this.#materializeActivePreset(activePresetId, entries, resolved.addons, operationType);
   }
 
   /**
@@ -689,6 +721,10 @@ export class MergeOrchestrator {
       destFolder,
       presetId,
       previousFolderName,
+      // persistOnSuccess: null — las entries del preset NO cambian durante un
+      // switch (P-30, Paso 4.5b); lo único que cambia es el puntero de
+      // activo, y eso se hace ACÁ ABAJO, no vía #materialize.
+      null,
     );
 
     // Puntero de activo: SOLO se actualiza si `#materialize` tuvo éxito
@@ -699,6 +735,34 @@ export class MergeOrchestrator {
       this.#store.setActivePresetId(presetId);
     }
     return result;
+  }
+
+  /**
+   * Materializa hacia la carpeta técnica del preset ACTIVO (P-30, Paso 4.5b):
+   * usado por `#runPublic` (`applyActiveSet`/`addAddon`/`removeAddon`) y por
+   * el resume de esas operaciones. A diferencia de `#materializePresetSwitch`
+   * (que SÍ cambia cuál preset está activo, así que quita la entrada del
+   * preset ANTERIOR de gameinfo.txt), acá el preset activo NO cambia — solo
+   * su contenido — así que `previousGameInfoFolderName` es SIEMPRE `null`. Al
+   * éxito, persiste `entries` en el preset activo con `updatePresetEntries`
+   * (reemplaza al `LocalStore.saveManifest` DEPRECADO, ver `local-store.ts`).
+   */
+  async #materializeActivePreset(
+    presetId: string,
+    entries: readonly AddonManifestEntry[],
+    orderedAddons: readonly ScannedAddon[],
+    operationType: PendingOperation["type"],
+  ): Promise<OperationResult> {
+    const destFolder = joinWindowsPath(this.#paths.gameRoot, presetId);
+    return this.#materialize(
+      entries,
+      orderedAddons,
+      operationType,
+      destFolder,
+      presetId,
+      null,
+      () => this.#store.updatePresetEntries(presetId, [...entries]),
+    );
   }
 
   /**
@@ -713,15 +777,24 @@ export class MergeOrchestrator {
    * ni la elevación proactiva, ni el escaneo/resolución: eso es del camino público
    * (`#runPublic`), del resume (`resumePendingOperation`) o de `switchActivePreset`.
    *
-   * `destFolder`/`gameInfoFolderName`/`previousGameInfoFolderName` (P-30, Paso 3):
-   * generalizan lo que antes era SIEMPRE `this.#paths.modsvsFolder`/`"modsvs"`/
-   * `null` (la constante temporal `GAMEINFO_SEARCH_PATH_FOLDER` del Paso 2 ya
-   * cumplió su función y se eliminó). Los 3 métodos públicos legados y el
-   * resume siguen pasando EXACTAMENTE esos tres valores por defecto (sin
-   * cambio de comportamiento observable); `switchActivePreset` pasa la
-   * carpeta técnica del preset destino y, si corresponde, la del preset
-   * anterior para que `GameInfoEditor.switchFolderEntry` la quite en la MISMA
-   * escritura (ver DECISIÓN 7 en `game-info-editor.ts`).
+   * `destFolder`/`gameInfoFolderName`/`previousGameInfoFolderName` (P-30, Paso
+   * 3): generalizan lo que antes era SIEMPRE `this.#paths.modsvsFolder`/
+   * `"modsvs"`/`null`. `switchActivePreset` pasa la carpeta técnica del
+   * preset destino y, si corresponde, la del preset anterior para que
+   * `GameInfoEditor.switchFolderEntry` la quite en la MISMA escritura (ver
+   * DECISIÓN 7 en `game-info-editor.ts`).
+   *
+   * `persistOnSuccess` (P-30, Paso 4.5b): QUÉ persistir en LocalStore si TODO
+   * salió bien, o `null` si no hay nada nuevo que guardar. Antes de este paso,
+   * el Paso 8 SIEMPRE llamaba `LocalStore.saveManifest` (ahora DEPRECADO,
+   * dato histórico de solo lectura — ver DECISIÓN en `local-store.ts`);
+   * `#materializeActivePreset` (apply/add/remove, y su resume) pasa un
+   * callback que llama `updatePresetEntries` sobre el preset activo;
+   * `#materializePresetSwitch` pasa `null` (las `entries` del preset NO
+   * cambiaron durante un switch, solo la carpeta activa — eso lo persiste
+   * `setActivePresetId` DESPUÉS de que `#materialize` retorna). Parametrizarlo
+   * evita bifurcar Paso 8/9 en cada caller: el step de progreso
+   * `"saveManifest"` solo se emite si `persistOnSuccess` no es `null`.
    */
   async #materialize(
     entries: readonly AddonManifestEntry[],
@@ -730,6 +803,7 @@ export class MergeOrchestrator {
     destFolder: string,
     gameInfoFolderName: string,
     previousGameInfoFolderName: string | null,
+    persistOnSuccess: (() => void) | null,
   ): Promise<OperationResult> {
     // La resolución de ScannedAddon (Paso 2, DECISIÓN 5) ya la hizo el llamador
     // (`#runPublic`/`resumePendingOperation`/`switchActivePreset`) vía
@@ -826,10 +900,12 @@ export class MergeOrchestrator {
       );
       if (gameInfoResult.kind === "outcome") return gameInfoResult.result;
 
-      // Paso 8 — Persistir el manifest instalado (base local, NO Game_Root: sin
-      // manejo reactivo). El Active_Set candidato pasa a ser el instalado.
-      this.#emit("saveManifest");
-      this.#store.saveManifest([...entries]);
+      // Paso 8 — Persistir (base local, NO Game_Root: sin manejo reactivo),
+      // SOLO si el llamador dio algo que persistir (P-30, Paso 4.5b).
+      if (persistOnSuccess !== null) {
+        this.#emit("saveManifest");
+        persistOnSuccess();
+      }
 
       // Paso 9 — Éxito. "done" se emite JUSTO ANTES de retornar el success.
       this.#emit("done");

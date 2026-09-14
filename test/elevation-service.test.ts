@@ -105,6 +105,7 @@ class MockStore implements LocalStore {
     return null;
   }
   setActivePresetId(_id: string): void {}
+  updatePresetEntries(): void {}
 }
 
 /** Proveedor de SO que registra el orden global de eventos (persistir vs relanzar). */

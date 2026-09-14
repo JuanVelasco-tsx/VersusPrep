@@ -200,9 +200,22 @@ export interface LocalStore {
   getPaths(): GamePaths | null;
   /** Guarda rutas de forma PARCIAL (merge con lo ya guardado; ver DECISIÓN 4). */
   savePaths(paths: Partial<GamePaths>): void;
-  /** Active_Set INSTALADO, en Priority_Order ascendente. */
+  /**
+   * @deprecated (P-30, Paso 4.5b) El Active_Set INSTALADO ya NO vive acá desde
+   * que `MergeOrchestrator.applyActiveSet`/`addAddon`/`removeAddon` convergieron
+   * hacia el preset ACTIVO (`preset_entries`, vía `getPreset`/
+   * `updatePresetEntries`). `manifest` queda como dato HISTÓRICO/DE SOLO
+   * LECTURA — nada vuelve a escribirle desde este cambio — solo se conserva
+   * por si algo necesita el último valor pre-presets. Active_Set INSTALADO,
+   * en Priority_Order ascendente.
+   */
   getManifest(): AddonManifestEntry[];
-  /** Reemplaza el Active_Set instalado entero (transacción). */
+  /**
+   * @deprecated (P-30, Paso 4.5b) Ver `getManifest`: NADIE debe llamar esto
+   * desde este cambio (ni `MergeOrchestrator` ni ningún handler IPC lo hacen
+   * ya). Se conserva en la interfaz para no romper el contrato existente,
+   * NO porque siga en uso. Reemplaza el Active_Set instalado entero (transacción).
+   */
   saveManifest(entries: AddonManifestEntry[]): void;
   /**
    * Persiste el Active_Set CANDIDATO del relanzo elevado (transacción) y marca la
@@ -252,6 +265,15 @@ export interface LocalStore {
    * valida `addonId` contra ningún catálogo).
    */
   setActivePresetId(id: string): void;
+  /**
+   * Reemplaza las `entries` de un preset EXISTENTE entero (P-30, Paso 4.5b;
+   * mismo criterio de reemplazo TOTAL que el `saveManifest` deprecado, pero
+   * scoped a UN preset). NO-op sobre un `id` inexistente (mismo criterio
+   * liviano que `renamePreset`/`deletePreset`: el llamador real,
+   * `MergeOrchestrator`, siempre resuelve el preset activo con `getPreset`
+   * ANTES de llegar acá, así que en la práctica `id` ya viene validado).
+   */
+  updatePresetEntries(id: string, entries: AddonManifestEntry[]): void;
 }
 
 /** Claves de `GamePaths` en orden estable; una columna por cada una en la tabla `paths`. */
@@ -457,6 +479,20 @@ export class SqliteLocalStore implements LocalStore {
 
   renamePreset(id: string, newName: string): void {
     this.#db.prepare("UPDATE presets SET name = ? WHERE id = ?").run(newName, id);
+  }
+
+  updatePresetEntries(id: string, entries: AddonManifestEntry[]): void {
+    // Reemplazo TOTAL (borra + inserta), mismo patrón que `#replaceEntries`
+    // (manifest/pending_session) pero con `presetId` fijo por fila.
+    const del = this.#db.prepare("DELETE FROM preset_entries WHERE presetId = ?");
+    const ins = this.#db.prepare(
+      "INSERT INTO preset_entries (presetId, addonId, priorityOrder) VALUES (@presetId, @addonId, @priorityOrder)",
+    );
+    const tx = this.#db.transaction((rows: AddonManifestEntry[]) => {
+      del.run(id);
+      for (const row of rows) ins.run({ presetId: id, ...row });
+    });
+    tx(entries);
   }
 
   deletePreset(id: string): void {

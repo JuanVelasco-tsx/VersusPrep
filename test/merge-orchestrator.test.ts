@@ -60,8 +60,10 @@ describe("MergeOrchestrator — orden del camino feliz", () => {
     // merge se llamó una vez, con los addons en orden ascendente.
     expect(h.mergeCalls.length).toBe(1);
     expect(h.mergeCalls[0]?.orderedAddons.map((a) => a.id)).toEqual(["111", "222"]);
-    // Se persistió el manifest final.
-    expect(h.store.savedManifest).toEqual(ENTRIES);
+    // Se persistió en las entries del preset ACTIVO (P-30, Paso 4.5b: ya NO
+    // en el manifest legado, ver `local-store.ts`).
+    expect(h.store.updatePresetEntriesCalls).toEqual([{ id: "modsvs", entries: ENTRIES }]);
+    expect(h.store.getPreset("modsvs")?.entries).toEqual(ENTRIES);
   });
 });
 
@@ -190,8 +192,9 @@ describe("MergeOrchestrator — resolución add/remove (DECISIÓN 4)", () => {
     const orch = new MergeOrchestrator(h.deps);
     const res = await orch.addAddon("111", 9); // reubica 111 al final
     expect(res.status).toBe("success");
-    // El manifest guardado tiene 111 con el NUEVO priorityOrder, sin duplicar.
-    const saved = h.store.savedManifest ?? [];
+    // El preset ACTIVO guardado tiene 111 con el NUEVO priorityOrder, sin
+    // duplicar (P-30, Paso 4.5b: ya no el manifest legado).
+    const saved = h.store.getPreset("modsvs")?.entries ?? [];
     expect(saved.filter((e) => e.addonId === "111").length).toBe(1);
     expect(saved.find((e) => e.addonId === "111")?.priorityOrder).toBe(9);
     // El orden pasado a merge (ascendente): 222 (1) antes que 111 (9).
@@ -204,8 +207,64 @@ describe("MergeOrchestrator — resolución add/remove (DECISIÓN 4)", () => {
     const orch = new MergeOrchestrator(h.deps);
     const res = await orch.removeAddon("999"); // no está
     expect(res.status).toBe("success");
-    expect(h.store.savedManifest).toEqual(manifest);
+    expect(h.store.getPreset("modsvs")?.entries).toEqual(manifest);
     expect(h.mergeCalls[0]?.orderedAddons.map((a) => a.id)).toEqual(["111"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P-30, Paso 4.5b — applyActiveSet/addAddon/removeAddon operan sobre el
+// preset ACTIVO (convergencia), no sobre un Active_Set global suelto.
+// ---------------------------------------------------------------------------
+
+describe("MergeOrchestrator — applyActiveSet/addAddon/removeAddon operan sobre el preset ACTIVO (P-30, Paso 4.5b)", () => {
+  test("applyActiveSet materializa hacia la carpeta del preset ACTIVO, y solo actualiza SUS entries — no las de otro preset", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    const armas = h.store.createPreset("Armas", []);
+    h.store.setActivePresetId(armas.id);
+
+    const orch = new MergeOrchestrator(h.deps);
+    const res = await orch.applyActiveSet(ENTRIES);
+
+    expect(res.status).toBe("success");
+    // Fusiona hacia <gameRoot>\<idDeArmas>, no hacia modsvs.
+    expect(h.fs.installDest).toBe(`${TEST_PATHS.gameRoot}\\${armas.id}\\pak01_dir.vpk`);
+    // Se persistió en "Armas", el preset activo...
+    expect(h.store.getPreset(armas.id)?.entries).toEqual(ENTRIES);
+    // ...y el preset "modsvs" (Principal, no activo) NUNCA se tocó.
+    expect(h.store.getPreset("modsvs")?.entries).toEqual([]);
+    expect(h.store.updatePresetEntriesCalls).toEqual([{ id: armas.id, entries: ENTRIES }]);
+  });
+
+  test("cambiar el preset activo y volver a agregar un addon lo agrega al preset CORRECTO (el nuevo activo, no el anterior)", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    // "modsvs" (Principal) ya tiene un addon de antes.
+    h.store.updatePresetEntries("modsvs", [{ addonId: "111", priorityOrder: 0 }]);
+    const skins = h.store.createPreset("Skins", []);
+    h.store.setActivePresetId(skins.id);
+
+    const orch = new MergeOrchestrator(h.deps);
+    const res = await orch.addAddon("222", 0);
+
+    expect(res.status).toBe("success");
+    // "222" se agregó a "Skins" (el preset ahora activo)...
+    expect(h.store.getPreset(skins.id)?.entries).toEqual([{ addonId: "222", priorityOrder: 0 }]);
+    // ...y "modsvs" (el preset ANTERIOR) sigue con su addon original, intacto.
+    expect(h.store.getPreset("modsvs")?.entries).toEqual([{ addonId: "111", priorityOrder: 0 }]);
+  });
+
+  test("sin ningún preset activo (edge case): falla definitivo, sin tocar nada", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    h.store.deletePreset("modsvs"); // deja getActivePresetId() en null (ver DECISIÓN 6)
+
+    const orch = new MergeOrchestrator(h.deps);
+    const res = await orch.applyActiveSet(ENTRIES);
+
+    expect(res.status).toBe("failure");
+    if (res.status === "failure") {
+      expect(res.error).toMatch(/preset activo/i);
+    }
+    expect(h.log).toEqual([]); // ni guard, ni scan, ni elevación: corta ANTES de todo eso.
   });
 });
 

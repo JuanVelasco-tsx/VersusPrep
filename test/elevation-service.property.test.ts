@@ -116,6 +116,7 @@ class SpyStore implements LocalStore {
     return null;
   }
   setActivePresetId(): void {}
+  updatePresetEntries(): void {}
 }
 
 /** Un error de Node con `code` opcional, como los que arroja `fs`. */

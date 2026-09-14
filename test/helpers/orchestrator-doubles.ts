@@ -188,11 +188,11 @@ export class FakeLocalStore implements LocalStore {
   manifest: AddonManifestEntry[];
   pendingSession: AddonManifestEntry[] | null;
   savedManifest: AddonManifestEntry[] | null = null;
-  // (P-30, Paso 1) Los tests de MergeOrchestrator no ejercitan presets todavia
-  // (sin wiring aca); un Map en memoria alcanza para cumplir la interfaz.
   #presets = new Map<string, Preset>();
   #activePresetId: string | null = null;
   #presetSeq = 0;
+  /** Llamadas a `updatePresetEntries`, en orden (P-30, Paso 4.5b). */
+  readonly updatePresetEntriesCalls: Array<{ id: string; entries: AddonManifestEntry[] }> = [];
 
   constructor(
     log: string[],
@@ -201,6 +201,14 @@ export class FakeLocalStore implements LocalStore {
     this.log = log;
     this.manifest = init?.manifest ?? [];
     this.pendingSession = init?.pendingSession ?? null;
+    // (P-30, Paso 4.5b) Replica la migración REAL de SqliteLocalStore: una
+    // base "nueva" siempre arranca con un preset activo (id fijo "modsvs",
+    // ver DEFAULT_PRESET_FOLDER_ID/DECISIÓN 6-bis), sembrado con el
+    // `manifest` inicial. Sin esto, `#runPublic` (que ahora EXIGE un preset
+    // activo) fallaría en TODOS los tests existentes de apply/add/remove.
+    const seedEntries = init?.manifest ?? [];
+    this.#presets.set("modsvs", { id: "modsvs", name: "Principal", entries: [...seedEntries] });
+    this.#activePresetId = "modsvs";
   }
 
   getPaths(): GamePaths | null {
@@ -248,6 +256,12 @@ export class FakeLocalStore implements LocalStore {
   }
   setActivePresetId(id: string): void {
     this.#activePresetId = id;
+  }
+  updatePresetEntries(id: string, entries: AddonManifestEntry[]): void {
+    this.log.push("saveManifest"); // mismo nombre de log que antes (el step de progreso no cambió, ver DECISIÓN en merge-orchestrator.ts).
+    this.updatePresetEntriesCalls.push({ id, entries: [...entries] });
+    const preset = this.#presets.get(id);
+    if (preset !== undefined) preset.entries = [...entries];
   }
 }
 

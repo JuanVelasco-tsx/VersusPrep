@@ -248,7 +248,17 @@ export function registerIpcHandlers(
       classifyWithBoundedConcurrency(deps.vscriptDetector, addons),
   );
 
-  ipcMain.handle(IPC_CHANNELS.getActiveSet, () => deps.localStore.getManifest());
+  // (P-30, Paso 4.5b) Ya NO lee `LocalStore.getManifest()` (DEPRECADO, dato
+  // histórico de solo lectura — ver `local-store.ts`): devuelve las entries
+  // del preset ACTUALMENTE activo, mismo criterio que ahora usa
+  // `MergeOrchestrator.addAddon`/`removeAddon`/`applyActiveSet`
+  // (`#currentPresetEntries`). `[]` en el edge case sin ningún preset activo
+  // (no debería ocurrir en una instalación normal).
+  ipcMain.handle(IPC_CHANNELS.getActiveSet, () => {
+    const activePresetId = deps.localStore.getActivePresetId();
+    if (activePresetId === null) return [];
+    return deps.localStore.getPreset(activePresetId)?.entries ?? [];
+  });
 
   ipcMain.handle(
     IPC_CHANNELS.previewActiveSet,

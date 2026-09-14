@@ -225,6 +225,14 @@ function buildDoubles(): Doubles {
         d.deletePresetCalls.push(id);
       },
       getActivePresetId: () => d.activePresetIdValue.value,
+      // (P-30, Paso 4.5b) getPreset/updatePresetEntries: minimos, buscando
+      // dentro de presetsValue (el mismo array que ya mantiene createPreset).
+      getPreset: (id: string) => d.presetsValue.value.find((p) => p.id === id) ?? null,
+      updatePresetEntries: (id: string, entries: AddonManifestEntry[]) => {
+        d.presetsValue.value = d.presetsValue.value.map((p) =>
+          p.id === id ? { ...p, entries: [...entries] } : p,
+        );
+      },
     } as IpcHandlersDeps["localStore"],
     mergeOrchestrator: {
       applyActiveSet: (entries: readonly AddonManifestEntry[]) => {
@@ -364,12 +372,22 @@ describe("IPC — ruteo canal->componente (catorce canales)", () => {
     expect(res.map((r) => r.addonId)).toEqual(["a", "b", "c"]);
   });
 
-  test("activeSet:get llama getManifest() y devuelve su resultado", async () => {
+  test("activeSet:get devuelve las entries del preset ACTIVO (P-30, Paso 4.5b, no el manifest legado)", async () => {
     const { ipc, d } = setup();
-    const manifest: AddonManifestEntry[] = [{ addonId: "111", priorityOrder: 0 }];
-    d.manifestValue.value = manifest;
+    const entries: AddonManifestEntry[] = [{ addonId: "111", priorityOrder: 0 }];
+    d.activePresetIdValue.value = "preset-1";
+    d.presetsValue.value = [{ id: "preset-1", name: "Armas", entries }];
+
     const res = await ipc.invoke(IPC_CHANNELS.getActiveSet);
-    expect(res).toBe(manifest);
+
+    expect(res).toEqual(entries);
+  });
+
+  test("activeSet:get sin preset activo -> []", async () => {
+    const { ipc, d } = setup();
+    d.activePresetIdValue.value = null;
+
+    expect(await ipc.invoke(IPC_CHANNELS.getActiveSet)).toEqual([]);
   });
 
   test("activeSet:apply llama applyActiveSet(entries) con los entries exactos", async () => {

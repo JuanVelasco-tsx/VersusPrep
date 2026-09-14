@@ -295,12 +295,16 @@ class FakeLocalStore implements LocalStore {
     return null;
   }
   clearPendingSession(): void {}
-  // (P-30, Paso 1) Fuera del alcance de BUG-009 (stubs).
+  // (P-30, Paso 4.5b) `#runPublic` ahora EXIGE un preset activo: se simula
+  // uno fijo ("modsvs", igual que la migración real) sembrado con el
+  // `manifest` del constructor, para que applyActiveSet/addAddon/removeAddon
+  // sigan funcionando sin cambiar el resto de este archivo (fuera del alcance
+  // de BUG-009).
   listPresets(): Preset[] {
-    return [];
+    return [{ id: "modsvs", name: "Principal", entries: [...this.manifest] }];
   }
-  getPreset(): Preset | null {
-    return null;
+  getPreset(id: string): Preset | null {
+    return id === "modsvs" ? { id, name: "Principal", entries: [...this.manifest] } : null;
   }
   createPreset(name: string, entries: AddonManifestEntry[]): Preset {
     return { id: "preset-fake", name, entries };
@@ -308,9 +312,10 @@ class FakeLocalStore implements LocalStore {
   renamePreset(): void {}
   deletePreset(): void {}
   getActivePresetId(): string | null {
-    return null;
+    return "modsvs";
   }
   setActivePresetId(): void {}
+  updatePresetEntries(): void {}
 }
 
 /** BackupFileSystem que registra el destino de la copia de backup y el orden. */
