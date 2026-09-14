@@ -269,7 +269,7 @@ export type { ProcessListProvider } from "./process-guard.js";
 // desacoplada del motor y la implementación `SqliteLocalStore`. El orquestador
 // (tarea 18), ElevationService (tarea 17) y la capa IPC (tarea 20) la consumen.
 // ---------------------------------------------------------------------------
-export { SqliteLocalStore, DEFAULT_PRESET_NAME } from "./local-store.js";
+export { SqliteLocalStore, DEFAULT_PRESET_NAME, DEFAULT_PRESET_FOLDER_ID } from "./local-store.js";
 export type { LocalStore } from "./local-store.js";
 
 // ---------------------------------------------------------------------------

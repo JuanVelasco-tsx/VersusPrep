@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import Database from "better-sqlite3";
 import type { Database as DatabaseType } from "better-sqlite3";
 
-import { DEFAULT_PRESET_NAME, SqliteLocalStore } from "../src/main/domain/index.js";
+import { DEFAULT_PRESET_FOLDER_ID, DEFAULT_PRESET_NAME, SqliteLocalStore } from "../src/main/domain/index.js";
 import type { AddonManifestEntry, GamePaths } from "../src/main/domain/index.js";
 
 /**
@@ -175,6 +175,16 @@ describe("LocalStore — presets: estado inicial por migración (P-30, DECISIÓN
     expect(presets[0]).toEqual({ id: presets[0]!.id, name: DEFAULT_PRESET_NAME, entries: [] });
     expect(store.getActivePresetId()).toBe(presets[0]!.id);
   });
+
+  // P-30, Paso 4.5a (DECISIÓN 6-bis): el id de "Principal" es el literal FIJO
+  // "modsvs", NO uno generado al azar — así converger addAddon/removeAddon/
+  // applyActiveSet hacia el preset activo (Paso 4.5b) no re-funde nada para
+  // ninguna instalación existente.
+  test("el id de 'Principal' es DEFAULT_PRESET_FOLDER_ID ('modsvs'), no un id generado al azar", () => {
+    const presets = store.listPresets();
+    expect(presets[0]!.id).toBe(DEFAULT_PRESET_FOLDER_ID);
+    expect(presets[0]!.id).toBe("modsvs");
+  });
 });
 
 describe("LocalStore — presets: CRUD (P-30, Paso 1)", () => {
@@ -334,6 +344,70 @@ describe("LocalStore — presets: migración del Active_Set existente (P-30, Pas
       [defaultId, extra.id].sort(),
     );
     expect(second.getActivePresetId()).toBe(defaultId);
+
+    rawDb.close();
+  });
+
+  // ---------------------------------------------------------------------------
+  // P-30, Paso 4.5a — reparación idempotente de una migración YA corrida (con
+  // el Paso 1, ya pusheado) ANTES de esta corrección, que dejó "Principal" con
+  // un id generado al azar en vez de "modsvs" (DECISIÓN 6-bis).
+  // ---------------------------------------------------------------------------
+
+  test("reparación: una base con 'Principal' en un id viejo (preset-xxxxx) se auto-repara a 'modsvs', sin duplicar ni perder datos", () => {
+    const rawDb = new Database(":memory:");
+    // Simula el ESTADO EXACTO que dejaba el Paso 1 (antes de esta corrección):
+    // se construye un store, lo que corre la migración vieja con un id al
+    // azar (acá, simplemente el que YA generaba `createPreset` antes del
+    // fix — reproducido a mano insertando directo, para no depender de
+    // código viejo que ya no existe).
+    rawDb.exec(`
+      CREATE TABLE presets (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+      CREATE TABLE preset_entries (
+        presetId TEXT NOT NULL, addonId TEXT NOT NULL, priorityOrder INTEGER NOT NULL,
+        PRIMARY KEY (presetId, addonId)
+      );
+      CREATE TABLE active_preset (id INTEGER PRIMARY KEY CHECK (id = 1), presetId TEXT);
+    `);
+    const oldId = "preset-abc123";
+    rawDb.prepare("INSERT INTO presets (id, name) VALUES (?, ?)").run(oldId, DEFAULT_PRESET_NAME);
+    rawDb
+      .prepare("INSERT INTO preset_entries (presetId, addonId, priorityOrder) VALUES (?, ?, ?)")
+      .run(oldId, "111", 0);
+    rawDb
+      .prepare("INSERT INTO active_preset (id, presetId) VALUES (1, ?)")
+      .run(oldId);
+
+    // PRIMERA construcción de SqliteLocalStore sobre esta base YA migrada
+    // (con el id viejo): `presets` NO está vacía -> dispara la REPARACIÓN,
+    // no la migración desde cero.
+    const repaired = new SqliteLocalStore(rawDb);
+
+    // Sin duplicar: sigue habiendo UN solo preset.
+    expect(repaired.listPresets()).toHaveLength(1);
+    // El id quedó corregido a "modsvs"; el id viejo ya no existe.
+    expect(repaired.getPreset(oldId)).toBeNull();
+    const fixed = repaired.getPreset(DEFAULT_PRESET_FOLDER_ID);
+    expect(fixed).toEqual({
+      id: DEFAULT_PRESET_FOLDER_ID,
+      name: DEFAULT_PRESET_NAME,
+      entries: [{ addonId: "111", priorityOrder: 0 }], // sin perder las entries que ya tenía
+    });
+    // El puntero de activo cascadeó al id nuevo (seguía apuntando al preset
+    // "Principal", ahora bajo su id corregido).
+    expect(repaired.getActivePresetId()).toBe(DEFAULT_PRESET_FOLDER_ID);
+
+    rawDb.close();
+  });
+
+  test("reparación es IDEMPOTENTE: reconstruir sobre una base YA reparada no la vuelve a tocar", () => {
+    const rawDb = new Database(":memory:");
+    const first = new SqliteLocalStore(rawDb); // migración desde cero -> ya usa "modsvs".
+    const second = new SqliteLocalStore(rawDb); // reconstrucción: #repairDefaultPresetFolder corre, pero no encuentra nada que reparar.
+
+    expect(second.listPresets()).toHaveLength(1);
+    expect(second.listPresets()[0]!.id).toBe(DEFAULT_PRESET_FOLDER_ID);
+    expect(second.getActivePresetId()).toBe(first.getActivePresetId());
 
     rawDb.close();
   });

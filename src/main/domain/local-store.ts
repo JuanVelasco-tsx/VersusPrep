@@ -275,6 +275,17 @@ void _pathKeysExhaustive;
 /** Nombre del preset por defecto que crea la migración (P-30, DECISIÓN 6). */
 export const DEFAULT_PRESET_NAME = "Principal";
 
+/**
+ * Id TÉCNICO (= carpeta de fusión) FIJO del preset por defecto (P-30, Paso
+ * 4.5a, DECISIÓN 6-bis): `"modsvs"`, la carpeta que YA usaba toda instalación
+ * existente antes de que existieran los presets. NO sigue el formato
+ * `preset-<hex>` de `#generateUniquePresetId` a propósito, para que converger
+ * `addAddon`/`removeAddon`/`applyActiveSet` hacia el preset activo sea
+ * transparente (nada se re-fusiona ni se mueve en disco) para cualquier
+ * instalación que nunca creó un preset adicional.
+ */
+export const DEFAULT_PRESET_FOLDER_ID = "modsvs";
+
 /** DDL idempotente: crea las siete tablas si no existen (ver DECISIONES 3, 5 y 6). */
 const SCHEMA_DDL = `
 CREATE TABLE IF NOT EXISTS paths (
@@ -441,17 +452,7 @@ export class SqliteLocalStore implements LocalStore {
   }
 
   createPreset(name: string, entries: AddonManifestEntry[]): Preset {
-    const id = this.#generateUniquePresetId();
-    const insertPreset = this.#db.prepare("INSERT INTO presets (id, name) VALUES (@id, @name)");
-    const insertEntry = this.#db.prepare(
-      "INSERT INTO preset_entries (presetId, addonId, priorityOrder) VALUES (@presetId, @addonId, @priorityOrder)",
-    );
-    const tx = this.#db.transaction((rows: AddonManifestEntry[]) => {
-      insertPreset.run({ id, name });
-      for (const row of rows) insertEntry.run({ presetId: id, ...row });
-    });
-    tx(entries);
-    return { id, name, entries: [...entries] };
+    return this.#insertPresetRow(this.#generateUniquePresetId(), name, entries);
   }
 
   renamePreset(id: string, newName: string): void {
@@ -495,18 +496,108 @@ export class SqliteLocalStore implements LocalStore {
    * MIGRACIÓN (P-30, Paso 1; ver DECISIÓN 6): copia el `manifest` ACTUAL a un
    * preset por defecto (`DEFAULT_PRESET_NAME`) y lo marca ACTIVO, SOLO la
    * primera vez que este esquema corre sobre una base sin presets todavía
-   * (`presets` vacía). Idempotente: si ya hay al menos un preset (esta
-   * migración ya corrió antes, o el usuario ya creó uno manualmente), es un
-   * no-op. NO toca `manifest` (sigue siendo la fuente real hasta un paso
-   * posterior que la reemplace por presets).
+   * (`presets` vacía). NO toca `manifest` (sigue siendo la fuente real hasta
+   * un paso posterior que la reemplace por presets).
+   *
+   * DECISIÓN 6-bis (P-30, Paso 4.5a) — el id de "Principal" es el literal FIJO
+   * `DEFAULT_PRESET_FOLDER_ID` ("modsvs"), NO uno generado al azar.
+   *
+   * Converger `addAddon`/`removeAddon`/`applyActiveSet` hacia el preset activo
+   * (Paso 4.5b) significa que su carpeta técnica de fusión pasa a ser
+   * `preset.id` (ya parametrizado desde el Paso 2). Si "Principal" tuviera un
+   * `id` generado al azar como cualquier otro preset, la PRIMERA vez que
+   * cualquier instalación EXISTENTE tocara un addon, la app re-fusionaría TODO
+   * hacia esa carpeta nueva y reescribiría gameinfo.txt — una operación
+   * pesada y sorpresiva que nadie pidió, para una instalación que ya tenía
+   * todo funcionando en `modsvs`.
+   *
+   * Se evaluó separar `id` (identidad estable para las FK implícitas de
+   * `preset_entries`/`active_preset`, sin FK declarada — ver DECISIÓN 3) de un
+   * campo `folderName` aparte, pero se descartó: `id` YA es opaco (nunca se
+   * deriva de `name`, ver {@link Preset}) y NINGÚN código lo trata como un
+   * patrón fijo `preset-<hex>` — es un string cualquiera. Fijarlo en
+   * `"modsvs"` para ESTE preset puntual logra el mismo resultado
+   * (`destFolder`/`gameInfoFolderName` = `"modsvs"` sin ningún cambio en
+   * `merge-orchestrator.ts`) sin agregar una columna nueva, sin tocar el tipo
+   * `Preset` ni ningún consumidor: la MENOR fricción posible con lo ya
+   * construido. `#generateUniquePresetId` nunca produce `"modsvs"` (su formato
+   * es siempre `preset-<hex>`), así que no hay riesgo de colisión futura.
+   *
+   * IDEMPOTENCIA + REPARACIÓN: si `presets` YA tiene filas (el Paso 1 —ya
+   * pusheado— pudo haber corrido esta migración ANTES de esta corrección,
+   * dejando "Principal" con un id al azar), se delega en
+   * `#repairDefaultPresetFolder` para corregir ESA fila puntual in-place, en
+   * vez de crear una fila nueva (evita duplicar "Principal").
    */
   #migrateActiveSetToDefaultPreset(): void {
     const row = this.#db
       .prepare<[], { count: number }>("SELECT COUNT(*) as count FROM presets")
       .get();
-    if (row !== undefined && row.count > 0) return;
-    const preset = this.createPreset(DEFAULT_PRESET_NAME, this.getManifest());
+    if (row !== undefined && row.count > 0) {
+      this.#repairDefaultPresetFolder();
+      return;
+    }
+    const preset = this.#insertPresetRow(
+      DEFAULT_PRESET_FOLDER_ID,
+      DEFAULT_PRESET_NAME,
+      this.getManifest(),
+    );
     this.setActivePresetId(preset.id);
+  }
+
+  /**
+   * Reparación idempotente (P-30, Paso 4.5a, ver DECISIÓN 6-bis): si esta base
+   * ya corrió la migración ANTES de esta corrección, "Principal" quedó con un
+   * `id` generado al azar en vez de `DEFAULT_PRESET_FOLDER_ID`. Este método
+   * cambia el `id` de ESA fila puntual a `"modsvs"` — CASCADEANDO a mano a
+   * `preset_entries.presetId`/`active_preset.presetId` (sin FK declarada, ver
+   * DECISIÓN 3, así que SQLite no lo hace solo) en la MISMA transacción — sin
+   * duplicar filas ni perder las entries que ya tuviera.
+   *
+   * Identifica la fila por `name = DEFAULT_PRESET_NAME` (mismo criterio
+   * explícito que pidió la tarea): best-effort para el único caso real que
+   * puede existir (el propio "Principal" que dejó la migración original), no
+   * una garantía sobre cualquier preset que el usuario haya nombrado
+   * "Principal" a mano después con otro propósito. No-op si no hay ninguna
+   * fila así, o si ya está reparada (`id === DEFAULT_PRESET_FOLDER_ID`).
+   */
+  #repairDefaultPresetFolder(): void {
+    const row = this.#db
+      .prepare<[string, string], { id: string }>("SELECT id FROM presets WHERE name = ? AND id != ?")
+      .get(DEFAULT_PRESET_NAME, DEFAULT_PRESET_FOLDER_ID);
+    if (row === undefined) return; // ya reparada, o nunca corrió con un id viejo
+
+    const oldId = row.id;
+    const tx = this.#db.transaction(() => {
+      this.#db
+        .prepare("UPDATE preset_entries SET presetId = ? WHERE presetId = ?")
+        .run(DEFAULT_PRESET_FOLDER_ID, oldId);
+      this.#db
+        .prepare("UPDATE active_preset SET presetId = ? WHERE presetId = ?")
+        .run(DEFAULT_PRESET_FOLDER_ID, oldId);
+      this.#db.prepare("UPDATE presets SET id = ? WHERE id = ?").run(DEFAULT_PRESET_FOLDER_ID, oldId);
+    });
+    tx();
+  }
+
+  /**
+   * INSERT crudo de un preset con `id` YA DECIDIDO por el llamador. Compartido
+   * por `createPreset` (id generado, `#generateUniquePresetId`) y la
+   * migración (id fijo `DEFAULT_PRESET_FOLDER_ID` para "Principal", ver
+   * DECISIÓN 6-bis) — un solo lugar arma la transacción INSERT preset +
+   * entries, para que ambos caminos no puedan desincronizarse.
+   */
+  #insertPresetRow(id: string, name: string, entries: readonly AddonManifestEntry[]): Preset {
+    const insertPreset = this.#db.prepare("INSERT INTO presets (id, name) VALUES (@id, @name)");
+    const insertEntry = this.#db.prepare(
+      "INSERT INTO preset_entries (presetId, addonId, priorityOrder) VALUES (@presetId, @addonId, @priorityOrder)",
+    );
+    const tx = this.#db.transaction((rows: readonly AddonManifestEntry[]) => {
+      insertPreset.run({ id, name });
+      for (const row of rows) insertEntry.run({ presetId: id, ...row });
+    });
+    tx(entries);
+    return { id, name, entries: [...entries] };
   }
 
   /** Lee las entries de un preset, en Priority_Order ascendente. */
