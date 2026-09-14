@@ -201,7 +201,15 @@ export function createStartupProgressListener(
 /**
  * Parsea los flags --l4d2-resume-type/--l4d2-resume-handle de argv (Decision
  * L del bloque 4). Devuelve null si faltan, estan incompletos, o el type no
- * es uno de los tres validos de PendingOperation["type"].
+ * es uno de los cuatro validos de PendingOperation["type"].
+ *
+ * P-30, Paso 3.5 (cierra DECISION 8 de merge-orchestrator.ts): si
+ * type === "switchActivePreset", TAMBIEN exige el flag
+ * --l4d2-resume-preset-id (ver `buildRelaunchArgs` en
+ * elevation-os-provider.ts, el lado que lo emite) - sin el, no hay forma de
+ * saber hacia que preset resumir el switch, asi que se trata igual que un
+ * flag faltante: devuelve null (no hay resume valido, la app arranca fresca
+ * en vez de intentar resumir con datos incompletos).
  */
 export function parseResumeArgs(argv: readonly string[]): PendingOperation | null {
   const typeIndex = argv.indexOf("--l4d2-resume-type");
@@ -210,8 +218,19 @@ export function parseResumeArgs(argv: readonly string[]): PendingOperation | nul
   const type = argv[typeIndex + 1];
   const resumeHandle = argv[handleIndex + 1];
   if (type === undefined || resumeHandle === undefined) return null;
-  if (type !== "applyActiveSet" && type !== "addAddon" && type !== "removeAddon") {
+  if (
+    type !== "applyActiveSet" &&
+    type !== "addAddon" &&
+    type !== "removeAddon" &&
+    type !== "switchActivePreset"
+  ) {
     return null;
+  }
+  if (type === "switchActivePreset") {
+    const presetIdIndex = argv.indexOf("--l4d2-resume-preset-id");
+    const presetId = presetIdIndex === -1 ? undefined : argv[presetIdIndex + 1];
+    if (presetId === undefined) return null;
+    return { type, resumeHandle, presetId };
   }
   return { type, resumeHandle };
 }
@@ -356,9 +375,17 @@ export async function runStartupSequence(
 
   const runResume = async (): Promise<void> => {
     if (!isResuming) return; // no-op: este proceso no arrancó para resumir
+    // (P-30, Paso 3.5) `isResuming` ya implica `pending !== null` (ver su propia
+    // definición arriba), pero TypeScript no liga ambas variables entre sí; el
+    // chequeo es redundante en la práctica, no un camino nuevo de "sin resume".
+    if (pending === null) return;
     resumeBufferRef.current = [];
     try {
-      const result = await pathDependent.mergeOrchestrator.resumePendingOperation();
+      // `pending` (con `.type`/`.presetId` si aplica) viaja al orquestador para
+      // que un resume de "switchActivePreset" complete el switch REAL (hacia la
+      // carpeta del preset) en vez de caer al camino legado de applyActiveSet
+      // hacia modsvs — cierra la DECISIÓN 8 de merge-orchestrator.ts.
+      const result = await pathDependent.mergeOrchestrator.resumePendingOperation(pending);
       // El buffer queda disponible por compatibilidad del contrato; el renderer
       // con isResuming escucha en vivo y lo ignora (no hay duplicación porque
       // elige una sola vía). El RESULTADO TERMINAL vive acá, en `result`.

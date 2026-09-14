@@ -130,6 +130,27 @@ describe("buildRelaunchArgs", () => {
       "pending-session",
     ]);
   });
+
+  test("sin presetId (applyActiveSet/addAddon/removeAddon) NO agrega el flag --l4d2-resume-preset-id", () => {
+    expect(buildRelaunchArgs([], PENDING)).not.toContain("--l4d2-resume-preset-id");
+  });
+
+  test("P-30 Paso 3.5: con presetId (switchActivePreset) agrega --l4d2-resume-preset-id al final", () => {
+    const pendingSwitch: PendingOperation = {
+      type: "switchActivePreset",
+      resumeHandle: "pending-session",
+      presetId: "preset-a1b2c3",
+    };
+    expect(buildRelaunchArgs(["main.js"], pendingSwitch)).toEqual([
+      "main.js",
+      "--l4d2-resume-type",
+      "switchActivePreset",
+      "--l4d2-resume-handle",
+      "pending-session",
+      "--l4d2-resume-preset-id",
+      "preset-a1b2c3",
+    ]);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -387,11 +387,35 @@ export interface Preset {
  * Operación pendiente que se transfiere a la instancia elevada. Lleva SOLO lo
  * mínimo (tipo + handle): la instancia elevada rehidrata el Active_Set candidato
  * leyendo el estado de sesión pendiente del LocalStore, no de la línea de comando.
+ *
+ * `"switchActivePreset"` (P-30, Paso 3.5, cierra la DECISIÓN 8 de
+ * `merge-orchestrator.ts`): un cambio de preset activo TAMBIÉN puede necesitar
+ * elevación UAC (P-10 documenta que la instalación default de Steam suele caer
+ * bajo Program Files). Sin este caso, la instancia elevada no tenía forma de
+ * distinguir un switch interrumpido de un `applyActiveSet` normal, y resumía
+ * fusionando hacia `modsvs` en vez de hacia la carpeta del preset — el switch
+ * se completaba MAL tras el relanzo.
+ *
+ * `presetId` (OPCIONAL a nivel de tipo, pero REQUERIDO en la práctica cuando
+ * `type === "switchActivePreset"`) es el ÚNICO dato extra que hace falta
+ * agregar: el `id` técnico del preset destino. El resto de lo que el resume
+ * necesita para completar el switch (la carpeta técnica destino, y si hay que
+ * quitar la entrada de un preset anterior en gameinfo.txt) se RE-DERIVA en la
+ * instancia elevada a partir de este único dato más el estado YA PERSISTIDO en
+ * el LocalStore (`getPreset(presetId)`, `getActivePresetId()`,
+ * `GamePaths.gameRoot`) — no hace falta transportar nada más por la línea de
+ * comando ni por la sesión pendiente. Queda opcional a nivel de tipo (no un
+ * campo separado por `type` en una unión discriminada) para no reestructurar
+ * los tres casos existentes, que nunca lo usan; `resumePendingOperation`
+ * (`merge-orchestrator.ts`) es quien exige que esté presente cuando
+ * `type === "switchActivePreset"`.
  */
 export interface PendingOperation {
-  type: "applyActiveSet" | "addAddon" | "removeAddon";
+  type: "applyActiveSet" | "addAddon" | "removeAddon" | "switchActivePreset";
   /** Identifica el estado de sesión pendiente persistido en el LocalStore. */
   resumeHandle: string;
+  /** Id técnico del preset destino. Presente SOLO si `type === "switchActivePreset"`. */
+  presetId?: string;
 }
 
 /**

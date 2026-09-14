@@ -181,25 +181,22 @@
  * rehacer la fusión" queda EXPLÍCITAMENTE FUERA de esta tarea, para una
  * sesión futura si se decide.
  *
- * LIMITACIÓN CONOCIDA (elevación UAC a mitad de un switch): no existe un
- * `PendingOperation["type"]` dedicado a "switchActivePreset" — agregarlo
- * tocaría `types.ts`, `resumePendingOperation` y la capa de composición,
- * fuera del alcance de este paso (orquestador SIN IPC/UI todavía). Por eso
- * `switchActivePreset` pasa `operationType: "applyActiveSet"` a
- * `ensureCanWrite`/`#writeStep` (el más cercano semánticamente disponible). Si
- * una escritura dispara `elevated-handoff`, `ElevationServiceImpl.relaunchElevated`
- * persiste `preset.entries` como sesión pendiente GENÉRICA y la instancia
- * elevada la resume vía `resumePendingOperation()` como un `applyActiveSet`
- * NORMAL — fusionando esos mismos addons hacia `modsvsFolder`/`"modsvs"`, NO
- * hacia la carpeta del preset. Es decir: HOY, un switch que necesita elevar
- * puede completarse hacia el destino LEGADO tras el relanzo, no hacia el
- * preset. En la práctica esto solo ocurre si el Game_Root está bajo una ruta
- * protegida (Program Files) o el proceso no puede escribir directamente ahí;
- * la mayoría de las instalaciones de Steam no lo están, y el camino PROACTIVO
- * (`ensureCanWrite`) evita la mayoría de los casos reales sin llegar a
- * relanzar. Cerrar esta brecha del todo requiere un `PendingOperation`
- * consciente de presets — trabajo de un paso POSTERIOR de P-30 (o de una
- * sesión futura si se decide), no de este.
+ * LIMITACIÓN CONOCIDA, CERRADA en el Paso 3.5 (elevación UAC a mitad de un
+ * switch): `PendingOperation["type"]` ahora incluye `"switchActivePreset"`
+ * con un `presetId` opcional (`types.ts`). `switchActivePreset` pasa
+ * `operationType: "switchActivePreset"` + `presetId` a `ensureCanWrite`;
+ * `#writeStep` hace lo mismo ante el camino REACTIVO (`handleWriteFailure`,
+ * vía el `presetId` que le llega derivado en `#materialize`). Sea cual sea la
+ * vía, `ElevationServiceImpl.relaunchElevated` persiste una `PendingOperation`
+ * que YA lleva el `presetId`; la instancia elevada la recibe por argv
+ * (`--l4d2-resume-preset-id`, `elevation-os-provider.ts` /
+ * `parseResumeArgs` en `composition-root.ts`) y `resumePendingOperation`
+ * (recibiendo esa `PendingOperation`) completa el switch REAL —hacia la
+ * carpeta del preset, con el remove+ensure de `switchFolderEntry`— en vez de
+ * caer al camino legado hacia `modsvsFolder`/`"modsvs"`. `#materializePresetSwitch`
+ * centraliza la derivación de `destFolder`/`previousFolderName` que
+ * necesitan TANTO el camino directo como el resume, para que ambos nunca
+ * puedan desincronizarse.
  * ---------------------------------------------------------------------------
  */
 
@@ -394,15 +391,21 @@ export class MergeOrchestrator {
   }
 
   /**
-   * Cambia el preset ACTIVO a `presetId` (P-30, Paso 3): fusiona los `entries`
-   * de ESE preset en su carpeta técnica propia (`<gameRoot>\<presetId>`, NO
-   * `modsvs`), deja gameinfo.txt apuntando SOLO a esa carpeta (quitando la
-   * entrada del preset anterior si había uno distinto) y, recién si todo tuvo
-   * éxito, actualiza el puntero de activo (`LocalStore.setActivePresetId`).
-   * Ver DECISIÓN 8 para el patrón completo (guard->scan->elevación->
-   * materializar, igual que `#runPublic`) y sus limitaciones documentadas
-   * (optimización de re-fusión diferida; brecha de elevación a mitad de un
-   * switch).
+   * Cambia el preset ACTIVO a `presetId` (P-30, Paso 3; el manejo de elevación
+   * UAC se cerró en el Paso 3.5): fusiona los `entries` de ESE preset en su
+   * carpeta técnica propia (`<gameRoot>\<presetId>`, NO `modsvs`), deja
+   * gameinfo.txt apuntando SOLO a esa carpeta (quitando la entrada del preset
+   * anterior si había uno distinto) y, recién si todo tuvo éxito, actualiza el
+   * puntero de activo (`LocalStore.setActivePresetId`). Ver DECISIÓN 8 para el
+   * patrón completo (guard->scan->elevación->materializar, igual que
+   * `#runPublic`) y la limitación restante documentada (optimización de
+   * re-fusión diferida).
+   *
+   * `operationType: "switchActivePreset"` + `presetId` viajan a
+   * `ensureCanWrite` (P-30, Paso 3.5): si esto dispara elevación UAC, la
+   * instancia elevada ahora SÍ sabe, al resumir, que debe completar este MISMO
+   * switch (ver `resumePendingOperation`) — ya no cae al camino legado de
+   * `applyActiveSet` hacia `modsvs`.
    *
    * @param presetId Id TÉCNICO del preset destino (`LocalStore.getPreset`).
    * @returns Fallo definitivo con `presetId` inexistente si no hay tal preset
@@ -431,14 +434,15 @@ export class MergeOrchestrator {
     const resolved = await this.#resolveOrderedAddons(preset.entries);
     if (resolved.kind === "outcome") return resolved.result;
 
-    // Paso 3 — Elevación PROACTIVA. `operationType: "applyActiveSet"` (ver
-    // DECISIÓN 8: no existe un tipo dedicado a "switchActivePreset" sin tocar
-    // IPC/composición, fuera del alcance de este paso).
+    // Paso 3 — Elevación PROACTIVA, con el tipo y el presetId REALES (P-30,
+    // Paso 3.5): si hace falta relanzar, la PendingOperation persistida ya
+    // lleva lo necesario para que el resume complete ESTE switch.
     this.#emit("elevation");
     const proactive = await this.#elevation.ensureCanWrite(
       this.#paths.gameRoot,
       preset.entries,
-      "applyActiveSet",
+      "switchActivePreset",
+      presetId,
     );
     if (proactive.kind === "elevated-handoff") {
       return { status: "elevating" };
@@ -449,32 +453,12 @@ export class MergeOrchestrator {
       );
     }
 
-    // El preset ANTERIOR se quita de gameinfo.txt SOLO si había uno distinto
-    // del destino (si ya era el activo, no hay nada que quitar; DECISIÓN 7 en
-    // game-info-editor.ts reduce switchFolderEntry a ensureModsvsFirst cuando
-    // `previousFolderName` es `null`).
-    const activePresetId = this.#store.getActivePresetId();
-    const previousFolderName =
-      activePresetId !== null && activePresetId !== presetId ? activePresetId : null;
-
-    const destFolder = joinWindowsPath(this.#paths.gameRoot, preset.id);
-    const result = await this.#materialize(
+    return this.#materializePresetSwitch(
+      presetId,
       preset.entries,
       resolved.addons,
-      "applyActiveSet",
-      destFolder,
-      preset.id,
-      previousFolderName,
+      "switchActivePreset",
     );
-
-    // Puntero de activo: SOLO se actualiza si `#materialize` tuvo éxito
-    // (nunca ante "failure" ni "elevating") — el mismo criterio que evita que
-    // gameinfo.txt quede inconsistente aplica acá: el puntero de LocalStore
-    // tampoco debe adelantarse a un cambio que no se completó.
-    if (result.status === "success") {
-      this.#store.setActivePresetId(preset.id);
-    }
-    return result;
   }
 
   /**
@@ -526,23 +510,55 @@ export class MergeOrchestrator {
    * reconstruir la vista de la UI (tarea 18.2) son responsabilidad de la capa de
    * composición/bootstrap (Tarea 20, aún inexistente), NO de este método de
    * dominio; acá solo se materializa la operación y se limpia el estado.
+   *
+   * `pendingOperation` (P-30, Paso 3.5, cierra DECISIÓN 8): OPCIONAL para no
+   * romper compatibilidad — si se omite (o su `type` no es
+   * `"switchActivePreset"`), el resume sigue el camino LEGADO de siempre
+   * (`applyActiveSet` hacia `modsvs`). Si `pendingOperation.type ===
+   * "switchActivePreset"` (y trae `presetId`), este resume completa ESE
+   * switch: re-deriva `destFolder`/`previousFolderName` a partir del
+   * `presetId` + el estado YA en `LocalStore` (mismo criterio que
+   * `switchActivePreset`, vía `#materializePresetSwitch`) — NUNCA cae al
+   * camino de `modsvs` para un switch interrumpido por UAC.
    */
-  async resumePendingOperation(): Promise<OperationResult | null> {
-    const pending = this.#store.getPendingSession();
-    if (pending === null) return null; // no hay nada que resumir
+  async resumePendingOperation(
+    pendingOperation?: PendingOperation,
+  ): Promise<OperationResult | null> {
+    const candidateEntries = this.#store.getPendingSession();
+    if (candidateEntries === null) return null; // no hay nada que resumir
 
     // Al resumir NO se re-chequea la elevación proactiva: la instancia ya está
-    // elevada. El operationType de resume es "applyActiveSet" (la instancia
-    // elevada rehidrata el Active_Set candidato y lo aplica como fusión completa).
+    // elevada.
     try {
       // Paso 2 — Resolver ScannedAddon también en el resume (DECISIÓN 5); un addon
       // ausente del escaneo corta con un fallo definitivo (la sesión igual se
       // limpia en el finally).
       this.#emit("scan");
-      const resolved = await this.#resolveOrderedAddons(pending);
+      const resolved = await this.#resolveOrderedAddons(candidateEntries);
       if (resolved.kind === "outcome") return resolved.result;
+
+      if (pendingOperation?.type === "switchActivePreset" && pendingOperation.presetId !== undefined) {
+        const presetId = pendingOperation.presetId;
+        // El preset pudo borrarse entre el relanzo y este resume (ventana muy
+        // chica, pero se chequea con el MISMO criterio de #failure que el
+        // camino directo de `switchActivePreset`).
+        if (this.#store.getPreset(presetId) === null) {
+          return this.#failure(`El preset ${presetId} no existe.`);
+        }
+        return await this.#materializePresetSwitch(
+          presetId,
+          candidateEntries,
+          resolved.addons,
+          "switchActivePreset",
+        );
+      }
+
+      // Camino LEGADO (sin pendingOperation, o con un type distinto de
+      // "switchActivePreset"): el operationType de resume es "applyActiveSet"
+      // (la instancia elevada rehidrata el Active_Set candidato y lo aplica
+      // como fusión completa hacia modsvs).
       return await this.#materialize(
-        pending,
+        candidateEntries,
         resolved.addons,
         "applyActiveSet",
         this.#paths.modsvsFolder,
@@ -642,9 +658,53 @@ export class MergeOrchestrator {
   }
 
   /**
+   * Deriva `destFolder`/`previousFolderName` a partir de `presetId` + el
+   * estado YA en `LocalStore` (`getActivePresetId`), delega en `#materialize`,
+   * y — SOLO si tuvo éxito — actualiza el puntero de activo (P-30, Paso 3.5).
+   * COMPARTIDO por `switchActivePreset` (camino directo) y
+   * `resumePendingOperation` (resume de un switch interrumpido por elevación
+   * UAC): ambos necesitan EXACTAMENTE la misma derivación, y centralizarla acá
+   * evita que un futuro cambio la actualice en un solo lugar y no en el otro
+   * (justo el tipo de bug que cerró esta tarea).
+   */
+  async #materializePresetSwitch(
+    presetId: string,
+    entries: readonly AddonManifestEntry[],
+    orderedAddons: readonly ScannedAddon[],
+    operationType: PendingOperation["type"],
+  ): Promise<OperationResult> {
+    // El preset ANTERIOR se quita de gameinfo.txt SOLO si había uno distinto
+    // del destino (si ya era el activo, no hay nada que quitar; DECISIÓN 7 en
+    // game-info-editor.ts reduce switchFolderEntry a ensureModsvsFirst cuando
+    // `previousFolderName` es `null`).
+    const activePresetId = this.#store.getActivePresetId();
+    const previousFolderName =
+      activePresetId !== null && activePresetId !== presetId ? activePresetId : null;
+
+    const destFolder = joinWindowsPath(this.#paths.gameRoot, presetId);
+    const result = await this.#materialize(
+      entries,
+      orderedAddons,
+      operationType,
+      destFolder,
+      presetId,
+      previousFolderName,
+    );
+
+    // Puntero de activo: SOLO se actualiza si `#materialize` tuvo éxito
+    // (nunca ante "failure" ni "elevating") — el mismo criterio que evita que
+    // gameinfo.txt quede inconsistente aplica acá: el puntero de LocalStore
+    // tampoco debe adelantarse a un cambio que no se completó.
+    if (result.status === "success") {
+      this.#store.setActivePresetId(presetId);
+    }
+    return result;
+  }
+
+  /**
    * Materialización COMPARTIDA (usada por los 3 métodos públicos legados tras
    * pasar la elevación proactiva, por el resume de 18.2 que la saltea, y por
-   * `switchActivePreset` (P-30, Paso 3)):
+   * `switchActivePreset`/su resume (P-30, Pasos 3 y 3.5)):
    *   backup -> merge -> instalar -> gameinfo -> saveManifest. Crea y LIMPIA el
    *   workDir (finally, resuelve P-14).
    *
@@ -675,6 +735,16 @@ export class MergeOrchestrator {
     // (`#runPublic`/`resumePendingOperation`/`switchActivePreset`) vía
     // `#resolveOrderedAddons`, ANTES de la elevación proactiva. Acá se recibe
     // ya resuelta y ordenada.
+    //
+    // (P-30, Paso 3.5) `presetIdForResume`: el id a incluir en la
+    // `PendingOperation` reactiva que arma `#writeStep`, SOLO si
+    // `operationType === "switchActivePreset"` — en ese caso (y SOLO en ese
+    // caso) `gameInfoFolderName` ES el id del preset destino, por construcción
+    // de `switchActivePreset`/`resumePendingOperation` (ambos pasan
+    // `presetId` en ese mismo parámetro vía `#materializePresetSwitch`). Se
+    // deriva en vez de agregar un séptimo parámetro redundante que repetiría
+    // el mismo valor.
+    const presetIdForResume = operationType === "switchActivePreset" ? gameInfoFolderName : null;
     const workDir = joinWindowsPath(this.#workRoot, `merge-${Date.now()}-${this.#workSeq++}`);
     try {
       await this.#fs.ensureDir(workDir);
@@ -704,14 +774,14 @@ export class MergeOrchestrator {
       // el emit "backup" —sin agregar un step nuevo a `MergeProgressEvent`— porque
       // esta creación es preparación del backup: es el paso más simple y coherente.
       this.#emit("backup");
-      const destFolderResult = await this.#writeStep(entries, operationType, () =>
+      const destFolderResult = await this.#writeStep(entries, operationType, presetIdForResume, () =>
         this.#fs.ensureDir(destFolder),
       );
       if (destFolderResult.kind === "outcome") return destFolderResult.result;
 
       // Paso 4 — Backup (escritura en Game_Root -> reactivo).
       this.#emit("backup");
-      const backupResult = await this.#writeStep(entries, operationType, () =>
+      const backupResult = await this.#writeStep(entries, operationType, presetIdForResume, () =>
         this.#backup.backupExisting(destFolder),
       );
       if (backupResult.kind === "outcome") return backupResult.result;
@@ -734,7 +804,7 @@ export class MergeOrchestrator {
       // Game_Root -> reactivo).
       const installTarget = joinWindowsPath(destFolder, INSTALLED_VPK_NAME);
       this.#emit("install");
-      const installResult = await this.#writeStep(entries, operationType, () =>
+      const installResult = await this.#writeStep(entries, operationType, presetIdForResume, () =>
         this.#fs.copyFile(mergedVpkPath, installTarget),
       );
       if (installResult.kind === "outcome") return installResult.result;
@@ -747,7 +817,7 @@ export class MergeOrchestrator {
       // (SearchPaths ausente/malformado) NO es de permisos: handleWriteFailure
       // lo devuelve como already-writable y se propaga como fallo definitivo.
       this.#emit("gameinfo");
-      const gameInfoResult = await this.#writeStep(entries, operationType, () =>
+      const gameInfoResult = await this.#writeStep(entries, operationType, presetIdForResume, () =>
         this.#gameInfo.switchFolderEntry(
           this.#paths.gameInfoFile,
           previousGameInfoFolderName,
@@ -785,10 +855,19 @@ export class MergeOrchestrator {
    * corta con `status: "elevating"`. Si es `denied`, corta con fallo por UAC
    * cancelado. Si es `already-writable` (no era de permisos), corta con el fallo
    * definitivo derivado del error original.
+   *
+   * `presetId` (P-30, Paso 3.5, cierra DECISIÓN 8): si no es `null`, se incluye
+   * en la `PendingOperation` reactiva que se persiste ante un `elevated-handoff`
+   * a MITAD de un `switchActivePreset` — sin esto, un fallo de permisos en
+   * cualquiera de los 4 pasos de `#materialize` (crear destFolder, backup,
+   * instalar, gameinfo) perdía el `presetId` y el resume caía, incorrectamente,
+   * al camino legado hacia `modsvs` (el mismo bug que motivó este paso, pero
+   * por la vía REACTIVA en vez de la proactiva).
    */
   async #writeStep<T>(
     entries: readonly AddonManifestEntry[],
     operationType: PendingOperation["type"],
+    presetId: string | null,
     step: () => Promise<T>,
   ): Promise<{ kind: "ok"; value: T } | { kind: "outcome"; result: OperationResult }> {
     try {
@@ -796,10 +875,10 @@ export class MergeOrchestrator {
       return { kind: "ok", value };
     } catch (err) {
       const error = err as NodeJS.ErrnoException;
-      const pending: PendingOperation = {
-        type: operationType,
-        resumeHandle: PENDING_SESSION_HANDLE,
-      };
+      const pending: PendingOperation =
+        presetId !== null
+          ? { type: operationType, resumeHandle: PENDING_SESSION_HANDLE, presetId }
+          : { type: operationType, resumeHandle: PENDING_SESSION_HANDLE };
       const outcome: ElevationOutcome = await this.#elevation.handleWriteFailure(
         error,
         pending,

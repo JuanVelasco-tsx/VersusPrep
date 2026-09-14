@@ -38,6 +38,8 @@ class MockOsProvider implements ElevationOsProvider {
   /** Contadores de invocación. */
   probeCalls = 0;
   relaunchCalls = 0;
+  /** Último `pending` recibido por `relaunchAsAdmin` (P-30, Paso 3.5). */
+  lastRelaunchPending: PendingOperation | null = null;
 
   constructor(init?: {
     elevated?: boolean;
@@ -58,8 +60,9 @@ class MockOsProvider implements ElevationOsProvider {
     return Promise.resolve(this.probeResult);
   }
 
-  relaunchAsAdmin(): Promise<RelaunchOutcome> {
+  relaunchAsAdmin(pending: PendingOperation): Promise<RelaunchOutcome> {
     this.relaunchCalls += 1;
+    this.lastRelaunchPending = pending;
     return Promise.resolve(this.relaunchResult);
   }
 }
@@ -238,6 +241,41 @@ describe("ElevationService.ensureCanWrite", () => {
     const outcome = await service.ensureCanWrite("C:\\Program Files (x86)\\Steam", ENTRIES, "applyActiveSet");
     expect(outcome.kind).toBe("denied");
     expect(os.relaunchCalls).toBe(1);
+  });
+
+  // ---------------------------------------------------------------------------
+  // P-30, Paso 3.5 (cierra DECISIÓN 8 de merge-orchestrator.ts): el parámetro
+  // `presetId` opcional de ensureCanWrite.
+  // ---------------------------------------------------------------------------
+
+  test("presetId presente -> la PendingOperation que llega a relaunchAsAdmin lo incluye", async () => {
+    const os = new MockOsProvider({ elevated: false, relaunchResult: "launched" });
+    const store = new MockStore();
+    const service = new ElevationServiceImpl(os, store);
+    const outcome = await service.ensureCanWrite(
+      "C:\\Program Files (x86)\\Steam",
+      ENTRIES,
+      "switchActivePreset",
+      "preset-a1b2c3",
+    );
+    expect(outcome).toEqual({ kind: "elevated-handoff" });
+    expect(os.lastRelaunchPending).toEqual({
+      type: "switchActivePreset",
+      resumeHandle: "pending-session",
+      presetId: "preset-a1b2c3",
+    });
+  });
+
+  test("presetId ausente (applyActiveSet/addAddon/removeAddon) -> la PendingOperation NO lleva presetId", async () => {
+    const os = new MockOsProvider({ elevated: false, relaunchResult: "launched" });
+    const store = new MockStore();
+    const service = new ElevationServiceImpl(os, store);
+    await service.ensureCanWrite("C:\\Program Files (x86)\\Steam", ENTRIES, "applyActiveSet");
+    expect(os.lastRelaunchPending).toEqual({
+      type: "applyActiveSet",
+      resumeHandle: "pending-session",
+    });
+    expect(os.lastRelaunchPending).not.toHaveProperty("presetId");
   });
 });
 

@@ -119,6 +119,56 @@ describe("parseResumeArgs", () => {
     const argv = ["--l4d2-resume-type", "borrarTodo", "--l4d2-resume-handle", "H1"];
     expect(parseResumeArgs(argv)).toBeNull();
   });
+
+  // ---------------------------------------------------------------------------
+  // P-30, Paso 3.5 (cierra DECISIÓN 8 de merge-orchestrator.ts): el cuarto type
+  // válido, "switchActivePreset", además EXIGE --l4d2-resume-preset-id.
+  // ---------------------------------------------------------------------------
+
+  test("switchActivePreset con --l4d2-resume-preset-id -> PendingOperation con presetId", () => {
+    const argv = [
+      "--l4d2-resume-type",
+      "switchActivePreset",
+      "--l4d2-resume-handle",
+      "H1",
+      "--l4d2-resume-preset-id",
+      "preset-a1b2c3",
+    ];
+    expect(parseResumeArgs(argv)).toEqual({
+      type: "switchActivePreset",
+      resumeHandle: "H1",
+      presetId: "preset-a1b2c3",
+    });
+  });
+
+  test("switchActivePreset SIN --l4d2-resume-preset-id -> null (datos incompletos, no hay resume válido)", () => {
+    const argv = ["--l4d2-resume-type", "switchActivePreset", "--l4d2-resume-handle", "H1"];
+    expect(parseResumeArgs(argv)).toBeNull();
+  });
+
+  test("switchActivePreset con --l4d2-resume-preset-id como ULTIMO token (sin valor) -> null", () => {
+    const argv = [
+      "--l4d2-resume-type",
+      "switchActivePreset",
+      "--l4d2-resume-handle",
+      "H1",
+      "--l4d2-resume-preset-id",
+    ];
+    expect(parseResumeArgs(argv)).toBeNull();
+  });
+
+  test("applyActiveSet/addAddon/removeAddon con --l4d2-resume-preset-id presente lo IGNORAN (solo lo usa switchActivePreset)", () => {
+    const argv = [
+      "--l4d2-resume-type",
+      "applyActiveSet",
+      "--l4d2-resume-handle",
+      "H1",
+      "--l4d2-resume-preset-id",
+      "preset-a1b2c3",
+    ];
+    // El resultado NO lleva presetId: no es un campo relevante para este type.
+    expect(parseResumeArgs(argv)).toEqual({ type: "applyActiveSet", resumeHandle: "H1" });
+  });
 });
 
 // ---------------------------------------------------------------------------

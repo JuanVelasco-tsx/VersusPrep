@@ -41,6 +41,12 @@
  * lado receptor no existe todavia (main.ts no toca process.argv hoy) - es
  * terreno del bloque 5; la distincion dev vs empaquetado en como se relanza
  * execPath recien se valida ahi.
+ *
+ * P-30, Paso 3.5 (cierra DECISION 8 de merge-orchestrator.ts): se suma un
+ * TERCER flag opcional --l4d2-resume-preset-id, solo cuando pending.presetId
+ * esta presente (type === "switchActivePreset"). composition-root.ts
+ * (parseResumeArgs) es el lado receptor que ya existe hoy y lo parsea de
+ * vuelta.
  */
 import type {
   CommandRunner,
@@ -85,20 +91,28 @@ export function isPermissionDeniedError(error: unknown): boolean {
 
 /**
  * Deriva los argv completos para el relanzo elevado: preserva
- * process.argv.slice(1) y agrega los dos flags de resume (ver DECISION L).
- * Exportada para test aislado, sin depender de process.argv real.
+ * process.argv.slice(1) y agrega los flags de resume (ver DECISION L).
+ * `--l4d2-resume-preset-id` se agrega SOLO si `pending.presetId` está presente
+ * (P-30, Paso 3.5: switchActivePreset necesita saber hacia qué preset resumir,
+ * ver DECISIÓN 8 en `merge-orchestrator.ts`); los otros dos tipos de
+ * PendingOperation no lo llevan. Exportada para test aislado, sin depender de
+ * process.argv real.
  */
 export function buildRelaunchArgs(
   currentArgv: readonly string[],
   pending: PendingOperation,
 ): string[] {
-  return [
+  const args = [
     ...currentArgv,
     "--l4d2-resume-type",
     pending.type,
     "--l4d2-resume-handle",
     pending.resumeHandle,
   ];
+  if (pending.presetId !== undefined) {
+    args.push("--l4d2-resume-preset-id", pending.presetId);
+  }
+  return args;
 }
 
 /** Escapa un string para uso como literal de comillas simples en PowerShell. */

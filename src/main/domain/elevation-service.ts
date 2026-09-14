@@ -234,6 +234,7 @@ export interface ElevationService {
     gameRoot: string,
     entries: readonly AddonManifestEntry[],
     operationType: PendingOperation["type"],
+    presetId?: string,
   ): Promise<ElevationOutcome>;
   /** Camino REACTIVO. Ver {@link ElevationServiceImpl.handleWriteFailure}. */
   handleWriteFailure(
@@ -330,23 +331,32 @@ export class ElevationServiceImpl implements ElevationService {
    * el `type` de la `PendingOperation` del camino proactivo YA NO está hardcodeado.
    * `ensureCanWrite` recibe `operationType: PendingOperation["type"]` del llamador
    * (el MergeOrchestrator lo pasa según ejecute `applyActiveSet`/`addAddon`/
-   * `removeAddon`), de modo que la instancia elevada reciba el tipo CORRECTO. El
-   * parámetro se suma con el MISMO criterio de la DECISIÓN 1 (divergencia consciente
-   * de design.md): el documento publica `ensureCanWrite(gameRoot)` sin `entries` ni
-   * `operationType`, pero ambos son datos que el camino proactivo necesita para
-   * construir la `PendingOperation` correcta y persistir el candidato antes de relanzar.
+   * `removeAddon`/`switchActivePreset`), de modo que la instancia elevada reciba
+   * el tipo CORRECTO. El parámetro se suma con el MISMO criterio de la DECISIÓN 1
+   * (divergencia consciente de design.md): el documento publica
+   * `ensureCanWrite(gameRoot)` sin `entries` ni `operationType`, pero ambos son
+   * datos que el camino proactivo necesita para construir la `PendingOperation`
+   * correcta y persistir el candidato antes de relanzar.
+   *
+   * `presetId` (P-30, Paso 3.5, cierra DECISIÓN 8 de `merge-orchestrator.ts`):
+   * OPCIONAL, presente SOLO cuando `operationType === "switchActivePreset"`. Se
+   * incluye en la `PendingOperation` construida para que, si hace falta elevar,
+   * la instancia elevada sepa hacia QUÉ preset resumir el switch (en vez de caer,
+   * incorrectamente, al camino legado de `applyActiveSet` hacia `modsvs`).
    */
   async ensureCanWrite(
     gameRoot: string,
     entries: readonly AddonManifestEntry[],
     operationType: PendingOperation["type"],
+    presetId?: string,
   ): Promise<ElevationOutcome> {
     if (this.#os.isElevated()) return { kind: "already-writable" };
     if (!(await this.needsElevation(gameRoot))) return { kind: "already-writable" };
-    return this.relaunchElevated(
-      { type: operationType, resumeHandle: PENDING_SESSION_HANDLE },
-      entries,
-    );
+    const pending: PendingOperation =
+      presetId !== undefined
+        ? { type: operationType, resumeHandle: PENDING_SESSION_HANDLE, presetId }
+        : { type: operationType, resumeHandle: PENDING_SESSION_HANDLE };
+    return this.relaunchElevated(pending, entries);
   }
 
   /**
