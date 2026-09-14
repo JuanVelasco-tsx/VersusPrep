@@ -131,7 +131,7 @@ test("(3.3) Caso C idempotente con dos tabs: unchanged, no reescribe (content id
     "\t\t\tGame\t\tleft4dead2_dlc3",
   ]);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("unchanged");
   expect(result.changed).toBe(false);
@@ -151,7 +151,7 @@ test("(3.3) Caso C idempotente con un espacio: unchanged, content idéntico", ()
     "\t\t\tGame\t\tupdate",
   ]);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("unchanged");
   expect(result.changed).toBe(false);
@@ -173,7 +173,7 @@ test("(3.1) Caso A: inserta una única modsvs como primera entrada, sin duplicar
     "\t\t\tGame\tleft4dead2_dlc3",
   ]);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("inserted");
   expect(result.changed).toBe(true);
@@ -204,7 +204,7 @@ test("(3.2) Caso B: colapsa duplicadas a una única modsvs primera, orden del re
     "\t\t\tGame\tmodsvs", // modsvs duplicada
   ]);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("moved");
   expect(result.changed).toBe(true);
@@ -248,7 +248,7 @@ test("(3.4) Caso A: preserva prefijo y sufijo del archivo carácter por carácte
   ].join(LF);
   const content = `${prefix}\t\t\tGame\tupdate${LF}${suffix}`;
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("inserted");
   // Prefijo intacto carácter por carácter.
@@ -273,7 +273,7 @@ test("(3.5) Caso A: la línea insertada replica la indentación líder de refere
     `${referenceIndent}Game\tleft4dead2_dlc3`,
   ]);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("inserted");
   const modsvsLine = findModsvsLine(result.content, LF);
@@ -295,7 +295,7 @@ test("(3.5) Caso A: respeta el EOL CRLF de referencia al insertar", () => {
     "\t\t\tGame\tleft4dead2_dlc3",
   ], CRLF);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("inserted");
   // Se insertó una modsvs.
@@ -327,11 +327,11 @@ test("(3.6) Sin bloque SearchPaths: lanza GameInfoEditError con reason missing-s
     "",
   ].join(LF);
 
-  expect(() => ensureModsvsFirstInContent(content)).toThrow(GameInfoEditError);
+  expect(() => ensureModsvsFirstInContent(content, "modsvs")).toThrow(GameInfoEditError);
 
   let capturedReason: string | undefined;
   try {
-    ensureModsvsFirstInContent(content);
+    ensureModsvsFirstInContent(content, "modsvs");
   } catch (err) {
     if (err instanceof GameInfoEditError) capturedReason = err.reason;
   }
@@ -358,7 +358,7 @@ test("(3.6) SearchPaths que abre pero no cierra: lanza GameInfoEditError con rea
 
   let capturedReason: string | undefined;
   try {
-    ensureModsvsFirstInContent(content);
+    ensureModsvsFirstInContent(content, "modsvs");
   } catch (err) {
     if (err instanceof GameInfoEditError) capturedReason = err.reason;
   }
@@ -431,7 +431,7 @@ propertyTest(
     ];
     const content = buildGameInfo(blockLines, eol);
 
-    const result = ensureModsvsFirstInContent(content);
+    const result = ensureModsvsFirstInContent(content, "modsvs");
 
     // Caso C idempotente: no cambia y el content es idéntico carácter por carácter.
     if (result.appliedCase !== "unchanged") return false;
@@ -439,7 +439,7 @@ propertyTest(
     if (result.content !== content) return false;
 
     // Segunda aplicación: sigue siendo un no-op.
-    const second = ensureModsvsFirstInContent(result.content);
+    const second = ensureModsvsFirstInContent(result.content, "modsvs");
     if (second.appliedCase !== "unchanged") return false;
     if (second.changed !== false) return false;
     if (second.content !== result.content) return false;

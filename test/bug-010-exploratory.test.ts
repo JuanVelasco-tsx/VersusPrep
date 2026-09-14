@@ -80,7 +80,7 @@ test("Caso 1 (A, una tab): la línea insertada replica la única tab de referenc
     "Game\tleft4dead2_dlc3",
   ]);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("inserted");
   const found = extractModsvsSeparator(result.content);
@@ -101,7 +101,7 @@ test("Caso 2 (A, múltiples tabs): la línea insertada replica los dos tabs de r
     "Game\t\tupdate",
   ]);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("inserted");
   const found = extractModsvsSeparator(result.content);
@@ -128,7 +128,7 @@ test("Caso 3 (B, mover): la línea colapsada usa el separador de referencia (una
     "Game\tleft4dead2_dlc3",
   ]);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("moved");
   const found = extractModsvsSeparator(result.content);
@@ -150,7 +150,7 @@ test("Caso 4 (sin Game previa): la línea insertada usa DEFAULT_SEPARATOR (una t
     "// bloque sin ninguna entrada Game previa",
   ]);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("inserted");
   const found = extractModsvsSeparator(result.content);

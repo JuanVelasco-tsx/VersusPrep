@@ -215,7 +215,7 @@ propertyTest(
     const { separator, indent, eol, hasModsvsElsewhere } = scenario;
     const content = buildGameInfo(buildBlockLines(scenario), eol);
 
-    const result = ensureModsvsFirstInContent(content);
+    const result = ensureModsvsFirstInContent(content, "modsvs");
 
     // (1) Caso aplicado: "inserted" (Caso A) o "moved" (Caso B), según corresponda.
     const expectedCase = hasModsvsElsewhere ? "moved" : "inserted";
@@ -240,7 +240,7 @@ propertyTest(
     if (!result.content.includes(`${eol}${modsvsLine}${eol}`)) return false;
 
     // (4) IDEMPOTENCIA: aplicar de nuevo == no-op (Caso C), content idéntico.
-    const second = ensureModsvsFirstInContent(result.content);
+    const second = ensureModsvsFirstInContent(result.content, "modsvs");
     if (second.appliedCase !== "unchanged") return false;
     if (second.changed !== false) return false;
     if (second.content !== result.content) return false;
@@ -264,7 +264,7 @@ test("Property 1 (no-vacuidad): el generador cubre inserted y moved", () => {
   const seen = new Set<string>();
   for (const scenario of samples) {
     const content = buildGameInfo(buildBlockLines(scenario), scenario.eol);
-    seen.add(ensureModsvsFirstInContent(content).appliedCase);
+    seen.add(ensureModsvsFirstInContent(content, "modsvs").appliedCase);
   }
   expect(seen.has("inserted")).toBe(true);
   expect(seen.has("moved")).toBe(true);

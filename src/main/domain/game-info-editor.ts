@@ -75,7 +75,7 @@
  * que vscript-detector / collision-resolver). Una ocurrencia con casing/espaciado
  * distinto en posición no-primera se COLAPSA a la forma canónica (Caso B).
  *
- * CAVEAT (mismo estilo que el literal `\` de vpk-path.ts): `isGameModsvsLine`
+ * CAVEAT (mismo estilo que el literal `\` de vpk-path.ts): `isGameFolderLine`
  * exige que la línea TERMINE justo después del valor `modsvs` (se ancla al fin
  * de línea con `\s*$`), SIN un comentario `//` al final. Si alguna vez apareciera
  * una línea `Game modsvs // algo`, NO se reconocería como la entrada modsvs
@@ -103,12 +103,30 @@
  * que sigue EL MISMO patrón de unión discriminada estricta (con `content` en ambas
  * ramas), así la correlación caso<->cambio nace en el núcleo, no en la capa de I/O.
  * ---------------------------------------------------------------------------
+ * DECISIÓN 6 (P-30, Paso 2) — `folderName` es un parámetro REQUERIDO, ya NO una
+ * carpeta fija asumida internamente.
+ *
+ * Antes de este cambio, `MODSVS_FOLDER = "modsvs"` estaba hardcodeada como la
+ * ÚNICA carpeta posible del SearchPath que este módulo gestiona. Con múltiples
+ * presets (P-30), cada preset va a tener su propia carpeta técnica (el `id`
+ * generado del Paso 1, p. ej. `preset-a1b2c3`) en vez de compartir siempre
+ * `modsvs`. Este paso SOLO generaliza la FIRMA: `ensureModsvsFirstInContent` y
+ * `GameInfoEditor.ensureModsvsFirst` ahora reciben `folderName` como parámetro
+ * explícito, y toda la lógica interna (comparación de la línea `Game <valor>`,
+ * construcción de la línea canónica) opera sobre ese valor en vez de una
+ * constante interna. El COMPORTAMIENTO OBSERVABLE de la app NO cambia todavía:
+ * el único llamador de producción (`MergeOrchestrator#materialize`) sigue
+ * pasando el literal `"modsvs"` (ver `GAMEINFO_SEARCH_PATH_FOLDER` en
+ * `merge-orchestrator.ts`) hasta que un paso posterior lo reemplace por la
+ * carpeta técnica del preset ACTIVO. Los nombres `ensureModsvsFirst(InContent)`
+ * se CONSERVAN tal cual (no se renombran a algo genérico) para no forzar un
+ * cambio de import en la suite de tests de BUG-010, que no tiene relación con
+ * presets; la generalización real está en que ya no asumen ninguna carpeta
+ * fija, el nombre del método/función simplemente quedó como legado.
+ * ---------------------------------------------------------------------------
  */
 
 import type { GameInfoEditResult } from "./types.js";
-
-/** Carpeta canónica del SearchPath que gestiona el Manager. */
-const MODSVS_FOLDER = "modsvs";
 
 /** Clave del bloque de rutas de búsqueda dentro de FileSystem. */
 const SEARCH_PATHS_KEY = "searchpaths";
@@ -276,19 +294,20 @@ function extractSeparator(text: string): string | null {
 }
 
 /**
- * ¿La línea es una entrada `Game modsvs`? Se compara la clave `Game` y el valor
- * `modsvs` de forma CASE-INSENSITIVE, aceptando el valor con o sin comillas
- * (`Game modsvs`, `game   MODSVS`, `Game "modsvs"`). Cualquier otra `Game <x>`
- * (con x != modsvs) devuelve `false`. Ver DECISIÓN 3.
+ * ¿La línea es una entrada `Game <folderName>`? Se compara la clave `Game` y el
+ * valor `folderName` de forma CASE-INSENSITIVE, aceptando el valor con o sin
+ * comillas (`Game modsvs`, `game   MODSVS`, `Game "modsvs"`). Cualquier otra
+ * `Game <x>` (con x != `folderName`) devuelve `false`. Ver DECISIÓN 3 y
+ * DECISIÓN 6 (P-30, Paso 2: `folderName` ya no es la constante fija `modsvs`).
  */
-function isGameModsvsLine(text: string): boolean {
+function isGameFolderLine(text: string, folderName: string): boolean {
   const trimmed = text.trim();
   // Clave Game (case-insensitive) seguida de espacios y el valor, con comillas
   // opcionales alrededor del valor. Se ancla al fin de línea (sin basura extra).
   const match = /^(game)\s+"?([^"\s]+)"?\s*$/i.exec(trimmed);
   if (!match) return false;
   const value = match[2] ?? "";
-  return value.toLowerCase() === MODSVS_FOLDER;
+  return value.toLowerCase() === folderName.toLowerCase();
 }
 
 /** ¿La línea es una entrada `Game <algo>` (cualquier SearchPath de tipo Game)? */
@@ -398,15 +417,21 @@ function locateSearchPaths(segments: LineSegment[]): SearchPathsBlock {
 
 
 /**
- * Construye la línea canónica `Game modsvs` con la indentación, el SEPARADOR
- * clave-valor y el EOL dados. El separador (corrida de tabs/espacios entre `Game`
- * y `modsvs`) se deriva de la primera entrada `Game` de referencia (BUG-010,
- * DECISIÓN 2), en vez del espacio simple que se hardcodeaba antes. El EOL vacío
- * (última línea del archivo sin salto) se sustituye por el EOL de referencia para
- * que la línea insertada quede bien terminada.
+ * Construye la línea canónica `Game <folderName>` con la indentación, el
+ * SEPARADOR clave-valor y el EOL dados. El separador (corrida de tabs/espacios
+ * entre `Game` y `folderName`) se deriva de la primera entrada `Game` de
+ * referencia (BUG-010, DECISIÓN 2), en vez del espacio simple que se
+ * hardcodeaba antes. El EOL vacío (última línea del archivo sin salto) se
+ * sustituye por el EOL de referencia para que la línea insertada quede bien
+ * terminada. `folderName` ya no es la constante fija `modsvs` (P-30, DECISIÓN 6).
  */
-function canonicalModsvsSegment(indent: string, separator: string, eol: string): LineSegment {
-  return { text: `${indent}Game${separator}${MODSVS_FOLDER}`, eol: eol === "" ? DEFAULT_EOL : eol };
+function canonicalFolderSegment(
+  folderName: string,
+  indent: string,
+  separator: string,
+  eol: string,
+): LineSegment {
+  return { text: `${indent}Game${separator}${folderName}`, eol: eol === "" ? DEFAULT_EOL : eol };
 }
 
 /**
@@ -462,41 +487,45 @@ function referenceIndentEol(
  * no produce cambios.
  *
  * @param content Texto completo del gameinfo.txt.
+ * @param folderName Nombre de la carpeta del SearchPath a garantizar como
+ *   primera y única entrada (P-30, DECISIÓN 6). Antes de P-30 esto era SIEMPRE
+ *   la constante fija `"modsvs"`; ahora lo decide el llamador (hoy sigue
+ *   siendo `"modsvs"` en producción, ver DECISIÓN 6).
  * @returns {@link GameInfoEditOutcome} con el contenido, `changed` y `appliedCase`.
  */
-export function ensureModsvsFirstInContent(content: string): GameInfoEditOutcome {
+export function ensureModsvsFirstInContent(content: string, folderName: string): GameInfoEditOutcome {
   const segments = splitLines(content);
   const block = locateSearchPaths(segments); // lanza si no hay bloque (DECISIÓN 1)
 
-  // Índices (dentro del bloque) de las líneas `Game modsvs` y de la PRIMERA línea
-  // `Game` cualquiera (el punto donde debe quedar la entrada modsvs).
-  const modsvsIndices: number[] = [];
+  // Índices (dentro del bloque) de las líneas `Game <folderName>` y de la
+  // PRIMERA línea `Game` cualquiera (el punto donde debe quedar la entrada).
+  const folderIndices: number[] = [];
   let firstGameIndex = -1;
   for (let i = block.openIndex + 1; i < block.closeIndex; i++) {
     const seg = segments[i];
     if (seg === undefined) continue;
     if (isGameLine(seg.text)) {
       if (firstGameIndex === -1) firstGameIndex = i;
-      if (isGameModsvsLine(seg.text)) modsvsIndices.push(i);
+      if (isGameFolderLine(seg.text, folderName)) folderIndices.push(i);
     }
   }
 
-  // Caso C — ya es la primera y única entrada modsvs: sin cambios (idempotente).
-  if (modsvsIndices.length === 1 && modsvsIndices[0] === firstGameIndex) {
+  // Caso C — ya es la primera y única entrada: sin cambios (idempotente).
+  if (folderIndices.length === 1 && folderIndices[0] === firstGameIndex) {
     return { content, changed: false, appliedCase: "unchanged" };
   }
 
   const { indent, eol, separator } = referenceIndentEol(segments, block);
-  const canonical = canonicalModsvsSegment(indent, separator, eol);
+  const canonical = canonicalFolderSegment(folderName, indent, separator, eol);
 
-  if (modsvsIndices.length === 0) {
+  if (folderIndices.length === 0) {
     // Caso A — no existe: insertar como primera entrada Game (o al inicio del
     // contenido del bloque si no hay ninguna línea Game).
     //
     // CAVEAT (mismo estilo que el CAVEAT de la DECISIÓN 3): si el bloque SearchPaths
     // apareciera COLAPSADO en una sola línea (la `{` y la `}` en la misma línea que
     // la clave, sin ninguna entrada `Game` en medio, es decir `openIndex ===
-    // closeIndex`), este Caso A insertaría la línea `Game modsvs` en
+    // closeIndex`), este Caso A insertaría la línea `Game <folderName>` en
     // `block.openIndex + 1`, que queda DESPUÉS de la línea de cierre del bloque, no
     // dentro de él: la entrada terminaría FUERA del bloque SearchPaths. Esto es
     // ACEPTABLE por el mismo motivo que la DECISIÓN 1: se asume el formato real ya
@@ -512,19 +541,20 @@ export function ensureModsvsFirstInContent(content: string): GameInfoEditOutcome
   // Caso B — existe pero no es primera-y-única: eliminar TODAS las ocurrencias y
   // colocar una sola canónica en la primera posición Game. Se elimina de mayor a
   // menor índice para no invalidar los índices restantes.
-  const modsvsSet = new Set(modsvsIndices);
+  const folderSet = new Set(folderIndices);
   const next = segments.slice();
   for (let i = next.length - 1; i >= 0; i--) {
-    if (modsvsSet.has(i)) next.splice(i, 1);
+    if (folderSet.has(i)) next.splice(i, 1);
   }
   // Recalcular la primera línea Game restante tras las eliminaciones: es el punto
   // de inserción. La búsqueda va ACOTADA al bloque SearchPaths (openIndexAfter,
   // closeIndexAfter), cuyos índices se recuperan en `next` por IDENTIDAD DE OBJETO
   // (los segmentos de apertura y cierre no se eliminan, así que sus referencias
-  // siguen en `next`). Si tras quitar las modsvs NO queda ninguna otra línea Game
-  // dentro de ese rango, `insertAt` permanece en `openIndexAfter + 1` y la entrada
-  // canónica se inserta justo después de la apertura del bloque (correcto por
-  // construcción, no por casualidad de dónde corta el bucle).
+  // siguen en `next`). Si tras quitar las entradas de `folderName` NO queda
+  // ninguna otra línea Game dentro de ese rango, `insertAt` permanece en
+  // `openIndexAfter + 1` y la entrada canónica se inserta justo después de la
+  // apertura del bloque (correcto por construcción, no por casualidad de dónde
+  // corta el bucle).
   const openIndexAfter = next.indexOf(segments[block.openIndex] as LineSegment);
   const closeIndexAfter = next.indexOf(segments[block.closeIndex] as LineSegment);
   let insertAt = openIndexAfter + 1;
@@ -558,8 +588,12 @@ export class GameInfoEditor {
   }
 
   /**
-   * Garantiza que `Game modsvs` sea la primera y única entrada `modsvs` del bloque
-   * SearchPaths del gameinfo.txt (AC 6.10). Ver los tres casos en el encabezado.
+   * Garantiza que `Game <folderName>` sea la primera y única entrada de esa
+   * carpeta en el bloque SearchPaths del gameinfo.txt (AC 6.10). Ver los tres
+   * casos en el encabezado. `folderName` es un parámetro REQUERIDO (P-30,
+   * DECISIÓN 6): antes de P-30 esto era siempre la constante fija `"modsvs"`;
+   * hoy lo decide el llamador (en producción, `MergeOrchestrator` sigue
+   * pasando `"modsvs"` — el comportamiento observable no cambia todavía).
    *
    * - Lee el archivo, aplica el núcleo puro y, si `changed`, sobrescribe el archivo
    *   con el contenido resultante. En el Caso C (idempotente) NO escribe.
@@ -567,12 +601,14 @@ export class GameInfoEditor {
    *   para que el orquestador (tarea 18) aborte e informe.
    *
    * @param gameInfoFile Ruta absoluta (Windows) del gameinfo.txt.
+   * @param folderName Nombre de la carpeta del SearchPath a garantizar (ver
+   *   {@link ensureModsvsFirstInContent}).
    * @returns {@link GameInfoEditResult} con el caso aplicado y si el archivo cambió.
    * @throws {GameInfoEditError} si el gameinfo.txt no tiene un bloque SearchPaths.
    */
-  async ensureModsvsFirst(gameInfoFile: string): Promise<GameInfoEditResult> {
+  async ensureModsvsFirst(gameInfoFile: string, folderName: string): Promise<GameInfoEditResult> {
     const content = await this.#fs.readTextFile(gameInfoFile);
-    const outcome = ensureModsvsFirstInContent(content); // puede lanzar (DECISIÓN 1)
+    const outcome = ensureModsvsFirstInContent(content, folderName); // puede lanzar (DECISIÓN 1)
 
     if (outcome.changed) {
       await this.#fs.writeTextFile(gameInfoFile, outcome.content);

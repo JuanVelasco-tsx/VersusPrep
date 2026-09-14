@@ -97,7 +97,7 @@ test("Caso A (tres espacios): la línea insertada replica los MISMOS 3 espacios"
     "\t\t\tGame   left4dead2_dlc3",
   ]);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("inserted");
   const found = extractModsvsSeparator(result.content);
@@ -121,7 +121,7 @@ test("Caso A (tres tabs): la línea insertada replica los MISMOS 3 tabs", () => 
     "\t\t\tGame\t\t\tleft4dead2_dlc3",
   ]);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("inserted");
   const found = extractModsvsSeparator(result.content);
@@ -146,7 +146,7 @@ test('Caso A (mezcla tab+espacio "\\t "): la línea insertada replica la corrida
     "\t\t\tGame\t left4dead2_dlc3",
   ]);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("inserted");
   const found = extractModsvsSeparator(result.content);
@@ -178,7 +178,7 @@ test("Caso B (mover): usa el separador de la REFERENCIA (dos tabs), no el de la 
     "\t\t\tGame\t\tleft4dead2_dlc3",
   ]);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("moved");
   // Una sola modsvs tras colapsar.
@@ -208,7 +208,7 @@ test("DECISIÓN 1 (Caso A): con separadores distintos, usa el de la PRIMERA entr
     "\t\t\tGame        left4dead2_dlc3", // segunda entrada: varios espacios (NO se usa)
   ]);
 
-  const result = ensureModsvsFirstInContent(content);
+  const result = ensureModsvsFirstInContent(content, "modsvs");
 
   expect(result.appliedCase).toBe("inserted");
   const found = extractModsvsSeparator(result.content);

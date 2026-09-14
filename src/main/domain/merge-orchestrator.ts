@@ -188,6 +188,16 @@ const DISK_SEPARATOR = "\\";
 /** Nombre canónico del Merged_Package instalado en modsvs/. */
 const INSTALLED_VPK_NAME = "pak01_dir.vpk";
 
+/**
+ * Nombre de la carpeta del SearchPath que se le pasa a
+ * `GameInfoEditor.ensureModsvsFirst` (P-30, Paso 2: esa firma ya no asume
+ * `"modsvs"` internamente, ver DECISIÓN 6 en `game-info-editor.ts`). TEMPORAL:
+ * sigue siendo el literal fijo `"modsvs"` a propósito — el comportamiento
+ * observable de la app NO cambia en este paso. Un paso posterior de P-30
+ * reemplaza este literal por la carpeta técnica del preset ACTIVO.
+ */
+const GAMEINFO_SEARCH_PATH_FOLDER = "modsvs";
+
 /** Une un directorio y un segmento con el separador de Windows (sin duplicarlo). */
 function joinWindowsPath(dir: string, segment: string): string {
   const trimmed = dir.replace(/[\\/]+$/, "");
@@ -576,7 +586,7 @@ export class MergeOrchestrator {
       // devuelve como already-writable y se propaga como fallo definitivo.
       this.#emit("gameinfo");
       const gameInfoResult = await this.#writeStep(entries, operationType, () =>
-        this.#gameInfo.ensureModsvsFirst(this.#paths.gameInfoFile),
+        this.#gameInfo.ensureModsvsFirst(this.#paths.gameInfoFile, GAMEINFO_SEARCH_PATH_FOLDER),
       );
       if (gameInfoResult.kind === "outcome") return gameInfoResult.result;
 

@@ -64,7 +64,7 @@ import { propertyTest } from "./helpers/property.js";
  * ORÁCULO (independiente de la implementación: NO usa `locateSearchPaths` ni
  * `isGameLine` del módulo bajo prueba; usa splits/regex propios del test).
  *
- * Dado el `content` generado y `result = ensureModsvsFirstInContent(content)`:
+ * Dado el `content` generado y `result = ensureModsvsFirstInContent(content, "modsvs")`:
  *
  *   (a) PRESERVACIÓN: `result.content` empieza EXACTAMENTE con el `prefix`
  *       generado y termina EXACTAMENTE con el `suffix` generado (startsWith /
@@ -274,7 +274,7 @@ propertyTest(
   fc.property(scenarioArb, (scenario) => {
     const entries = buildEntries(scenario);
     const content = buildContent(scenario, entries);
-    const result = ensureModsvsFirstInContent(content);
+    const result = ensureModsvsFirstInContent(content, "modsvs");
 
     // (a) PRESERVACIÓN de prefix/suffix byte a byte.
     if (!result.content.startsWith(scenario.prefix)) return false;
@@ -308,7 +308,7 @@ propertyTest(
     }
 
     // (e) IDEMPOTENCIA: una segunda aplicación no cambia nada.
-    const second = ensureModsvsFirstInContent(result.content);
+    const second = ensureModsvsFirstInContent(result.content, "modsvs");
     if (second.appliedCase !== "unchanged") return false;
     if (second.changed !== false) return false;
     if (second.content !== result.content) return false;
@@ -333,7 +333,7 @@ test("Property 12 (no-vacuidad): el generador cubre inserted, moved y unchanged"
   for (const scenario of samples) {
     const entries = buildEntries(scenario);
     const content = buildContent(scenario, entries);
-    seen.add(ensureModsvsFirstInContent(content).appliedCase);
+    seen.add(ensureModsvsFirstInContent(content, "modsvs").appliedCase);
   }
   expect(seen.has("inserted")).toBe(true);
   expect(seen.has("moved")).toBe(true);
