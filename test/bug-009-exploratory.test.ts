@@ -255,6 +255,12 @@ class FakeGameInfoEditor {
   ensureModsvsFirst(): Promise<GameInfoEditResult> {
     return Promise.resolve({ appliedCase: "unchanged", changed: false });
   }
+  // (P-30, Paso 3) `#materialize` llama switchFolderEntry para TODOS los
+  // caminos (legado incluido); este archivo no ejercita presets, alcanza con
+  // el mismo resultado fijo que ya devolvía ensureModsvsFirst.
+  switchFolderEntry(): Promise<GameInfoEditResult> {
+    return Promise.resolve({ appliedCase: "unchanged", changed: false });
+  }
 }
 
 class FakeAddonScanner {

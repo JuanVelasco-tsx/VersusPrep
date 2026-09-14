@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { GameInfoEditError, MergeOrchestrator } from "../src/main/domain/index.js";
-import { buildOrchestrator } from "./helpers/orchestrator-doubles.js";
+import { TEST_PATHS, buildOrchestrator } from "./helpers/orchestrator-doubles.js";
 import type { AddonManifestEntry } from "../src/main/domain/index.js";
 
 /**
@@ -287,5 +287,107 @@ describe("MergeOrchestrator — resumePendingOperation (Tarea 18.2)", () => {
     // merge se llamó con 0 addons.
     expect(h.mergeCalls[0]?.orderedAddons.length).toBe(0);
     expect(h.log).toContain("clearPendingSession");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// switchActivePreset (P-30, Paso 3)
+// ---------------------------------------------------------------------------
+
+describe("MergeOrchestrator — switchActivePreset (P-30, Paso 3)", () => {
+  test("éxito: fusiona en <gameRoot>\\<presetId> (no modsvs), gameinfo queda apuntando SOLO al nuevo y el puntero de activo se actualiza", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    const preset = h.store.createPreset("Armas", ENTRIES);
+    h.store.setActivePresetId("preset-old"); // preset previamente activo, DISTINTO del destino
+
+    const orch = new MergeOrchestrator(h.deps);
+    const res = await orch.switchActivePreset(preset.id);
+
+    expect(res.status).toBe("success");
+    if (res.status === "success") {
+      expect(res.installedManifest).toEqual(ENTRIES);
+    }
+
+    // El destino de la fusión es la carpeta TÉCNICA del preset, hermana de
+    // modsvs (<gameRoot>\<presetId>), nunca <gameRoot>\modsvs.
+    const destFolder = `${TEST_PATHS.gameRoot}\\${preset.id}`;
+    expect(h.fs.ensuredDirs).toContain(destFolder);
+    expect(h.fs.installDest).toBe(`${destFolder}\\pak01_dir.vpk`);
+
+    // gameinfo: UNA sola llamada que quita el preset ANTERIOR y asegura el
+    // NUEVO (ver DECISIÓN 7 en game-info-editor.ts) — nunca dos escrituras.
+    expect(h.gameInfo.switchCalls).toEqual([
+      { gameInfoFile: TEST_PATHS.gameInfoFile, previous: "preset-old", next: preset.id },
+    ]);
+
+    // El puntero de activo se actualiza SOLO tras el éxito.
+    expect(h.store.getActivePresetId()).toBe(preset.id);
+  });
+
+  test("switch hacia el preset YA activo: previous es null (nada que quitar)", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    const preset = h.store.createPreset("Armas", ENTRIES);
+    h.store.setActivePresetId(preset.id); // ya era el activo
+
+    const orch = new MergeOrchestrator(h.deps);
+    const res = await orch.switchActivePreset(preset.id);
+
+    expect(res.status).toBe("success");
+    expect(h.gameInfo.switchCalls).toEqual([
+      { gameInfoFile: TEST_PATHS.gameInfoFile, previous: null, next: preset.id },
+    ]);
+  });
+
+  test("presetId inexistente: fallo definitivo, SIN tocar gameinfo.txt, el puntero de activo ni el filesystem", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    h.store.setActivePresetId("preset-actual");
+
+    const orch = new MergeOrchestrator(h.deps);
+    const res = await orch.switchActivePreset("preset-no-existe");
+
+    expect(res.status).toBe("failure");
+    if (res.status === "failure") {
+      expect(res.error).toContain("preset-no-existe");
+    }
+    expect(h.gameInfo.switchCalls).toEqual([]);
+    expect(h.store.getActivePresetId()).toBe("preset-actual");
+    expect(h.fs.ensuredDirs).toEqual([]);
+    expect(h.log).toEqual([]);
+  });
+
+  test("fallo A MITAD DE CAMINO (instalación) NO deja el puntero actualizado ni llega a tocar gameinfo.txt", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    const preset = h.store.createPreset("Armas", ENTRIES);
+    h.store.setActivePresetId("preset-old");
+    h.fs.throwOnInstall(() => errno("ENOSPC")); // no es error de permisos -> already-writable -> fallo definitivo
+
+    const orch = new MergeOrchestrator(h.deps);
+    const res = await orch.switchActivePreset(preset.id);
+
+    expect(res.status).toBe("failure");
+    // El fallo ocurrió ANTES del paso de gameinfo: switchFolderEntry NUNCA se
+    // llamó, así que gameinfo.txt sigue mostrando exactamente lo que tenía
+    // antes (el preset ANTERIOR) — nunca queda con cero ni con dos presets.
+    expect(h.gameInfo.switchCalls).toEqual([]);
+    // El puntero de activo NO se adelanta ante un fallo.
+    expect(h.store.getActivePresetId()).toBe("preset-old");
+  });
+
+  test("fallo A MITAD DE CAMINO (el propio paso de gameinfo) NO deja el puntero actualizado", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    const preset = h.store.createPreset("Armas", ENTRIES);
+    h.store.setActivePresetId("preset-old");
+    h.gameInfo.throwOnEnsure(() => new Error("fallo simulado en gameinfo"));
+
+    const orch = new MergeOrchestrator(h.deps);
+    const res = await orch.switchActivePreset(preset.id);
+
+    expect(res.status).toBe("failure");
+    // Se INTENTÓ (es el paso que falló), pero el puntero de activo sigue
+    // siendo el preset ANTERIOR: un fallo acá nunca lo adelanta. La
+    // atomicidad de la escritura en sí (que el archivo en disco nunca quede a
+    // medio transformar) la prueba game-info-editor.test.ts directamente.
+    expect(h.gameInfo.switchCalls).toHaveLength(1);
+    expect(h.store.getActivePresetId()).toBe("preset-old");
   });
 });

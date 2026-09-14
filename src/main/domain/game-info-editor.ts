@@ -124,6 +124,40 @@
  * presets; la generalización real está en que ya no asumen ninguna carpeta
  * fija, el nombre del método/función simplemente quedó como legado.
  * ---------------------------------------------------------------------------
+ * DECISIÓN 7 (P-30, Paso 3) — `removeFolderEntryInContent` (simétrico a
+ * `ensureModsvsFirstInContent`) + `GameInfoEditor.switchFolderEntry` (I/O
+ * ATÓMICA de "cambiar de carpeta activa" en UNA sola escritura).
+ *
+ * Cambiar el preset activo (P-30) implica dejar gameinfo.txt apuntando SOLO a
+ * la carpeta del preset NUEVO, quitando la entrada de la carpeta anterior si
+ * había una. `removeFolderEntryInContent` es el núcleo PURO simétrico de
+ * `ensureModsvsFirstInContent`: quita TODAS las entradas `Game <folderName>`
+ * del bloque SearchPaths (no-op si no hay ninguna). Es DELIBERADO que no
+ * comparta el tipo `GameInfoEditOutcome` (con sus tres casos
+ * insertar/mover/sin-cambios): remover solo tiene DOS desenlaces (se quitó
+ * algo, o no había nada que quitar), así que `RemoveFolderEntryOutcome` usa
+ * `changed: boolean` sin un `appliedCase` que no aportaría información nueva.
+ *
+ * `GameInfoEditor.switchFolderEntry(gameInfoFile, previousFolderName,
+ * nextFolderName)` COMPONE `removeFolderEntryInContent` (si `previousFolderName`
+ * no es `null`) + `ensureModsvsFirstInContent` (para `nextFolderName`) sobre
+ * el MISMO contenido en memoria, y escribe el archivo COMO MUCHO UNA VEZ. Esto
+ * es DELIBERADO, no una optimización: dos escrituras separadas (una para
+ * quitar la entrada vieja, otra para asegurar la nueva) dejarían una ventana
+ * en disco, entre ambas, donde gameinfo.txt no referencia NINGÚN preset — si
+ * la segunda escritura fallara (permisos, disco lleno, UAC denegado), el
+ * archivo quedaría así hasta que el usuario reintente. Con una sola
+ * escritura, el archivo en disco SIEMPRE es o bien el ORIGINAL (si algo falla
+ * antes de escribir, incluido un `GameInfoEditError` de cualquiera de los dos
+ * núcleos puros) o bien el RESULTADO FINAL completo (`nextFolderName` solo) —
+ * nunca un estado intermedio con cero o dos carpetas referenciadas.
+ *
+ * `previousFolderName === null` reduce `switchFolderEntry` EXACTAMENTE al
+ * comportamiento de `ensureModsvsFirst` (se salta el paso de remoción por
+ * completo): así es como `MergeOrchestrator#materialize` reutiliza este MISMO
+ * método para su camino legado (`applyActiveSet`/`addAddon`/`removeAddon`,
+ * que siempre pasan `previousFolderName: null`) sin ninguna rama especial.
+ * ---------------------------------------------------------------------------
  */
 
 import type { GameInfoEditResult } from "./types.js";
@@ -570,6 +604,53 @@ export function ensureModsvsFirstInContent(content: string, folderName: string):
 }
 
 /**
+ * Resultado de {@link removeFolderEntryInContent} (P-30, Paso 3; ver DECISIÓN
+ * 7). Solo DOS desenlaces posibles (se quitó una o más entradas, o no había
+ * ninguna que quitar) — `changed: boolean` alcanza como único discriminante,
+ * sin un `appliedCase` que no aportaría información nueva.
+ */
+export interface RemoveFolderEntryOutcome {
+  content: string;
+  changed: boolean;
+}
+
+/**
+ * NÚCLEO PURO simétrico a {@link ensureModsvsFirstInContent} (P-30, Paso 3,
+ * DECISIÓN 7): quita TODAS las entradas `Game <folderName>` del bloque
+ * SearchPaths, sin tocar ninguna otra línea. NO hace I/O. Lanza
+ * {@link GameInfoEditError} si no hay bloque SearchPaths (DECISIÓN 1), igual
+ * que `ensureModsvsFirstInContent`. Si no hay ninguna entrada `folderName`, es
+ * un no-op idempotente: `{content, changed:false}` con el `content` de
+ * entrada intacto.
+ *
+ * @param content Texto completo del gameinfo.txt.
+ * @param folderName Nombre de la carpeta cuyas entradas `Game <folderName>`
+ *   hay que quitar.
+ * @returns {@link RemoveFolderEntryOutcome} con el contenido resultante y si cambió.
+ */
+export function removeFolderEntryInContent(
+  content: string,
+  folderName: string,
+): RemoveFolderEntryOutcome {
+  const segments = splitLines(content);
+  const block = locateSearchPaths(segments); // lanza si no hay bloque (DECISIÓN 1)
+
+  const indices: number[] = [];
+  for (let i = block.openIndex + 1; i < block.closeIndex; i++) {
+    const seg = segments[i];
+    if (seg !== undefined && isGameFolderLine(seg.text, folderName)) {
+      indices.push(i);
+    }
+  }
+  if (indices.length === 0) {
+    return { content, changed: false };
+  }
+  const indexSet = new Set(indices);
+  const next = segments.filter((_, i) => !indexSet.has(i));
+  return { content: joinLines(next), changed: true };
+}
+
+/**
  * GameInfoEditor — capa de I/O sobre el núcleo puro {@link ensureModsvsFirstInContent}
  * (DECISIÓN 4). Lee el gameinfo.txt con el {@link GameInfoFileSystem} inyectado,
  * aplica la transformación y ESCRIBE SOLO si hubo cambio (Caso C no toca disco).
@@ -621,5 +702,62 @@ export class GameInfoEditor {
       return { appliedCase: "unchanged", changed: false };
     }
     return { appliedCase: outcome.appliedCase, changed: true };
+  }
+
+  /**
+   * Cambia la entrada de SearchPath de `previousFolderName` (si no es `null`)
+   * a `nextFolderName`, en UNA SOLA operación de I/O (P-30, Paso 3: cambio de
+   * preset activo; ver DECISIÓN 7). Lee el archivo UNA vez, compone
+   * {@link removeFolderEntryInContent} (si aplica) + {@link ensureModsvsFirstInContent}
+   * sobre el MISMO contenido en memoria, y escribe COMO MUCHO UNA VEZ — nunca
+   * dos escrituras separadas, para que el archivo en disco nunca quede en un
+   * estado intermedio con cero o dos carpetas referenciadas (ver DECISIÓN 7).
+   *
+   * `previousFolderName === null` reduce este método EXACTAMENTE al
+   * comportamiento de {@link ensureModsvsFirst} (se salta el paso de remoción
+   * por completo) — así es como `MergeOrchestrator#materialize` lo reutiliza
+   * para su camino legado sin ninguna rama especial.
+   *
+   * @param gameInfoFile Ruta absoluta (Windows) del gameinfo.txt.
+   * @param previousFolderName Carpeta a quitar (si la había), o `null`.
+   * @param nextFolderName Carpeta a garantizar como primera y única entrada.
+   * @returns {@link GameInfoEditResult} con el caso aplicado y si el archivo cambió.
+   * @throws {GameInfoEditError} si el gameinfo.txt no tiene un bloque SearchPaths.
+   */
+  async switchFolderEntry(
+    gameInfoFile: string,
+    previousFolderName: string | null,
+    nextFolderName: string,
+  ): Promise<GameInfoEditResult> {
+    const content = await this.#fs.readTextFile(gameInfoFile);
+
+    let working = content;
+    let removedSomething = false;
+    if (previousFolderName !== null) {
+      const removed = removeFolderEntryInContent(working, previousFolderName); // puede lanzar (DECISIÓN 1)
+      working = removed.content;
+      removedSomething = removed.changed;
+    }
+
+    const ensured = ensureModsvsFirstInContent(working, nextFolderName); // puede lanzar (DECISIÓN 1)
+    const changed = removedSomething || ensured.changed;
+
+    if (changed) {
+      await this.#fs.writeTextFile(gameInfoFile, ensured.content);
+    }
+
+    if (!changed) {
+      return { appliedCase: "unchanged", changed: false };
+    }
+    // Si `ensured` reportó su propio caso (insertó o movió `nextFolderName`),
+    // se reexpone tal cual. Si `ensured` fue "unchanged" (nextFolderName ya
+    // estaba primera-y-única ANTES de remover `previousFolderName`, un caso
+    // borde donde ambas carpetas coexistían) pero SÍ se removió algo, el
+    // archivo cambió igual: se informa como "moved" — la descripción más
+    // precisa disponible en la unión existente (el contenido se reorganizó,
+    // aunque no por una inserción nueva de `nextFolderName`), sin agregar un
+    // cuarto caso a `GameInfoEditResult` solo para este borde.
+    const appliedCase = ensured.appliedCase === "unchanged" ? "moved" : ensured.appliedCase;
+    return { appliedCase, changed: true };
   }
 }

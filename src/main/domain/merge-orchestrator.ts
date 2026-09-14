@@ -159,6 +159,48 @@
  * nada que ese guard proteja, y sus únicas dos lecturas son un prefijo exacto de
  * lecturas que `applyActiveSet` de todas formas hace primero.
  * ---------------------------------------------------------------------------
+ * DECISIÓN 8 (P-30, Paso 3) — `switchActivePreset(presetId)`: mismo patrón
+ * guard->scan->elevación->materializar que `#runPublic`, con `destFolder`/
+ * `gameInfoFolderName` propios (la carpeta técnica del preset) en vez de
+ * `modsvsFolder`/`"modsvs"`.
+ *
+ * Reusa `#resolveOrderedAddons` y `#materialize` TAL CUAL (ahora parametrizado,
+ * ver la doc de `#materialize`), así que hereda el mismo manejo de fallos
+ * (`#failure`/`#failureFromError`) y de progreso (`#emit`) que el resto del
+ * orquestador. Antes de materializar, resuelve el preset ANTERIOR activo (si
+ * había uno distinto del destino) para que `GameInfoEditor.switchFolderEntry`
+ * lo quite en la MISMA escritura que asegura el nuevo (ver DECISIÓN 7 en
+ * `game-info-editor.ts`): el archivo nunca queda con dos presets referenciados
+ * ni con ninguno, ni siquiera ante un fallo a mitad de camino, porque ninguna
+ * escritura previa a la de gameinfo pisa el archivo.
+ *
+ * OPTIMIZACIÓN DIFERIDA A PROPÓSITO (mismo criterio que P-20): este método
+ * SIEMPRE re-funde los addons del preset destino, incluso si ya estaba
+ * fusionado antes y no cambió desde la última vez. La optimización de "si el
+ * preset ya fue fusionado y no cambió, solo reescribir gameinfo.txt sin
+ * rehacer la fusión" queda EXPLÍCITAMENTE FUERA de esta tarea, para una
+ * sesión futura si se decide.
+ *
+ * LIMITACIÓN CONOCIDA (elevación UAC a mitad de un switch): no existe un
+ * `PendingOperation["type"]` dedicado a "switchActivePreset" — agregarlo
+ * tocaría `types.ts`, `resumePendingOperation` y la capa de composición,
+ * fuera del alcance de este paso (orquestador SIN IPC/UI todavía). Por eso
+ * `switchActivePreset` pasa `operationType: "applyActiveSet"` a
+ * `ensureCanWrite`/`#writeStep` (el más cercano semánticamente disponible). Si
+ * una escritura dispara `elevated-handoff`, `ElevationServiceImpl.relaunchElevated`
+ * persiste `preset.entries` como sesión pendiente GENÉRICA y la instancia
+ * elevada la resume vía `resumePendingOperation()` como un `applyActiveSet`
+ * NORMAL — fusionando esos mismos addons hacia `modsvsFolder`/`"modsvs"`, NO
+ * hacia la carpeta del preset. Es decir: HOY, un switch que necesita elevar
+ * puede completarse hacia el destino LEGADO tras el relanzo, no hacia el
+ * preset. En la práctica esto solo ocurre si el Game_Root está bajo una ruta
+ * protegida (Program Files) o el proceso no puede escribir directamente ahí;
+ * la mayoría de las instalaciones de Steam no lo están, y el camino PROACTIVO
+ * (`ensureCanWrite`) evita la mayoría de los casos reales sin llegar a
+ * relanzar. Cerrar esta brecha del todo requiere un `PendingOperation`
+ * consciente de presets — trabajo de un paso POSTERIOR de P-30 (o de una
+ * sesión futura si se decide), no de este.
+ * ---------------------------------------------------------------------------
  */
 
 import type { BackupManager } from "./backup-manager.js";
@@ -179,24 +221,25 @@ import type {
   MergeProgressListener,
   OperationResult,
   PendingOperation,
+  Preset,
   ScannedAddon,
 } from "./types.js";
 
 /** Separador de path de Windows, coherente con el resto del dominio. */
 const DISK_SEPARATOR = "\\";
 
-/** Nombre canónico del Merged_Package instalado en modsvs/. */
+/** Nombre canónico del Merged_Package instalado en modsvs/ (o en la carpeta técnica de un preset, P-30). */
 const INSTALLED_VPK_NAME = "pak01_dir.vpk";
 
 /**
- * Nombre de la carpeta del SearchPath que se le pasa a
- * `GameInfoEditor.ensureModsvsFirst` (P-30, Paso 2: esa firma ya no asume
- * `"modsvs"` internamente, ver DECISIÓN 6 en `game-info-editor.ts`). TEMPORAL:
- * sigue siendo el literal fijo `"modsvs"` a propósito — el comportamiento
- * observable de la app NO cambia en este paso. Un paso posterior de P-30
- * reemplaza este literal por la carpeta técnica del preset ACTIVO.
+ * Nombre de carpeta del SearchPath para el camino LEGADO (`applyActiveSet`/
+ * `addAddon`/`removeAddon`/resume), que instala en `this.#paths.modsvsFolder`
+ * (P-30, Paso 3: generaliza el uso que antes vivía en la constante temporal
+ * `GAMEINFO_SEARCH_PATH_FOLDER` del Paso 2, ya eliminada — mismo valor,
+ * comportamiento observable idéntico). `switchActivePreset` NO usa esta
+ * constante: pasa la carpeta técnica del preset destino en su lugar.
  */
-const GAMEINFO_SEARCH_PATH_FOLDER = "modsvs";
+const LEGACY_GAMEINFO_FOLDER_NAME = "modsvs";
 
 /** Une un directorio y un segmento con el separador de Windows (sin duplicarlo). */
 function joinWindowsPath(dir: string, segment: string): string {
@@ -351,6 +394,90 @@ export class MergeOrchestrator {
   }
 
   /**
+   * Cambia el preset ACTIVO a `presetId` (P-30, Paso 3): fusiona los `entries`
+   * de ESE preset en su carpeta técnica propia (`<gameRoot>\<presetId>`, NO
+   * `modsvs`), deja gameinfo.txt apuntando SOLO a esa carpeta (quitando la
+   * entrada del preset anterior si había uno distinto) y, recién si todo tuvo
+   * éxito, actualiza el puntero de activo (`LocalStore.setActivePresetId`).
+   * Ver DECISIÓN 8 para el patrón completo (guard->scan->elevación->
+   * materializar, igual que `#runPublic`) y sus limitaciones documentadas
+   * (optimización de re-fusión diferida; brecha de elevación a mitad de un
+   * switch).
+   *
+   * @param presetId Id TÉCNICO del preset destino (`LocalStore.getPreset`).
+   * @returns Fallo definitivo con `presetId` inexistente si no hay tal preset
+   *   (mismo estilo que el resto del orquestador, vía `#failure`); si no,
+   *   el mismo `OperationResult` que produciría `applyActiveSet` para los
+   *   `entries` de ese preset.
+   */
+  async switchActivePreset(presetId: string): Promise<OperationResult> {
+    const preset: Preset | null = this.#store.getPreset(presetId);
+    if (preset === null) {
+      return this.#failure(`El preset ${presetId} no existe.`);
+    }
+
+    // Paso 1 — Precondición: el juego no puede estar corriendo (Req 4.1, 4.2),
+    // igual que `#runPublic`: cambiar de preset también escribe en Game_Root.
+    this.#emit("guard");
+    if (await this.#processGuard.isGameRunning()) {
+      return this.#failure(
+        "El juego (left4dead2.exe) está en ejecución. Cerralo antes de aplicar cambios.",
+      );
+    }
+
+    // Paso 2 — Resolver los ScannedAddon del preset ANTES de la elevación
+    // (DECISIÓN 5), mismo camino que `#runPublic`/`resumePendingOperation`.
+    this.#emit("scan");
+    const resolved = await this.#resolveOrderedAddons(preset.entries);
+    if (resolved.kind === "outcome") return resolved.result;
+
+    // Paso 3 — Elevación PROACTIVA. `operationType: "applyActiveSet"` (ver
+    // DECISIÓN 8: no existe un tipo dedicado a "switchActivePreset" sin tocar
+    // IPC/composición, fuera del alcance de este paso).
+    this.#emit("elevation");
+    const proactive = await this.#elevation.ensureCanWrite(
+      this.#paths.gameRoot,
+      preset.entries,
+      "applyActiveSet",
+    );
+    if (proactive.kind === "elevated-handoff") {
+      return { status: "elevating" };
+    }
+    if (proactive.kind === "denied") {
+      return this.#failure(
+        `Se canceló la solicitud de permisos de administrador (UAC): ${proactive.reason}`,
+      );
+    }
+
+    // El preset ANTERIOR se quita de gameinfo.txt SOLO si había uno distinto
+    // del destino (si ya era el activo, no hay nada que quitar; DECISIÓN 7 en
+    // game-info-editor.ts reduce switchFolderEntry a ensureModsvsFirst cuando
+    // `previousFolderName` es `null`).
+    const activePresetId = this.#store.getActivePresetId();
+    const previousFolderName =
+      activePresetId !== null && activePresetId !== presetId ? activePresetId : null;
+
+    const destFolder = joinWindowsPath(this.#paths.gameRoot, preset.id);
+    const result = await this.#materialize(
+      preset.entries,
+      resolved.addons,
+      "applyActiveSet",
+      destFolder,
+      preset.id,
+      previousFolderName,
+    );
+
+    // Puntero de activo: SOLO se actualiza si `#materialize` tuvo éxito
+    // (nunca ante "failure" ni "elevating") — el mismo criterio que evita que
+    // gameinfo.txt quede inconsistente aplica acá: el puntero de LocalStore
+    // tampoco debe adelantarse a un cambio que no se completó.
+    if (result.status === "success") {
+      this.#store.setActivePresetId(preset.id);
+    }
+    return result;
+  }
+
+  /**
    * Calcula un {@link ActiveSetPreview} de SOLO LECTURA para `entries`: NO
    * escribe nada en disco, NO dispara elevación UAC (ver DECISIÓN 7). Reutiliza
    * `#resolveOrderedAddons` (el mismo Paso 2 que usan `#runPublic` y
@@ -414,7 +541,14 @@ export class MergeOrchestrator {
       this.#emit("scan");
       const resolved = await this.#resolveOrderedAddons(pending);
       if (resolved.kind === "outcome") return resolved.result;
-      return await this.#materialize(pending, resolved.addons, "applyActiveSet");
+      return await this.#materialize(
+        pending,
+        resolved.addons,
+        "applyActiveSet",
+        this.#paths.modsvsFolder,
+        LEGACY_GAMEINFO_FOLDER_NAME,
+        null,
+      );
     } finally {
       // El resume no debería producir "elevating" (se salteó el chequeo); en
       // cualquier desenlace (éxito o fallo) se limpia el estado de sesión.
@@ -463,7 +597,14 @@ export class MergeOrchestrator {
     }
 
     // proactive.kind === "already-writable" -> se puede escribir; materializar.
-    return this.#materialize(entries, resolved.addons, operationType);
+    return this.#materialize(
+      entries,
+      resolved.addons,
+      operationType,
+      this.#paths.modsvsFolder,
+      LEGACY_GAMEINFO_FOLDER_NAME,
+      null,
+    );
   }
 
   /**
@@ -501,60 +642,77 @@ export class MergeOrchestrator {
   }
 
   /**
-   * Materialización COMPARTIDA (usada por los 3 métodos públicos tras pasar la
-   * elevación proactiva, y por el resume de 18.2 que la saltea):
+   * Materialización COMPARTIDA (usada por los 3 métodos públicos legados tras
+   * pasar la elevación proactiva, por el resume de 18.2 que la saltea, y por
+   * `switchActivePreset` (P-30, Paso 3)):
    *   backup -> merge -> instalar -> gameinfo -> saveManifest. Crea y LIMPIA el
    *   workDir (finally, resuelve P-14).
    *
    * Recibe los `orderedAddons` YA resueltos (por `#resolveOrderedAddons`, invocado
    * por el llamador antes de la elevación). NO ejecuta el chequeo de `ProcessGuard`,
    * ni la elevación proactiva, ni el escaneo/resolución: eso es del camino público
-   * (`#runPublic`) o del resume (`resumePendingOperation`).
+   * (`#runPublic`), del resume (`resumePendingOperation`) o de `switchActivePreset`.
+   *
+   * `destFolder`/`gameInfoFolderName`/`previousGameInfoFolderName` (P-30, Paso 3):
+   * generalizan lo que antes era SIEMPRE `this.#paths.modsvsFolder`/`"modsvs"`/
+   * `null` (la constante temporal `GAMEINFO_SEARCH_PATH_FOLDER` del Paso 2 ya
+   * cumplió su función y se eliminó). Los 3 métodos públicos legados y el
+   * resume siguen pasando EXACTAMENTE esos tres valores por defecto (sin
+   * cambio de comportamiento observable); `switchActivePreset` pasa la
+   * carpeta técnica del preset destino y, si corresponde, la del preset
+   * anterior para que `GameInfoEditor.switchFolderEntry` la quite en la MISMA
+   * escritura (ver DECISIÓN 7 en `game-info-editor.ts`).
    */
   async #materialize(
     entries: readonly AddonManifestEntry[],
     orderedAddons: readonly ScannedAddon[],
     operationType: PendingOperation["type"],
+    destFolder: string,
+    gameInfoFolderName: string,
+    previousGameInfoFolderName: string | null,
   ): Promise<OperationResult> {
     // La resolución de ScannedAddon (Paso 2, DECISIÓN 5) ya la hizo el llamador
-    // (`#runPublic`/`resumePendingOperation`) vía `#resolveOrderedAddons`, ANTES
-    // de la elevación proactiva. Acá se recibe ya resuelta y ordenada.
+    // (`#runPublic`/`resumePendingOperation`/`switchActivePreset`) vía
+    // `#resolveOrderedAddons`, ANTES de la elevación proactiva. Acá se recibe
+    // ya resuelta y ordenada.
     const workDir = joinWindowsPath(this.#workRoot, `merge-${Date.now()}-${this.#workSeq++}`);
     try {
       await this.#fs.ensureDir(workDir);
 
-      // BUG-009 — Crear `modsvs` ANTES de backup/instalar (Cambio 1 del design).
+      // BUG-009 — Crear `destFolder` ANTES de backup/instalar (Cambio 1 del
+      // design; generalizado en P-30 Paso 3 — antes esto era SIEMPRE `modsvs`).
       //
-      // En una instalación fresca `<gameRoot>\modsvs` todavía no existe, y ni
-      // `BackupManager` (que por DECISIÓN 4 NO crea directorios; su
-      // `BackupFileSystem` solo expone `exists` + `copyFile`) ni `copyFile` (sobre
-      // `fs.copyFile`, que no crea el directorio padre) la crean. Sin esta línea,
-      // el backup/instalar fallaría por `ENOENT` o desviaría el `.vpk` fuera de
-      // `modsvs`. Va acá y NO en `BackupManager` porque `#materialize` es el ÚNICO
-      // componente que coordina las TRES escrituras del Game_Root (backup,
-      // instalar, gameinfo) y ya posee `MergeOrchestratorFileSystem.ensureDir`
-      // (lo usa para el `workDir`): crear la carpeta una sola vez acá garantiza
-      // que exista para los tres pasos posteriores, sin violar el contrato mínimo
-      // de `BackupManager` ni duplicar la responsabilidad. `ensureDir` es
-      // recursivo e idempotente: si `modsvs` ya existe es un no-op y el caso ya
-      // funcional queda inalterado (preserva 3.7).
+      // En una instalación fresca (o un preset nunca antes fusionado) `destFolder`
+      // todavía no existe, y ni `BackupManager` (que por DECISIÓN 4 NO crea
+      // directorios; su `BackupFileSystem` solo expone `exists` + `copyFile`) ni
+      // `copyFile` (sobre `fs.copyFile`, que no crea el directorio padre) la
+      // crean. Sin esta línea, el backup/instalar fallaría por `ENOENT` o
+      // desviaría el `.vpk` fuera de `destFolder`. Va acá y NO en `BackupManager`
+      // porque `#materialize` es el ÚNICO componente que coordina las TRES
+      // escrituras del Game_Root (backup, instalar, gameinfo) y ya posee
+      // `MergeOrchestratorFileSystem.ensureDir` (lo usa para el `workDir`): crear
+      // la carpeta una sola vez acá garantiza que exista para los tres pasos
+      // posteriores, sin violar el contrato mínimo de `BackupManager` ni
+      // duplicar la responsabilidad. `ensureDir` es recursivo e idempotente: si
+      // `destFolder` ya existe es un no-op y el caso ya funcional queda
+      // inalterado (preserva 3.7).
       //
       // Va envuelto en `#writeStep` (igual que backup/instalar/gameinfo) porque es
-      // una escritura en el Game_Root: un `EACCES`/`EPERM` al crear `modsvs` bajo
+      // una escritura en el Game_Root: un `EACCES`/`EPERM` al crear `destFolder` bajo
       // un directorio protegido debe disparar la elevación reactiva
       // (`handleWriteFailure`) en vez de abortar (coherente con 3.3). Se reutiliza
       // el emit "backup" —sin agregar un step nuevo a `MergeProgressEvent`— porque
       // esta creación es preparación del backup: es el paso más simple y coherente.
       this.#emit("backup");
-      const modsvsResult = await this.#writeStep(entries, operationType, () =>
-        this.#fs.ensureDir(this.#paths.modsvsFolder),
+      const destFolderResult = await this.#writeStep(entries, operationType, () =>
+        this.#fs.ensureDir(destFolder),
       );
-      if (modsvsResult.kind === "outcome") return modsvsResult.result;
+      if (destFolderResult.kind === "outcome") return destFolderResult.result;
 
       // Paso 4 — Backup (escritura en Game_Root -> reactivo).
       this.#emit("backup");
       const backupResult = await this.#writeStep(entries, operationType, () =>
-        this.#backup.backupExisting(this.#paths.modsvsFolder),
+        this.#backup.backupExisting(destFolder),
       );
       if (backupResult.kind === "outcome") return backupResult.result;
 
@@ -572,21 +730,29 @@ export class MergeOrchestrator {
         return this.#failureFromError(err);
       }
 
-      // Paso 6 — Instalar: copiar el .vpk fusionado a modsvs/ (escritura en
+      // Paso 6 — Instalar: copiar el .vpk fusionado a destFolder (escritura en
       // Game_Root -> reactivo).
-      const installTarget = joinWindowsPath(this.#paths.modsvsFolder, INSTALLED_VPK_NAME);
+      const installTarget = joinWindowsPath(destFolder, INSTALLED_VPK_NAME);
       this.#emit("install");
       const installResult = await this.#writeStep(entries, operationType, () =>
         this.#fs.copyFile(mergedVpkPath, installTarget),
       );
       if (installResult.kind === "outcome") return installResult.result;
 
-      // Paso 7 — GameInfo (escritura en Game_Root -> reactivo). Un GameInfoEditError
-      // (SearchPaths ausente/malformado) NO es de permisos: handleWriteFailure lo
-      // devuelve como already-writable y se propaga como fallo definitivo.
+      // Paso 7 — GameInfo (escritura en Game_Root -> reactivo). UNA SOLA
+      // escritura que, si corresponde, quita la entrada del preset ANTERIOR y
+      // asegura la del NUEVO (ver DECISIÓN 7 en game-info-editor.ts: nunca dos
+      // escrituras separadas, para que el archivo nunca quede sin ninguna
+      // carpeta referenciada a mitad de camino). Un GameInfoEditError
+      // (SearchPaths ausente/malformado) NO es de permisos: handleWriteFailure
+      // lo devuelve como already-writable y se propaga como fallo definitivo.
       this.#emit("gameinfo");
       const gameInfoResult = await this.#writeStep(entries, operationType, () =>
-        this.#gameInfo.ensureModsvsFirst(this.#paths.gameInfoFile, GAMEINFO_SEARCH_PATH_FOLDER),
+        this.#gameInfo.switchFolderEntry(
+          this.#paths.gameInfoFile,
+          previousGameInfoFolderName,
+          gameInfoFolderName,
+        ),
       );
       if (gameInfoResult.kind === "outcome") return gameInfoResult.result;
 

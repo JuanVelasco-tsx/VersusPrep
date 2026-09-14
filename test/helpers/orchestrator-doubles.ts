@@ -131,11 +131,18 @@ export class FakeElevationService implements ElevationService {
   }
 }
 
-/** GameInfoEditor mockeado: registra la llamada y puede lanzar. */
+/**
+ * GameInfoEditor mockeado: registra la llamada y puede lanzar. `#materialize`
+ * (P-30, Paso 3) llama `switchFolderEntry` para TODOS los caminos (legado
+ * incluido, con `previous: null`) — `ensureModsvsFirst` se conserva acá por si
+ * algún test la invoca directo, pero ya no la usa el orquestador.
+ */
 export class FakeGameInfoEditor {
   readonly log: string[];
   result: GameInfoEditResult = { appliedCase: "unchanged", changed: false };
   #throwOn: (() => Error) | null = null;
+  /** Argumentos de cada llamada a `switchFolderEntry`, en orden. */
+  readonly switchCalls: Array<{ gameInfoFile: string; previous: string | null; next: string }> = [];
 
   constructor(log: string[]) {
     this.log = log;
@@ -145,6 +152,16 @@ export class FakeGameInfoEditor {
   }
   ensureModsvsFirst(_gameInfoFile: string): Promise<GameInfoEditResult> {
     this.log.push("gameinfo");
+    if (this.#throwOn !== null) return Promise.reject(this.#throwOn());
+    return Promise.resolve(this.result);
+  }
+  switchFolderEntry(
+    gameInfoFile: string,
+    previous: string | null,
+    next: string,
+  ): Promise<GameInfoEditResult> {
+    this.log.push("gameinfo");
+    this.switchCalls.push({ gameInfoFile, previous, next });
     if (this.#throwOn !== null) return Promise.reject(this.#throwOn());
     return Promise.resolve(this.result);
   }
