@@ -357,6 +357,28 @@ export interface AddonManifestEntry {
   priorityOrder: number;
 }
 
+/**
+ * Preset de addons (P-30, Paso 1 — solo persistencia, sin wiring a
+ * GameInfoEditor/MergeOrchestrator/IPC/UI todavía): un Active_Set con nombre
+ * editable, para soportar múltiples modpacks intercambiables (ej. "armas",
+ * "skins") elegibles por el usuario.
+ *
+ * `id` es un identificador TÉCNICO generado (`preset-<hex>`, ver
+ * `local-store.ts`), estable durante toda la vida del preset y SIN relación
+ * con `name`. `name` es la ETIQUETA visible que el usuario edita libremente.
+ * Esta separación es una DECISIÓN de diseño ya tomada (Context/02-pendientes.md
+ * P-30): si `name` se usara como nombre de carpeta técnica, caracteres
+ * especiales/espacios/duplicados romperían el filesystem, y renombrar
+ * obligaría a mover archivos en disco. Con `id` desacoplado, renombrar es un
+ * UPDATE de una columna; la carpeta técnica (cuando exista, en un paso
+ * posterior) usa `id`, nunca `name`.
+ */
+export interface Preset {
+  id: string;
+  name: string;
+  entries: AddonManifestEntry[];
+}
+
 // ---------------------------------------------------------------------------
 // Requirement 9 — Elevación UAC bajo demanda (ElevationService)
 // ---------------------------------------------------------------------------

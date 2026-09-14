@@ -9,6 +9,7 @@ import type {
   MergeOrchestratorFileSystem,
   MergeReport,
   PendingOperation,
+  Preset,
   ProcessListProvider,
   ScannedAddon,
 } from "../../src/main/domain/index.js";
@@ -170,6 +171,11 @@ export class FakeLocalStore implements LocalStore {
   manifest: AddonManifestEntry[];
   pendingSession: AddonManifestEntry[] | null;
   savedManifest: AddonManifestEntry[] | null = null;
+  // (P-30, Paso 1) Los tests de MergeOrchestrator no ejercitan presets todavia
+  // (sin wiring aca); un Map en memoria alcanza para cumplir la interfaz.
+  #presets = new Map<string, Preset>();
+  #activePresetId: string | null = null;
+  #presetSeq = 0;
 
   constructor(
     log: string[],
@@ -200,6 +206,31 @@ export class FakeLocalStore implements LocalStore {
   clearPendingSession(): void {
     this.log.push("clearPendingSession");
     this.pendingSession = null;
+  }
+  listPresets(): Preset[] {
+    return [...this.#presets.values()];
+  }
+  getPreset(id: string): Preset | null {
+    return this.#presets.get(id) ?? null;
+  }
+  createPreset(name: string, entries: AddonManifestEntry[]): Preset {
+    const preset: Preset = { id: `preset-fake-${this.#presetSeq++}`, name, entries: [...entries] };
+    this.#presets.set(preset.id, preset);
+    return preset;
+  }
+  renamePreset(id: string, newName: string): void {
+    const preset = this.#presets.get(id);
+    if (preset !== undefined) preset.name = newName;
+  }
+  deletePreset(id: string): void {
+    this.#presets.delete(id);
+    if (this.#activePresetId === id) this.#activePresetId = null;
+  }
+  getActivePresetId(): string | null {
+    return this.#activePresetId;
+  }
+  setActivePresetId(id: string): void {
+    this.#activePresetId = id;
   }
 }
 

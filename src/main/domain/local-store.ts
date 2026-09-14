@@ -132,11 +132,61 @@
  *
  * `savePendingSession(entries)` marca `active = 1` SIEMPRE (incluso con `entries`
  * vacío); `clearPendingSession()` marca `active = 0` y vacía las filas.
+ *
+ * ---------------------------------------------------------------------------
+ * DECISIÓN 6 (P-30, Paso 1) — Presets: tablas SEPARADAS del `manifest`
+ * INSTALADO, sin wiring todavía a GameInfoEditor/MergeOrchestrator/IPC/UI.
+ *
+ * Dos tablas nuevas mas un puntero de un solo valor:
+ *
+ *   - `presets` (id TEXT PRIMARY KEY, name TEXT NOT NULL): un preset por fila.
+ *     `id` es el identificador TÉCNICO generado (`preset-<hex>`, ver
+ *     `#generateUniquePresetId`), NUNCA derivado de `name` (ver {@link Preset}
+ *     en `types.ts` para el motivo). `name` es la etiqueta editable.
+ *
+ *   - `preset_entries` (presetId TEXT, addonId TEXT, priorityOrder INTEGER,
+ *     PRIMARY KEY (presetId, addonId)): el Active_Set de CADA preset, mismo
+ *     shape que `manifest`/`pending_session` pero con `presetId` para poder
+ *     tener muchos presets a la vez. `deletePreset` borra sus filas a mano
+ *     dentro de una transacción (mismo criterio que `#replaceEntries`: sin FK
+ *     `ON DELETE CASCADE`, `better-sqlite3` no fuerza `foreign_keys` por
+ *     defecto y el resto del esquema ya resuelve la integridad a mano).
+ *
+ *   - `active_preset` (id INTEGER PRIMARY KEY CHECK (id = 1), presetId TEXT
+ *     NULLABLE): fila única con el id del preset ACTIVO, o `NULL` si ninguno
+ *     lo es todavía. A diferencia de `pending_session_state` (DECISIÓN 5), acá
+ *     NO hace falta un flag de estado aparte: no existe una ambigüedad "activo
+ *     con valor vacío" que distinguir de "sin activo" — `presetId` es un id de
+ *     preset o no lo es, así que `NULL` alcanza como único significado de "sin
+ *     preset activo".
+ *
+ * `deletePreset(id)` limpia también `active_preset.presetId` si apuntaba a
+ * `id` (en la MISMA transacción), para que el puntero de activo nunca quede
+ * apuntando a un preset borrado — invariante de integridad que le corresponde
+ * a esta capa de persistencia, independiente de qué decida hacer la UI/el
+ * orquestador (pasos posteriores) cuando el preset activo se borra.
+ *
+ * MIGRACIÓN (`#migrateActiveSetToDefaultPreset`, corre en el constructor,
+ * después del DDL): antes de este cambio el único Active_Set vivía en
+ * `manifest` sin ningún concepto de preset. Para no perder la selección
+ * actual de nadie al actualizar, la PRIMERA vez que este esquema corre sobre
+ * una base existente (`presets` vacía) copia el `manifest` ACTUAL a un preset
+ * por defecto (`DEFAULT_PRESET_NAME`, "Principal") y lo marca ACTIVO.
+ * Idempotente: si ya hay al menos un preset (migración ya corrida, o el
+ * usuario ya creó uno), es un no-op. Corre incondicionalmente aunque
+ * `manifest` esté vacío — un Active_Set vacío es un estado válido (mismo
+ * criterio que la DECISIÓN 5 de `pending_session`), y preservarlo como un
+ * preset "Principal" vacío es más correcto que omitir la migración. El
+ * `manifest`/`saveManifest`/`getManifest` ORIGINALES NO se tocan ni se
+ * eliminan en este paso: siguen siendo la única fuente real que consume el
+ * MergeOrchestrator hasta que un paso posterior los reemplace por presets.
  */
+
+import { randomUUID } from "node:crypto";
 
 import type { Database } from "better-sqlite3";
 
-import type { AddonManifestEntry, GamePaths } from "./types.js";
+import type { AddonManifestEntry, GamePaths, Preset } from "./types.js";
 
 /**
  * Contrato de persistencia del Active_Set y las rutas (design.md, sección
@@ -169,6 +219,39 @@ export interface LocalStore {
   getPendingSession(): AddonManifestEntry[] | null;
   /** Vacía el estado de sesión pendiente y lo marca como INACTIVO. */
   clearPendingSession(): void;
+
+  // -------------------------------------------------------------------------
+  // Presets (P-30, Paso 1 — ver DECISIÓN 6). SIN wiring todavía a
+  // GameInfoEditor/MergeOrchestrator/IPC/UI: solo la capa de persistencia.
+  // -------------------------------------------------------------------------
+
+  /** Todos los presets guardados, en orden de creación. */
+  listPresets(): Preset[];
+  /** Un preset por `id`, o `null` si no existe. */
+  getPreset(id: string): Preset | null;
+  /**
+   * Crea un preset nuevo con un `id` TÉCNICO generado (nunca derivado de
+   * `name`) y las `entries` dadas. Devuelve el {@link Preset} creado
+   * (incluido su `id` nuevo, para que el llamador pueda usarlo de inmediato,
+   * p. ej. para marcarlo activo).
+   */
+  createPreset(name: string, entries: AddonManifestEntry[]): Preset;
+  /** Renombra un preset existente (no-op si `id` no existe). NO toca `entries`. */
+  renamePreset(id: string, newName: string): void;
+  /**
+   * Borra un preset y sus entries (no-op si `id` no existe). Si `id` era el
+   * preset ACTIVO, también limpia `active_preset` (ver DECISIÓN 6) para que
+   * el puntero nunca quede apuntando a un preset inexistente.
+   */
+  deletePreset(id: string): void;
+  /** `id` del preset ACTIVO, o `null` si ninguno lo es todavía. */
+  getActivePresetId(): string | null;
+  /**
+   * Marca `id` como el preset ACTIVO. NO valida que `id` exista (mismo
+   * criterio liviano que el resto del store, p. ej. `savePendingSession` no
+   * valida `addonId` contra ningún catálogo).
+   */
+  setActivePresetId(id: string): void;
 }
 
 /** Claves de `GamePaths` en orden estable; una columna por cada una en la tabla `paths`. */
@@ -189,7 +272,10 @@ type AssertPathKeysExhaustive<Keys extends readonly (keyof GamePaths)[]> =
 const _pathKeysExhaustive: AssertPathKeysExhaustive<typeof GAME_PATH_KEYS> = true;
 void _pathKeysExhaustive;
 
-/** DDL idempotente: crea las cuatro tablas si no existen (ver DECISIONES 3 y 5). */
+/** Nombre del preset por defecto que crea la migración (P-30, DECISIÓN 6). */
+export const DEFAULT_PRESET_NAME = "Principal";
+
+/** DDL idempotente: crea las siete tablas si no existen (ver DECISIONES 3, 5 y 6). */
 const SCHEMA_DDL = `
 CREATE TABLE IF NOT EXISTS paths (
   id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -213,6 +299,20 @@ CREATE TABLE IF NOT EXISTS pending_session_state (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   active INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS presets (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS preset_entries (
+  presetId TEXT NOT NULL,
+  addonId TEXT NOT NULL,
+  priorityOrder INTEGER NOT NULL,
+  PRIMARY KEY (presetId, addonId)
+);
+CREATE TABLE IF NOT EXISTS active_preset (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  presetId TEXT
+);
 `;
 
 /**
@@ -226,6 +326,7 @@ export class SqliteLocalStore implements LocalStore {
   constructor(db: Database) {
     this.#db = db;
     this.#db.exec(SCHEMA_DDL);
+    this.#migrateActiveSetToDefaultPreset();
   }
 
   getPaths(): GamePaths | null {
@@ -315,6 +416,119 @@ export class SqliteLocalStore implements LocalStore {
       setInactive.run();
     });
     tx();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Presets (P-30, Paso 1 — ver DECISIÓN 6).
+  // ---------------------------------------------------------------------------
+
+  listPresets(): Preset[] {
+    // `rowid` (implícito, la tabla no es WITHOUT ROWID) da el orden de
+    // INSERCIÓN de forma estable; `id` es hex aleatorio y no serviría para
+    // ordenar de forma significativa.
+    const rows = this.#db
+      .prepare<[], { id: string; name: string }>("SELECT id, name FROM presets ORDER BY rowid ASC")
+      .all();
+    return rows.map((row) => ({ ...row, entries: this.#readPresetEntries(row.id) }));
+  }
+
+  getPreset(id: string): Preset | null {
+    const row = this.#db
+      .prepare<[string], { id: string; name: string }>("SELECT id, name FROM presets WHERE id = ?")
+      .get(id);
+    if (row === undefined) return null;
+    return { ...row, entries: this.#readPresetEntries(id) };
+  }
+
+  createPreset(name: string, entries: AddonManifestEntry[]): Preset {
+    const id = this.#generateUniquePresetId();
+    const insertPreset = this.#db.prepare("INSERT INTO presets (id, name) VALUES (@id, @name)");
+    const insertEntry = this.#db.prepare(
+      "INSERT INTO preset_entries (presetId, addonId, priorityOrder) VALUES (@presetId, @addonId, @priorityOrder)",
+    );
+    const tx = this.#db.transaction((rows: AddonManifestEntry[]) => {
+      insertPreset.run({ id, name });
+      for (const row of rows) insertEntry.run({ presetId: id, ...row });
+    });
+    tx(entries);
+    return { id, name, entries: [...entries] };
+  }
+
+  renamePreset(id: string, newName: string): void {
+    this.#db.prepare("UPDATE presets SET name = ? WHERE id = ?").run(newName, id);
+  }
+
+  deletePreset(id: string): void {
+    // Borra el preset + sus entries y, en la MISMA transacción, limpia el
+    // puntero de activo SI apuntaba a este `id` (ver DECISIÓN 6): evita que
+    // `active_preset` quede referenciando un preset que ya no existe. Las
+    // tres sentencias son no-op silencioso si `id` no existe o no era el activo.
+    const delEntries = this.#db.prepare("DELETE FROM preset_entries WHERE presetId = ?");
+    const delPreset = this.#db.prepare("DELETE FROM presets WHERE id = ?");
+    const clearActiveIfMatches = this.#db.prepare(
+      "UPDATE active_preset SET presetId = NULL WHERE id = 1 AND presetId = ?",
+    );
+    const tx = this.#db.transaction((presetId: string) => {
+      delEntries.run(presetId);
+      delPreset.run(presetId);
+      clearActiveIfMatches.run(presetId);
+    });
+    tx(id);
+  }
+
+  getActivePresetId(): string | null {
+    const row = this.#db
+      .prepare<[], { presetId: string | null }>("SELECT presetId FROM active_preset WHERE id = 1")
+      .get();
+    return row === undefined ? null : row.presetId;
+  }
+
+  setActivePresetId(id: string): void {
+    this.#db
+      .prepare(
+        "INSERT INTO active_preset (id, presetId) VALUES (1, @id) ON CONFLICT(id) DO UPDATE SET presetId = @id",
+      )
+      .run({ id });
+  }
+
+  /**
+   * MIGRACIÓN (P-30, Paso 1; ver DECISIÓN 6): copia el `manifest` ACTUAL a un
+   * preset por defecto (`DEFAULT_PRESET_NAME`) y lo marca ACTIVO, SOLO la
+   * primera vez que este esquema corre sobre una base sin presets todavía
+   * (`presets` vacía). Idempotente: si ya hay al menos un preset (esta
+   * migración ya corrió antes, o el usuario ya creó uno manualmente), es un
+   * no-op. NO toca `manifest` (sigue siendo la fuente real hasta un paso
+   * posterior que la reemplace por presets).
+   */
+  #migrateActiveSetToDefaultPreset(): void {
+    const row = this.#db
+      .prepare<[], { count: number }>("SELECT COUNT(*) as count FROM presets")
+      .get();
+    if (row !== undefined && row.count > 0) return;
+    const preset = this.createPreset(DEFAULT_PRESET_NAME, this.getManifest());
+    this.setActivePresetId(preset.id);
+  }
+
+  /** Lee las entries de un preset, en Priority_Order ascendente. */
+  #readPresetEntries(presetId: string): AddonManifestEntry[] {
+    return this.#db
+      .prepare<[string], AddonManifestEntry>(
+        "SELECT addonId, priorityOrder FROM preset_entries WHERE presetId = ? ORDER BY priorityOrder ASC, addonId ASC",
+      )
+      .all(presetId);
+  }
+
+  /**
+   * Genera un id TÉCNICO único (`preset-<hex de 6>`, ver {@link Preset}),
+   * re-generando ante una colisión (estadísticamente casi imposible con pocos
+   * presets, pero se verifica en vez de asumirlo). Nunca deriva de `name`.
+   */
+  #generateUniquePresetId(): string {
+    for (;;) {
+      const candidate = `preset-${randomUUID().replace(/-/g, "").slice(0, 6)}`;
+      const exists = this.#db.prepare<[string], { id: string }>("SELECT id FROM presets WHERE id = ?").get(candidate);
+      if (exists === undefined) return candidate;
+    }
   }
 
   /** `true` si hay una sesión pendiente ACTIVA (flag de estado; ver DECISIÓN 5). */

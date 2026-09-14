@@ -8,6 +8,7 @@ import type {
   AddonManifestEntry,
   GamePaths,
   PendingOperation,
+  Preset,
 } from "../src/main/domain/index.js";
 
 /**
@@ -85,6 +86,22 @@ class MockStore implements LocalStore {
   getManifest(): AddonManifestEntry[] {
     return [];
   }
+  // (P-30, Paso 1) Sin uso en estos tests: ElevationService no toca presets.
+  listPresets(): Preset[] {
+    return [];
+  }
+  getPreset(_id: string): Preset | null {
+    return null;
+  }
+  createPreset(name: string, entries: AddonManifestEntry[]): Preset {
+    return { id: "preset-fake", name, entries };
+  }
+  renamePreset(_id: string, _newName: string): void {}
+  deletePreset(_id: string): void {}
+  getActivePresetId(): string | null {
+    return null;
+  }
+  setActivePresetId(_id: string): void {}
 }
 
 /** Proveedor de SO que registra el orden global de eventos (persistir vs relanzar). */

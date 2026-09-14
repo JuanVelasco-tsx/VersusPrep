@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import Database from "better-sqlite3";
 import type { Database as DatabaseType } from "better-sqlite3";
 
-import { SqliteLocalStore } from "../src/main/domain/index.js";
+import { DEFAULT_PRESET_NAME, SqliteLocalStore } from "../src/main/domain/index.js";
 import type { AddonManifestEntry, GamePaths } from "../src/main/domain/index.js";
 
 /**
@@ -158,5 +158,183 @@ describe("LocalStore — rutas (Tarea 15.1, AC 1.13; DECISIÓN 4: merge parcial)
     store.savePaths(FULL_PATHS);
     store.savePaths({ steamPath: "E:\\OtroSteam" });
     expect(store.getPaths()).toEqual({ ...FULL_PATHS, steamPath: "E:\\OtroSteam" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Presets (P-30, Paso 1 — solo persistencia; ver DECISIÓN 6 en local-store.ts).
+// ---------------------------------------------------------------------------
+
+describe("LocalStore — presets: estado inicial por migración (P-30, DECISIÓN 6)", () => {
+  // El `store` de `beforeEach` es SIEMPRE una base "nueva" (`:memory:` fresca),
+  // así que su PRIMERA construcción ya disparó la migración (manifest vacío en
+  // ese momento) antes de que este test corra.
+  test("una base nueva arranca con un preset 'Principal' vacío, ya marcado ACTIVO", () => {
+    const presets = store.listPresets();
+    expect(presets).toHaveLength(1);
+    expect(presets[0]).toEqual({ id: presets[0]!.id, name: DEFAULT_PRESET_NAME, entries: [] });
+    expect(store.getActivePresetId()).toBe(presets[0]!.id);
+  });
+});
+
+describe("LocalStore — presets: CRUD (P-30, Paso 1)", () => {
+  test("createPreset agrega un preset con id TÉCNICO (preset-<hex>) distinto del nombre", () => {
+    const preset = store.createPreset("Armas", CANDIDATE);
+    expect(preset.name).toBe("Armas");
+    expect(preset.entries).toEqual(CANDIDATE);
+    expect(preset.id).toMatch(/^preset-[0-9a-f]{6}$/);
+    // Se suma al "Principal" que ya dejó la migración (ver describe de arriba).
+    expect(store.listPresets()).toHaveLength(2);
+    expect(store.getPreset(preset.id)).toEqual(preset);
+  });
+
+  test("createPreset genera ids distintos para presets distintos", () => {
+    const a = store.createPreset("A", []);
+    const b = store.createPreset("B", []);
+    expect(a.id).not.toBe(b.id);
+  });
+
+  test("getPreset devuelve null para un id inexistente", () => {
+    expect(store.getPreset("preset-noexiste")).toBeNull();
+  });
+
+  test("renamePreset cambia SOLO el nombre (id y entries intactos)", () => {
+    const preset = store.createPreset("Armas", CANDIDATE);
+    store.renamePreset(preset.id, "Armas v2");
+    expect(store.getPreset(preset.id)).toEqual({ ...preset, name: "Armas v2" });
+  });
+
+  test("renamePreset sobre un id inexistente es un no-op silencioso", () => {
+    expect(() => store.renamePreset("preset-noexiste", "x")).not.toThrow();
+    expect(store.getPreset("preset-noexiste")).toBeNull();
+  });
+
+  test("deletePreset quita el preset Y sus entries", () => {
+    const preset = store.createPreset("Armas", CANDIDATE);
+    store.deletePreset(preset.id);
+    expect(store.getPreset(preset.id)).toBeNull();
+    expect(store.listPresets().map((p) => p.id)).not.toContain(preset.id);
+  });
+
+  test("deletePreset sobre un id inexistente es un no-op silencioso", () => {
+    expect(() => store.deletePreset("preset-noexiste")).not.toThrow();
+  });
+
+  test("listPresets preserva el orden de CREACIÓN", () => {
+    // "Principal" (migración) ya ocupa el primer lugar.
+    const a = store.createPreset("A", []);
+    const b = store.createPreset("B", []);
+    const ids = store.listPresets().map((p) => p.id);
+    expect(ids.slice(-2)).toEqual([a.id, b.id]);
+  });
+});
+
+describe("LocalStore — presets: puntero de preset ACTIVO (P-30, Paso 1)", () => {
+  test("setActivePresetId / getActivePresetId round-trip", () => {
+    const preset = store.createPreset("Armas", []);
+    store.setActivePresetId(preset.id);
+    expect(store.getActivePresetId()).toBe(preset.id);
+  });
+
+  test("cambiar el activo entre dos presets existentes", () => {
+    const a = store.createPreset("A", []);
+    const b = store.createPreset("B", []);
+    store.setActivePresetId(a.id);
+    expect(store.getActivePresetId()).toBe(a.id);
+    store.setActivePresetId(b.id);
+    expect(store.getActivePresetId()).toBe(b.id);
+  });
+
+  test("deletePreset del preset ACTIVO limpia también el puntero de activo (integridad)", () => {
+    const preset = store.createPreset("Armas", []);
+    store.setActivePresetId(preset.id);
+    store.deletePreset(preset.id);
+    expect(store.getActivePresetId()).toBeNull();
+  });
+
+  test("deletePreset de un preset NO activo no toca el puntero de activo", () => {
+    const active = store.createPreset("Activo", []);
+    const other = store.createPreset("Otro", []);
+    store.setActivePresetId(active.id);
+    store.deletePreset(other.id);
+    expect(store.getActivePresetId()).toBe(active.id);
+  });
+});
+
+describe("LocalStore — presets: migración del Active_Set existente (P-30, Paso 1)", () => {
+  test("migra un manifest EXISTENTE (previo a este cambio) a un preset 'Principal' ACTIVO", () => {
+    const rawDb = new Database(":memory:");
+    // Simula una base de una versión ANTERIOR a P-30: la tabla `manifest` ya
+    // existe con datos, pero `SqliteLocalStore` (y su esquema de presets)
+    // todavía NUNCA corrió sobre esta base.
+    rawDb.exec(
+      "CREATE TABLE manifest (addonId TEXT PRIMARY KEY, priorityOrder INTEGER NOT NULL)",
+    );
+    const insert = rawDb.prepare(
+      "INSERT INTO manifest (addonId, priorityOrder) VALUES (?, ?)",
+    );
+    insert.run("111", 0);
+    insert.run("222", 1);
+
+    // PRIMERA construcción de SqliteLocalStore sobre esta base: `presets` está
+    // vacía -> dispara la migración.
+    const migrated = new SqliteLocalStore(rawDb);
+
+    const activeId = migrated.getActivePresetId();
+    expect(activeId).not.toBeNull();
+    expect(migrated.listPresets()).toEqual([
+      {
+        id: activeId,
+        name: DEFAULT_PRESET_NAME,
+        entries: [
+          { addonId: "111", priorityOrder: 0 },
+          { addonId: "222", priorityOrder: 1 },
+        ],
+      },
+    ]);
+    // El manifest ORIGINAL NO se toca ni se borra en este paso (Paso 1 = solo
+    // agregar la persistencia de presets, sin reemplazar todavía el manifest).
+    expect(migrated.getManifest()).toEqual([
+      { addonId: "111", priorityOrder: 0 },
+      { addonId: "222", priorityOrder: 1 },
+    ]);
+
+    rawDb.close();
+  });
+
+  test("migra un manifest EXISTENTE VACÍO a un preset 'Principal' vacío ACTIVO (estado válido)", () => {
+    const rawDb = new Database(":memory:");
+    rawDb.exec(
+      "CREATE TABLE manifest (addonId TEXT PRIMARY KEY, priorityOrder INTEGER NOT NULL)",
+    );
+    // Sin filas: un Active_Set vacío es un estado válido (mismo criterio que
+    // `pending_session` con candidato []) y la migración igual debe correr.
+    const migrated = new SqliteLocalStore(rawDb);
+
+    expect(migrated.listPresets()).toEqual([
+      { id: migrated.getActivePresetId(), name: DEFAULT_PRESET_NAME, entries: [] },
+    ]);
+    expect(migrated.getActivePresetId()).not.toBeNull();
+
+    rawDb.close();
+  });
+
+  test("la migración es IDEMPOTENTE: una segunda construcción sobre la misma base no duplica el preset por defecto", () => {
+    const rawDb = new Database(":memory:");
+    const first = new SqliteLocalStore(rawDb); // dispara la migración (manifest vacío).
+    const defaultId = first.getActivePresetId();
+    // Actividad real del usuario tras la migración: un preset nuevo.
+    const extra = first.createPreset("Otro", []);
+
+    // Reconstruir SqliteLocalStore sobre la MISMA base (p. ej. un reinicio de
+    // la app): `presets` ya NO está vacía -> la migración debe ser un no-op.
+    const second = new SqliteLocalStore(rawDb);
+
+    expect(second.listPresets().map((p) => p.id).sort()).toEqual(
+      [defaultId, extra.id].sort(),
+    );
+    expect(second.getActivePresetId()).toBe(defaultId);
+
+    rawDb.close();
   });
 });

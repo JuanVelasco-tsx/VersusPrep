@@ -21,6 +21,7 @@ import type {
   MergeOrchestratorDeps,
   MergeOrchestratorFileSystem,
   MergeReport,
+  Preset,
   ProcessListProvider,
   RegistryReader,
   ScannedAddon,
@@ -288,6 +289,22 @@ class FakeLocalStore implements LocalStore {
     return null;
   }
   clearPendingSession(): void {}
+  // (P-30, Paso 1) Fuera del alcance de BUG-009 (stubs).
+  listPresets(): Preset[] {
+    return [];
+  }
+  getPreset(): Preset | null {
+    return null;
+  }
+  createPreset(name: string, entries: AddonManifestEntry[]): Preset {
+    return { id: "preset-fake", name, entries };
+  }
+  renamePreset(): void {}
+  deletePreset(): void {}
+  getActivePresetId(): string | null {
+    return null;
+  }
+  setActivePresetId(): void {}
 }
 
 /** BackupFileSystem que registra el destino de la copia de backup y el orden. */

@@ -7,6 +7,7 @@ import type {
   LocalStore,
   AddonManifestEntry,
   PendingOperation,
+  Preset,
 } from "../src/main/domain/index.js";
 import { propertyTest } from "./helpers/property.js";
 
@@ -99,6 +100,22 @@ class SpyStore implements LocalStore {
   getManifest(): AddonManifestEntry[] {
     return [];
   }
+  // (P-30, Paso 1) Fuera del alcance de esta property test (stubs).
+  listPresets(): Preset[] {
+    return [];
+  }
+  getPreset(): Preset | null {
+    return null;
+  }
+  createPreset(name: string, entries: AddonManifestEntry[]): Preset {
+    return { id: "preset-fake", name, entries };
+  }
+  renamePreset(): void {}
+  deletePreset(): void {}
+  getActivePresetId(): string | null {
+    return null;
+  }
+  setActivePresetId(): void {}
 }
 
 /** Un error de Node con `code` opcional, como los que arroja `fs`. */
