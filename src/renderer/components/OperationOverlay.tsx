@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { OperationResult } from "../../main/domain/index.js";
 import styles from "./OperationOverlay.module.css";
 
-export type OperationKind = "apply" | "add" | "remove";
+export type OperationKind = "apply" | "add" | "remove" | "switch";
 
 /**
  * `label` en el evento "start" es OPCIONAL y pisa el texto fijo de
@@ -74,16 +74,21 @@ const RUNNING_LABELS: Record<OperationKind, string> = {
   apply: "Aplicando cambios...",
   add: "Agregando addon...",
   remove: "Quitando addon...",
+  switch: "Cambiando de preset...",
 };
 
 /**
- * Overlay MODAL BLOQUEANTE de progreso/resultado para las 3 operaciones de
- * escritura del Active_Set (apply/add/remove) - Seccion 21.4. A diferencia de
- * `TrustNotices` (informativo, no bloqueante), este SI bloquea la interaccion
- * con el resto de la app mientras una operacion esta en curso (backdrop de
- * pantalla completa, sin boton de cerrar en el estado "running"). Se monta
- * UNA SOLA VEZ en `App.tsx`, fuera del condicional de vista, para cubrir
- * tanto al panel "Activos" como a `AddonRow` (biblioteca) por igual.
+ * Overlay MODAL BLOQUEANTE de progreso/resultado para las operaciones de
+ * escritura del Active_Set (apply/add/remove, Seccion 21.4, y switch de
+ * preset activo desde P-30 Paso 5 - las cuatro comparten el mismo canal
+ * `merge:onProgress` y el mismo manejo de elevacion UAC, ver
+ * `MergeOrchestrator`/`ipc-handlers.ts`, asi que no hace falta un overlay
+ * aparte para el switch). A diferencia de `TrustNotices` (informativo, no
+ * bloqueante), este SI bloquea la interaccion con el resto de la app mientras
+ * una operacion esta en curso (backdrop de pantalla completa, sin boton de
+ * cerrar en el estado "running"). Se monta UNA SOLA VEZ en `App.tsx`, fuera
+ * del condicional de vista, para cubrir tanto al panel "Activos" como a
+ * `AddonRow` (biblioteca) y al selector de presets por igual.
  *
  * DELIBERADO: el backdrop en "running" no tiene onClick ni handler de Escape
  * para cerrarse - la operacion real sigue corriendo en el main process aunque

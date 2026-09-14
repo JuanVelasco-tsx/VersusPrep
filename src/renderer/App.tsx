@@ -10,6 +10,7 @@ import { ActiveSetPanel } from "./components/ActiveSetPanel.js";
 import { AddonList } from "./components/AddonList.js";
 import { LoadingIndicator } from "./components/LoadingIndicator.js";
 import { OperationOverlay, publishOperation } from "./components/OperationOverlay.js";
+import { PresetSwitcher } from "./components/PresetSwitcher.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
 import { TrustNotices } from "./components/TrustNotices.js";
 import styles from "./App.module.css";
@@ -220,6 +221,7 @@ export function App() {
           Configuración
         </button>
       </nav>
+      <PresetSwitcher />
       <TrustNotices />
       <OperationOverlay />
       {resuming === null && <LoadingIndicator message="Cargando..." />}
