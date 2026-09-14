@@ -231,6 +231,8 @@ describe("BUG-007 (preservación) — baseline que el fix NO debe romper", () =>
       "applyActiveSet",
       "addAddon",
       "removeAddon",
+      "addAddons",
+      "removeAddons",
       "getResumeState",
       "mergeProgress",
       "willNeedElevation",

@@ -97,7 +97,13 @@ function makeIndependentIo(overrides: Partial<PathIndependentIo> = {}): PathInde
 // ---------------------------------------------------------------------------
 
 describe("parseResumeArgs", () => {
-  for (const type of ["applyActiveSet", "addAddon", "removeAddon"] as const) {
+  for (const type of [
+    "applyActiveSet",
+    "addAddon",
+    "removeAddon",
+    "addAddons",
+    "removeAddons",
+  ] as const) {
     test(`caso valido con type=${type}`, () => {
       const argv = ["--l4d2-resume-type", type, "--l4d2-resume-handle", "H1"];
       expect(parseResumeArgs(argv)).toEqual({ type, resumeHandle: "H1" });

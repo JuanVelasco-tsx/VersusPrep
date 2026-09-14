@@ -272,6 +272,8 @@ class FakeAddonScanner {
         vpkPath: `${WORKSHOP}\\${id}.vpk`,
         coverPath: null,
         info: null,
+        mtimeMs: 0,
+        sizeBytes: 0,
       })),
     );
   }

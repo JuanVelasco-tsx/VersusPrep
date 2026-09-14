@@ -107,6 +107,12 @@ class MockFs implements AddonFileSystem {
   ensureDir(_dir: string): Promise<void> {
     return Promise.resolve();
   }
+
+  // mtimeMs/sizeBytes (P-31, Paso 1) no son relevantes para esta property;
+  // valor fijo, no exercised.
+  stat(_path: string): Promise<{ mtimeMs: number; size: number }> {
+    return Promise.resolve({ mtimeMs: 0, size: 0 });
+  }
 }
 
 /**
@@ -329,7 +335,9 @@ const modelScan = (
       info = extractAddonInfo(addoninfoText(spec.meta.title));
     }
     // "malformed" ⇒ extractAddonInfo devolvería null; "absent"/"*-fails" ⇒ null.
-    result.push({ id, vpkPath, coverPath, info });
+    // mtimeMs/sizeBytes (P-31, Paso 1): el MockFs.stat de este archivo siempre
+    // devuelve 0, así que el modelo espera ese mismo valor fijo.
+    result.push({ id, vpkPath, coverPath, info, mtimeMs: 0, sizeBytes: 0 });
   }
   return result;
 };

@@ -199,6 +199,8 @@ function addon(id: string): ScannedAddon {
     vpkPath: `C:\\ws\\${id}.vpk`,
     coverPath: null,
     info: null,
+    mtimeMs: 0,
+    sizeBytes: 0,
   };
 }
 

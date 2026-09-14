@@ -59,6 +59,11 @@ export const IPC_CHANNELS = {
   applyActiveSet: "activeSet:apply",
   addAddon: "activeSet:add",
   removeAddon: "activeSet:remove",
+  // (P-31+P-22, Paso 1) Variantes en LOTE — ver MergeOrchestrator.addAddons/
+  // removeAddons (DECISIÓN 9): UNA sola fusión para N addons, en vez de N
+  // llamadas a addAddon/removeAddon.
+  addAddons: "activeSet:addMany",
+  removeAddons: "activeSet:removeMany",
   getResumeState: "activeSet:resumeState",
   mergeProgress: "merge:onProgress",
   willNeedElevation: "willNeedElevation",
@@ -140,6 +145,16 @@ export interface L4d2Api {
   applyActiveSet(entries: AddonManifestEntry[]): Promise<OperationResult>;
   addAddon(addonId: string, priorityOrder: number): Promise<OperationResult>;
   removeAddon(addonId: string): Promise<OperationResult>;
+  /**
+   * Variante en LOTE de `addAddon` (P-31+P-22, Paso 1): agrega varios addons
+   * al preset activo con UNA SOLA fusión final (ver DECISIÓN 9 en
+   * `merge-orchestrator.ts`). El `priorityOrder` de cada uno lo asigna el
+   * orquestador (no se recibe acá), mismo criterio de "lo agregado ahora gana"
+   * que ya usa `addAddon` individual.
+   */
+  addAddons(addonIds: string[]): Promise<OperationResult>;
+  /** Variante en LOTE de `removeAddon` (P-31+P-22, Paso 1); ver DECISIÓN 9 en `merge-orchestrator.ts`. */
+  removeAddons(addonIds: string[]): Promise<OperationResult>;
   getResumeState(): Promise<ResumeState | null>;
   /**
    * `true` si esta sesión va a necesitar elevación UAC en la primera escritura

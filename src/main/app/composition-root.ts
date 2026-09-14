@@ -201,7 +201,7 @@ export function createStartupProgressListener(
 /**
  * Parsea los flags --l4d2-resume-type/--l4d2-resume-handle de argv (Decision
  * L del bloque 4). Devuelve null si faltan, estan incompletos, o el type no
- * es uno de los cuatro validos de PendingOperation["type"].
+ * es uno de los validos de PendingOperation["type"].
  *
  * P-30, Paso 3.5 (cierra DECISION 8 de merge-orchestrator.ts): si
  * type === "switchActivePreset", TAMBIEN exige el flag
@@ -210,6 +210,12 @@ export function createStartupProgressListener(
  * saber hacia que preset resumir el switch, asi que se trata igual que un
  * flag faltante: devuelve null (no hay resume valido, la app arranca fresca
  * en vez de intentar resumir con datos incompletos).
+ *
+ * P-31+P-22, Paso 1 (DECISION 9 de merge-orchestrator.ts): se suman
+ * "addAddons"/"removeAddons" al allow-list (variantes en lote de
+ * addAddon/removeAddon) - sin esto, un relanzo elevado a mitad de una
+ * operacion en lote no pasaria esta validacion y la app arrancaria SIN
+ * resumir, perdiendo la sesion pendiente en vez de completarla.
  */
 export function parseResumeArgs(argv: readonly string[]): PendingOperation | null {
   const typeIndex = argv.indexOf("--l4d2-resume-type");
@@ -222,6 +228,8 @@ export function parseResumeArgs(argv: readonly string[]): PendingOperation | nul
     type !== "applyActiveSet" &&
     type !== "addAddon" &&
     type !== "removeAddon" &&
+    type !== "addAddons" &&
+    type !== "removeAddons" &&
     type !== "switchActivePreset"
   ) {
     return null;

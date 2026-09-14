@@ -9,6 +9,8 @@ function addon(id: string, title?: string): ScannedAddon {
     vpkPath: id + ".vpk",
     coverPath: null,
     info: title === undefined ? null : { title },
+    mtimeMs: 0,
+    sizeBytes: 0,
   };
 }
 

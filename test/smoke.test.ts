@@ -33,6 +33,8 @@ describe("Andamiaje: tipos de dominio importables", () => {
       vpkPath: `${paths.workshopFolder}\\123456.vpk`,
       coverPath: null,
       info: null,
+      mtimeMs: 0,
+      sizeBytes: 0,
     };
 
     const manifest: AddonManifestEntry[] = [{ addonId: addon.id, priorityOrder: 0 }];

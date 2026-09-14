@@ -66,6 +66,8 @@ function addon(id: string, overrides: Partial<ScannedAddon> = {}): ScannedAddon 
     vpkPath: `workshop/${id}.vpk`,
     coverPath: null,
     info: null,
+    mtimeMs: 0,
+    sizeBytes: 0,
     ...overrides,
   };
 }

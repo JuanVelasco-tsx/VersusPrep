@@ -450,3 +450,95 @@ describe("MergeOrchestrator — switchActivePreset (P-30, Paso 3)", () => {
     expect(h.store.getActivePresetId()).toBe("preset-old");
   });
 });
+
+// ---------------------------------------------------------------------------
+// P-31+P-22, Paso 1 — addAddons/removeAddons (variantes en LOTE, DECISIÓN 9).
+// ---------------------------------------------------------------------------
+
+describe("MergeOrchestrator — addAddons/removeAddons (P-31+P-22, Paso 1)", () => {
+  test("addAddons agrega varios ids de una sola vez, con UNA SOLA fusión (no N)", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    const orch = new MergeOrchestrator(h.deps);
+
+    const res = await orch.addAddons(["111", "222"]);
+
+    expect(res.status).toBe("success");
+    expect(h.store.getPreset("modsvs")?.entries.map((e) => e.addonId).sort()).toEqual([
+      "111",
+      "222",
+    ]);
+    // UNA sola fusión para las dos entries, no dos fusiones separadas.
+    expect(h.mergeCalls).toHaveLength(1);
+    expect(h.mergeCalls[0]?.orderedAddons.map((a) => a.id).sort()).toEqual(["111", "222"]);
+  });
+
+  test("addAddons preserva el ORDEN relativo dentro del lote (priorityOrder creciente por posición)", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    const orch = new MergeOrchestrator(h.deps);
+
+    const res = await orch.addAddons(["222", "111"]);
+
+    expect(res.status).toBe("success");
+    const entries = h.store.getPreset("modsvs")?.entries ?? [];
+    const byId = new Map(entries.map((e) => [e.addonId, e.priorityOrder]));
+    // "222" se pidió ANTES que "111" en el array -> su priorityOrder es menor.
+    expect(byId.get("222")).toBeLessThan(byId.get("111") as number);
+  });
+
+  test("addAddons hace UPSERT: un id ya presente en el preset activo se reubica, no se duplica", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    h.store.updatePresetEntries("modsvs", [{ addonId: "111", priorityOrder: 0 }]);
+    const orch = new MergeOrchestrator(h.deps);
+
+    const res = await orch.addAddons(["111", "222"]);
+
+    expect(res.status).toBe("success");
+    const entries = h.store.getPreset("modsvs")?.entries ?? [];
+    expect(entries.map((e) => e.addonId).sort()).toEqual(["111", "222"]); // sin duplicar "111"
+  });
+
+  test("addAddons con un id AUSENTE del escaneo falla ENTERO, sin aplicar nada a medias", async () => {
+    // El escaneo conoce "111"/"222"; se pide agregar "222" (válido) y "999"
+    // (inexistente). El preset activo ya tenía "111" de antes.
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    h.store.updatePresetEntries("modsvs", [{ addonId: "111", priorityOrder: 0 }]); // estado previo
+    const orch = new MergeOrchestrator(h.deps);
+
+    const res = await orch.addAddons(["222", "999"]);
+
+    expect(res.status).toBe("failure");
+    if (res.status === "failure") expect(res.addonId).toBe("999");
+    // Nada se fusionó ni se persistió: el preset activo sigue EXACTAMENTE
+    // como estaba antes de la llamada (fallo atómico, DECISIÓN 9) — ni
+    // siquiera "222" (que SÍ era válido) quedó agregado a medias.
+    expect(h.mergeCalls).toHaveLength(0);
+    expect(h.store.getPreset("modsvs")?.entries).toEqual([{ addonId: "111", priorityOrder: 0 }]);
+  });
+
+  test("removeAddons quita varios ids de una sola vez, con UNA SOLA fusión (no N)", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    h.store.updatePresetEntries("modsvs", [
+      { addonId: "111", priorityOrder: 0 },
+      { addonId: "222", priorityOrder: 1 },
+    ]);
+    const orch = new MergeOrchestrator(h.deps);
+
+    const res = await orch.removeAddons(["111", "222"]);
+
+    expect(res.status).toBe("success");
+    expect(h.store.getPreset("modsvs")?.entries).toEqual([]);
+    expect(h.mergeCalls).toHaveLength(1);
+    expect(h.mergeCalls[0]?.orderedAddons).toEqual([]);
+  });
+
+  test("removeAddons es NO-OP (idempotente) para ids que no estaban presentes, sin fallar", async () => {
+    const h = buildOrchestrator({ scannedIds: SCANNED });
+    h.store.updatePresetEntries("modsvs", [{ addonId: "111", priorityOrder: 0 }]);
+    const orch = new MergeOrchestrator(h.deps);
+
+    const res = await orch.removeAddons(["222", "333"]); // ninguno estaba presente
+
+    expect(res.status).toBe("success");
+    expect(h.store.getPreset("modsvs")?.entries).toEqual([{ addonId: "111", priorityOrder: 0 }]);
+  });
+});

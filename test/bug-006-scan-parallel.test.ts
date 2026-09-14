@@ -77,6 +77,12 @@ class MockFs implements AddonFileSystem {
   ensureDir(_dir: string): Promise<void> {
     return Promise.resolve();
   }
+
+  // mtimeMs/sizeBytes (P-31, Paso 1) no son relevantes para este test de
+  // concurrencia; valor fijo, no exercised.
+  stat(_path: string): Promise<{ mtimeMs: number; size: number }> {
+    return Promise.resolve({ mtimeMs: 0, size: 0 });
+  }
 }
 
 /**

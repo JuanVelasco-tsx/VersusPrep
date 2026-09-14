@@ -282,6 +282,17 @@ export function registerIpcHandlers(
     guardedWrite(() => deps.mergeOrchestrator.removeAddon(addonId)),
   );
 
+  // (P-31+P-22, Paso 1) Variantes en lote — mismo guardedWrite que las
+  // singulares (una operación de escritura a la vez, ver DECISIÓN 9 en
+  // merge-orchestrator.ts).
+  ipcMain.handle(IPC_CHANNELS.addAddons, async (_event, addonIds: string[]) =>
+    guardedWrite(() => deps.mergeOrchestrator.addAddons(addonIds)),
+  );
+
+  ipcMain.handle(IPC_CHANNELS.removeAddons, async (_event, addonIds: string[]) =>
+    guardedWrite(() => deps.mergeOrchestrator.removeAddons(addonIds)),
+  );
+
   ipcMain.handle(IPC_CHANNELS.getResumeState, () => deps.getResumeState());
 
   ipcMain.handle(IPC_CHANNELS.willNeedElevation, () => deps.getWillNeedElevation());

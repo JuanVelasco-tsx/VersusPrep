@@ -14,6 +14,9 @@
  *   - Lee, de forma OPCIONAL y NO bloqueante, la metadata del `addoninfo.txt`
  *     interno del VPK (AC 2.5). Cualquier fallo en esta fase degrada a
  *     `info: null` SIN abortar ni omitir el addon.
+ *   - Lee, también best-effort, `mtimeMs`/`sizeBytes` del `.vpk` vía `fs.stat`
+ *     (P-31, Paso 1 — datos de ORDENAMIENTO para Biblioteca; el ordenamiento
+ *     en sí vive en el renderer, acá solo se provee el dato).
  *   - Al finalizar, devuelve la lista de addons con su cover asociado (AC 2.6).
  *
  * ---------------------------------------------------------------------------
@@ -125,6 +128,15 @@ export interface AddonFileSystem {
    * Idempotente: no falla si el directorio ya existe.
    */
   ensureDir(dir: string): Promise<void>;
+
+  /**
+   * `fs.stat` de un archivo (P-31, Paso 1: mtime/tamaño del `.vpk`, datos de
+   * ORDENAMIENTO para Biblioteca — metadata de filesystem, no requiere
+   * `vpk.exe`). Puede lanzar (archivo inexistente/ilegible); `AddonScanner`
+   * la envuelve en el mismo try/catch best-effort que ya usa para el
+   * addoninfo (AC 2.5).
+   */
+  stat(path: string): Promise<{ mtimeMs: number; size: number }>;
 }
 
 /**
@@ -247,8 +259,16 @@ export class AddonScanner {
         }
         const coverPath = await this.#resolveCover(workshopFolder, candidate.id);
         const info = await this.#readAddonInfoSafely(candidate.vpkPath, candidate.id);
+        const { mtimeMs, sizeBytes } = await this.#resolveFileStat(candidate.vpkPath);
         // AC 2.3/2.4: addon con id derivado, vpkPath y cover asociado (o null).
-        results[index] = { id: candidate.id, vpkPath: candidate.vpkPath, coverPath, info };
+        results[index] = {
+          id: candidate.id,
+          vpkPath: candidate.vpkPath,
+          coverPath,
+          info,
+          mtimeMs,
+          sizeBytes,
+        };
       }
     };
 
@@ -266,6 +286,23 @@ export class AddonScanner {
     const coverPath = joinWindowsPath(workshopFolder, `${id}${COVER_EXTENSION}`);
     const present = await this.#fs.exists(coverPath);
     return present ? coverPath : null;
+  }
+
+  /**
+   * `mtimeMs`/`sizeBytes` del `.vpk` (P-31, Paso 1), BEST-EFFORT: mismo
+   * criterio que `#readAddonInfoSafely` (AC 2.5) — cualquier fallo del `stat`
+   * (ventana muy chica entre listar el directorio y leerlo) degrada a `{ 0, 0
+   * }` sin abortar ni omitir el addon. `0` nunca es un valor real para un
+   * archivo que SÍ existe, así que un consumidor de la UI puede distinguir
+   * "degradado" de "vacío" si algún día le importa.
+   */
+  async #resolveFileStat(vpkPath: string): Promise<{ mtimeMs: number; sizeBytes: number }> {
+    try {
+      const stats = await this.#fs.stat(vpkPath);
+      return { mtimeMs: stats.mtimeMs, sizeBytes: stats.size };
+    } catch {
+      return { mtimeMs: 0, sizeBytes: 0 };
+    }
   }
 
   /**

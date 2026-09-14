@@ -79,6 +79,12 @@ class MockFs implements AddonFileSystem {
   readonly existing = new Set<string>();
   readonly files = new Map<string, string>();
   readonly ensuredDirs: string[] = [];
+  /** Stat configurable por vpkPath (P-31, Paso 1); ausente = usa `defaultStat`. */
+  readonly stats = new Map<string, { mtimeMs: number; size: number }>();
+  /** Devuelto para cualquier vpkPath sin entrada en `stats`. */
+  defaultStat = { mtimeMs: 0, size: 0 };
+  /** vpkPaths para los que `stat` debe RECHAZAR (simula fs.stat fallando). */
+  readonly statFailures = new Set<string>();
 
   listEntries(dir: string): Promise<DirEntry[]> {
     return Promise.resolve(this.entries.get(dir) ?? []);
@@ -99,6 +105,13 @@ class MockFs implements AddonFileSystem {
   ensureDir(dir: string): Promise<void> {
     this.ensuredDirs.push(dir);
     return Promise.resolve();
+  }
+
+  stat(path: string): Promise<{ mtimeMs: number; size: number }> {
+    if (this.statFailures.has(path)) {
+      return Promise.reject(new Error(`ENOENT (stat): ${path}`));
+    }
+    return Promise.resolve(this.stats.get(path) ?? this.defaultStat);
   }
 }
 
@@ -174,6 +187,50 @@ describe("AddonScanner: asociación de Addon_Cover (AC 2.4)", () => {
     const [addon] = await scanner.scan(WORKSHOP);
 
     expect(addon?.coverPath).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P-31, Paso 1: mtimeMs/sizeBytes del .vpk (datos de ordenamiento para Biblioteca).
+// ---------------------------------------------------------------------------
+
+describe("AddonScanner: mtimeMs/sizeBytes del .vpk (P-31, Paso 1)", () => {
+  test("popula mtimeMs/sizeBytes desde fs.stat del .vpk", async () => {
+    const fs = new MockFs();
+    fs.entries.set(WORKSHOP, [file("700.vpk")]);
+    fs.stats.set("C:\\ws\\700.vpk", { mtimeMs: 1_700_000_000_000, size: 123_456 });
+    const scanner = buildScanner(fs, new ScriptedRunner());
+
+    const [addon] = await scanner.scan(WORKSHOP);
+
+    expect(addon?.mtimeMs).toBe(1_700_000_000_000);
+    expect(addon?.sizeBytes).toBe(123_456);
+  });
+
+  test("si fs.stat falla, degrada a 0/0 sin abortar ni omitir el addon (mismo criterio best-effort que addoninfo, AC 2.5)", async () => {
+    const fs = new MockFs();
+    fs.entries.set(WORKSHOP, [file("701.vpk")]);
+    fs.statFailures.add("C:\\ws\\701.vpk");
+    const scanner = buildScanner(fs, new ScriptedRunner());
+
+    const [addon] = await scanner.scan(WORKSHOP);
+
+    expect(addon?.id).toBe("701");
+    expect(addon?.mtimeMs).toBe(0);
+    expect(addon?.sizeBytes).toBe(0);
+  });
+
+  test("un fallo de stat en un addon no impide escanear a los demás, cada uno con su propio stat", async () => {
+    const fs = new MockFs();
+    fs.entries.set(WORKSHOP, [file("702.vpk"), file("703.vpk")]);
+    fs.statFailures.add("C:\\ws\\702.vpk");
+    fs.stats.set("C:\\ws\\703.vpk", { mtimeMs: 42, size: 99 });
+    const scanner = buildScanner(fs, new ScriptedRunner());
+
+    const result = await scanner.scan(WORKSHOP);
+
+    expect(result.find((a) => a.id === "702")).toMatchObject({ mtimeMs: 0, sizeBytes: 0 });
+    expect(result.find((a) => a.id === "703")).toMatchObject({ mtimeMs: 42, sizeBytes: 99 });
   });
 });
 

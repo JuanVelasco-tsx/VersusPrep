@@ -62,6 +62,22 @@ export async function removeDirRecursive(dir: string): Promise<void> {
   await fs.rm(dir, { recursive: true, force: true });
 }
 
+/** Metadata mínima de `fs.stat` que necesita AddonScanner (P-31, Paso 1). */
+export interface FsStat {
+  mtimeMs: number;
+  size: number;
+}
+
+/**
+ * `fs.stat` de un archivo. LANZA si no existe o es ilegible (mismo contrato
+ * que `readTextFileOrThrow`): el llamador (`AddonScanner`) decide si degrada
+ * best-effort, no esta primitiva.
+ */
+export async function statFile(target: string): Promise<FsStat> {
+  const stats = await fs.stat(target);
+  return { mtimeMs: stats.mtimeMs, size: stats.size };
+}
+
 /** Entrada de directorio de NIVEL SUPERIOR (no recursivo): nombre + si es carpeta. */
 export interface FsDirEntry {
   name: string;

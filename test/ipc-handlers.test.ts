@@ -101,7 +101,7 @@ const PATHS: GamePaths = {
 };
 
 function scanned(id: string): ScannedAddon {
-  return { id, vpkPath: id + ".vpk", coverPath: null, info: null };
+  return { id, vpkPath: id + ".vpk", coverPath: null, info: null, mtimeMs: 0, sizeBytes: 0 };
 }
 
 function classification(id: string): VScriptClassification {
@@ -132,6 +132,9 @@ interface Doubles {
   applyCalls: AddonManifestEntry[][];
   addCalls: Array<{ addonId: string; priorityOrder: number }>;
   removeCalls: string[];
+  /** Llamadas a addAddons/removeAddons (P-31+P-22, Paso 1). */
+  addManyCalls: string[][];
+  removeManyCalls: string[][];
   resumeValue: { value: ResumeState | null };
   /** Cuenta las invocaciones de onElevatedHandoff (fix del cierre de la instancia sin privilegios). */
   handoffCalls: { count: number };
@@ -167,6 +170,8 @@ function buildDoubles(): Doubles {
     applyCalls: [],
     addCalls: [],
     removeCalls: [],
+    addManyCalls: [],
+    removeManyCalls: [],
     resumeValue: { value: null },
     handoffCalls: { count: 0 },
     willNeedElevationValue: { value: false },
@@ -246,6 +251,14 @@ function buildDoubles(): Doubles {
       },
       removeAddon: (addonId: string) => {
         d.removeCalls.push(addonId);
+        return Promise.resolve<OperationResult>({ status: "success" });
+      },
+      addAddons: (addonIds: string[]) => {
+        d.addManyCalls.push([...addonIds]);
+        return Promise.resolve<OperationResult>({ status: "success" });
+      },
+      removeAddons: (addonIds: string[]) => {
+        d.removeManyCalls.push([...addonIds]);
         return Promise.resolve<OperationResult>({ status: "success" });
       },
       switchActivePreset: (id: string) => {
@@ -412,6 +425,18 @@ describe("IPC — ruteo canal->componente (catorce canales)", () => {
     expect(d.removeCalls).toEqual(["555"]);
   });
 
+  test("activeSet:addMany llama addAddons(addonIds) con la lista completa (P-31+P-22, Paso 1)", async () => {
+    const { ipc, d } = setup();
+    await ipc.invoke(IPC_CHANNELS.addAddons, ["111", "222"]);
+    expect(d.addManyCalls).toEqual([["111", "222"]]);
+  });
+
+  test("activeSet:removeMany llama removeAddons(addonIds) con la lista completa (P-31+P-22, Paso 1)", async () => {
+    const { ipc, d } = setup();
+    await ipc.invoke(IPC_CHANNELS.removeAddons, ["111", "222"]);
+    expect(d.removeManyCalls).toEqual([["111", "222"]]);
+  });
+
   test("activeSet:resumeState llama getResumeState() y devuelve su resultado (incluido null)", async () => {
     const { ipc, d } = setup();
     // null (caso por defecto).
@@ -479,9 +504,9 @@ describe("IPC — ruteo canal->componente (catorce canales)", () => {
     // info:null, que no cachearía nada).
     d.deps.addonScanner.scan = () =>
       Promise.resolve([
-        { id: "111", vpkPath: "111.vpk", coverPath: null, info: { title: "Mapa Cool" } },
-        { id: "222", vpkPath: "222.vpk", coverPath: null, info: { title: "Skin Nice" } },
-        { id: "333", vpkPath: "333.vpk", coverPath: null, info: null }, // sin título -> no se cachea
+        { id: "111", vpkPath: "111.vpk", coverPath: null, info: { title: "Mapa Cool" }, mtimeMs: 0, sizeBytes: 0 },
+        { id: "222", vpkPath: "222.vpk", coverPath: null, info: { title: "Skin Nice" }, mtimeMs: 0, sizeBytes: 0 },
+        { id: "333", vpkPath: "333.vpk", coverPath: null, info: null, mtimeMs: 0, sizeBytes: 0 }, // sin título -> no se cachea
       ]);
 
     // Antes de escanear: cache vacío.
@@ -568,6 +593,22 @@ describe("IPC — D4: guard de escritura concurrente", () => {
     if (second.status === "failure") expect(second.error).toBe(GUARD_ERROR);
     // El orquestador se llamo UNA sola vez (la segunda ni lo toco).
     expect(d.applyCalls.length).toBe(1);
+
+    gate.resolve({ status: "success" });
+    await first;
+  });
+
+  test("CRUZADO: apply en vuelo + addMany -> addMany rechazado con el mismo mensaje, sin llamar addAddons (P-31+P-22, Paso 1)", async () => {
+    const { ipc, d } = setup();
+    const gate = deferred<OperationResult>();
+    d.applyGate = { promise: gate.promise };
+
+    const first = ipc.invoke(IPC_CHANNELS.applyActiveSet, [{ addonId: "111", priorityOrder: 0 }]);
+    const addMany = (await ipc.invoke(IPC_CHANNELS.addAddons, ["222", "333"])) as OperationResult;
+
+    expect(addMany.status).toBe("failure");
+    if (addMany.status === "failure") expect(addMany.error).toBe(GUARD_ERROR);
+    expect(d.addManyCalls.length).toBe(0);
 
     gate.resolve({ status: "success" });
     await first;

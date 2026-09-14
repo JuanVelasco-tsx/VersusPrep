@@ -38,6 +38,10 @@ const api: L4d2Api = {
     >,
   removeAddon: (addonId) =>
     ipcRenderer.invoke(IPC_CHANNELS.removeAddon, addonId) as Promise<OperationResult>,
+  addAddons: (addonIds) =>
+    ipcRenderer.invoke(IPC_CHANNELS.addAddons, addonIds) as Promise<OperationResult>,
+  removeAddons: (addonIds) =>
+    ipcRenderer.invoke(IPC_CHANNELS.removeAddons, addonIds) as Promise<OperationResult>,
   getResumeState: () =>
     ipcRenderer.invoke(IPC_CHANNELS.getResumeState) as Promise<ResumeState | null>,
   willNeedElevation: () =>

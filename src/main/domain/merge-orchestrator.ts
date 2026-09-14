@@ -203,6 +203,25 @@
  * necesitan TANTO el camino directo como el resume, para que ambos nunca
  * puedan desincronizarse.
  * ---------------------------------------------------------------------------
+ * DECISIÓN 9 (P-31+P-22, Paso 1) — `addAddons`/`removeAddons`: variantes en
+ * LOTE de `addAddon`/`removeAddon`, reusando `#runPublic` TAL CUAL (una sola
+ * fusión final, nunca N).
+ *
+ * Ambas construyen el `next: AddonManifestEntry[]` combinado (preset activo
+ * actual +/- los ids del lote) y llaman `#runPublic` UNA vez, igual que las
+ * variantes singulares — no hay una "materialización incremental" nueva. El
+ * fallo atómico ante un `addonId` ausente del escaneo (ver DECISIÓN 5) es
+ * gratis: `#resolveOrderedAddons` corre ANTES de `#materialize`, así que un
+ * id inválido corta el flujo entero antes de escribir nada.
+ *
+ * `PendingOperation["type"]` suma `"addAddons"`/`"removeAddons"` (`types.ts`)
+ * únicamente por trazabilidad del resume tras UAC: `resumePendingOperation`
+ * ya maneja CUALQUIER `type !== "switchActivePreset"` de forma genérica
+ * (re-deriva el preset activo fresco), así que estos dos literales no
+ * disparan ninguna rama nueva ahí — pero SÍ hacen falta en el allow-list de
+ * `parseResumeArgs` (`composition-root.ts`), o un relanzo elevado a mitad de
+ * un lote perdería la sesión pendiente en vez de resumirla.
+ * ---------------------------------------------------------------------------
  */
 
 import type { BackupManager } from "./backup-manager.js";
@@ -391,6 +410,67 @@ export class MergeOrchestrator {
   }
 
   /**
+   * Variante en LOTE de `addAddon` (P-31+P-22, Paso 1; DECISIÓN 9): agrega
+   * varios addons al preset ACTIVO con UNA SOLA fusión final, en vez de que
+   * el llamador invoque `addAddon` N veces (N fusiones completas — lento e
+   * innecesario para una selección múltiple de Biblioteca).
+   *
+   * UPSERT por id, igual que `addAddon` (DECISIÓN 4): si un `addonId` ya
+   * está en el preset activo, se REUBICA (nunca se duplica); ids repetidos
+   * dentro de `addonIds` se deduplican (se queda la ÚLTIMA aparición del
+   * `Set`, pero para el caso de uso real —una selección de checkboxes— los
+   * ids ya vienen únicos).
+   *
+   * PRIORITY_ORDER de los agregados: `Date.now() + índice en `addonIds``.
+   * Mismo criterio que ya usa el llamador de `addAddon` individual
+   * (`AddonRow.tsx` pasa `Date.now()` para que "lo agregado ahora" gane por
+   * sobre lo ya instalado, ver ese componente) — acá el ORQUESTADOR asigna el
+   * timestamp porque `addAddons` no recibe un `priorityOrder` por id, así que
+   * necesita una convención propia; sumar el índice preserva el ORDEN
+   * relativo dentro del mismo lote (position 0 pierde ante position 1 en un
+   * eventual empate, igual que si se hubieran agregado de a uno en ese
+   * orden).
+   *
+   * FALLO ATÓMICO (sin aplicar nada a medias) — VIENE GRATIS de reusar
+   * `#runPublic`/`#resolveOrderedAddons`: si algún `addonId` de `addonIds` NO
+   * aparece en el escaneo de la Workshop (desuscrito/borrado), la operación
+   * ENTERA falla con ese `addonId` (DECISIÓN 5) ANTES de llegar a la
+   * elevación o a `#materialize` — `LocalStore.updatePresetEntries` solo se
+   * invoca si TODO el flujo (backup, merge, instalar, gameinfo) tuvo éxito
+   * (Paso 8 de `#materialize`), así que un fallo temprano no deja el preset
+   * con una escritura parcial. No hace falta lógica nueva para esta
+   * garantía: es la MISMA que ya tenía `addAddon` de a uno, aplicada al lote.
+   */
+  async addAddons(addonIds: readonly string[]): Promise<OperationResult> {
+    const uniqueIds = [...new Set(addonIds)];
+    const idsToAdd = new Set(uniqueIds);
+    const current = this.#currentPresetEntries().filter((e) => !idsToAdd.has(e.addonId));
+    const base = Date.now();
+    const added = uniqueIds.map((addonId, index) => ({
+      addonId,
+      priorityOrder: base + index,
+    }));
+    return this.#runPublic([...current, ...added], "addAddons");
+  }
+
+  /**
+   * Variante en LOTE de `removeAddon` (P-31+P-22, Paso 1; DECISIÓN 9): quita
+   * varios addons del preset ACTIVO con UNA SOLA fusión final. Filtra todos
+   * los `addonIds` de una vez; NO-OP para cualquiera que no estuviera
+   * presente (mismo criterio idempotente que `removeAddon`, DECISIÓN 4) — a
+   * diferencia de `addAddons`, quitar ids nunca puede introducir un `addonId`
+   * ausente del escaneo en el resultado (los ids quitados simplemente dejan
+   * de estar), así que esta variante no tiene forma de fallar por "id
+   * inválido": las entries restantes ya eran válidas antes de la llamada.
+   */
+  async removeAddons(addonIds: readonly string[]): Promise<OperationResult> {
+    const idsToRemove = new Set(addonIds);
+    const current = this.#currentPresetEntries();
+    const next = current.filter((e) => !idsToRemove.has(e.addonId));
+    return this.#runPublic(next, "removeAddons");
+  }
+
+  /**
    * Entries del preset ACTUALMENTE activo (P-30, Paso 4.5b), o `[]` si no hay
    * ninguno activo — un edge case que no debería ocurrir en una instalación
    * normal (la migración de `LocalStore` siempre deja un preset activo) y que
@@ -503,6 +583,13 @@ export class MergeOrchestrator {
       vpkPath: joinWindowsPath(this.#paths.workshopFolder, `${entry.addonId}.vpk`),
       coverPath: null,
       info: null,
+      // mtimeMs/sizeBytes (P-31, Paso 1): sin sentido derivarlos sin tocar
+      // disco (a diferencia de vpkPath, no son calculables desde el id) y
+      // `MergeEngine.preview` no los usa — mismo criterio que coverPath/info
+      // acá arriba, degradados a un valor que nunca es real (ver DECISIÓN en
+      // `types.ts`/`addon-scanner.ts`).
+      mtimeMs: 0,
+      sizeBytes: 0,
     }));
     const preview = await this.#merge.preview(derivedAddons);
     return { kind: "ready", ...preview };

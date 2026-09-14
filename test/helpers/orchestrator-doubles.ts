@@ -177,6 +177,8 @@ export class FakeAddonScanner {
         vpkPath: `${TEST_PATHS.workshopFolder}\\${id}.vpk`,
         coverPath: null,
         info: null,
+        mtimeMs: 0,
+        sizeBytes: 0,
       })),
     );
   }

@@ -79,6 +79,12 @@ class MockFs implements AddonFileSystem {
   ensureDir(_dir: string): Promise<void> {
     return Promise.resolve();
   }
+
+  // mtimeMs/sizeBytes (P-31, Paso 1) no son relevantes para estas
+  // propiedades (foco: lista de .vpk y asociación de cover); valor fijo, no exercised.
+  stat(_path: string): Promise<{ mtimeMs: number; size: number }> {
+    return Promise.resolve({ mtimeMs: 0, size: 0 });
+  }
 }
 
 const buildScanner = (fs: MockFs): AddonScanner =>

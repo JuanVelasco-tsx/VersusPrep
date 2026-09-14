@@ -229,6 +229,20 @@ export interface ScannedAddon {
   coverPath: string | null;
   /** Metadata leída del `addoninfo.txt` interno; `null` si no disponible. */
   info: AddonInfo | null;
+  /**
+   * `mtimeMs` del `.vpk` (P-31, Paso 1, datos para el ordenamiento de
+   * Biblioteca — el ORDENAMIENTO en sí vive en el renderer, este campo solo
+   * provee el dato). Metadata de FILESYSTEM (`fs.stat`), NO requiere
+   * `vpk.exe`. Best-effort, mismo criterio que `info` (AC 2.5): si el `stat`
+   * falla (ventana muy chica entre listar el directorio y leerlo), degrada a
+   * `0` sin abortar ni omitir el addon — `0` nunca es un valor real de
+   * `mtimeMs`/`sizeBytes` para un archivo existente, así que no se confunde
+   * con un dato válido en la UI (un `Date` de época 0 o un tamaño "0 KB" se
+   * reconocen como degradados a simple vista).
+   */
+  mtimeMs: number;
+  /** Tamaño en bytes del `.vpk` (`fs.stat`); mismo criterio best-effort que `mtimeMs`. */
+  sizeBytes: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -411,7 +425,21 @@ export interface Preset {
  * `type === "switchActivePreset"`.
  */
 export interface PendingOperation {
-  type: "applyActiveSet" | "addAddon" | "removeAddon" | "switchActivePreset";
+  /**
+   * `"addAddons"`/`"removeAddons"` (P-31+P-22, Paso 1): variantes en LOTE de
+   * `"addAddon"`/`"removeAddon"` (`MergeOrchestrator.addAddons`/`removeAddons`).
+   * No necesitan tratamiento especial en el resume: `resumePendingOperation`
+   * ya trata CUALQUIER `type !== "switchActivePreset"` de forma genérica
+   * (re-deriva el preset activo fresco y materializa hacia él, ver
+   * `merge-orchestrator.ts`), así que agregar estos dos literales es
+   * puramente informativo/de trazabilidad — no dispara ninguna rama nueva.
+   * Sí hace falta sumarlos al allow-list de `parseResumeArgs`
+   * (`composition-root.ts`), que valida `type` contra una lista explícita de
+   * literales: sin eso, un relanzo elevado a mitad de una operación en lote
+   * arrancaría sin resume (la app perdería la sesión pendiente en vez de
+   * completarla).
+   */
+  type: "applyActiveSet" | "addAddon" | "removeAddon" | "addAddons" | "removeAddons" | "switchActivePreset";
   /** Identifica el estado de sesión pendiente persistido en el LocalStore. */
   resumeHandle: string;
   /** Id técnico del preset destino. Presente SOLO si `type === "switchActivePreset"`. */
