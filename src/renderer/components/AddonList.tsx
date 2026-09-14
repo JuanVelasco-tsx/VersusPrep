@@ -10,6 +10,7 @@ import { AddonRow } from "./AddonRow.js";
 import { LoadingIndicator } from "./LoadingIndicator.js";
 import { publishOperation, subscribeOperation } from "./OperationOverlay.js";
 import { mergePendingIntoActive } from "../state/pendingSelection.js";
+import { isPresetActivationEvent } from "../state/presetActivation.js";
 import styles from "./AddonList.module.css";
 
 /**
@@ -273,6 +274,29 @@ export function AddonList({
     const activeSet = await window.l4d2Api.getActiveSet();
     if (isMounted.current) setActiveEntries(activeSet);
   }, []);
+
+  // Bug reportado tras P-30 Paso 5: crear/cambiar de preset (PresetSwitcher)
+  // dejaba esta lista mostrando "Incluido" para addons del preset ANTERIOR,
+  // porque `activeEntries` solo se cargaba una vez al montar y ningún camino
+  // de escritura de PresetSwitcher pasaba por `refreshActiveSet`. `getActiveSet()`
+  // YA lee del preset activo (Paso 4.5b); lo que faltaba era RE-consultarlo
+  // cuando el preset activo cambia SIN que este panel se desmonte (cambiar de
+  // preset no navega de pestaña). `isPresetActivationEvent` filtra el ÚNICO
+  // evento relevante (switch exitoso, directo o encadenado desde "Nuevo
+  // preset") del mismo pub-sub que ya se usa para `operationRunning` —
+  // apply/add/remove de ESTE panel NO deben disparar este refetch (Biblioteca/
+  // Activos siguen desacoplados entre sí para esas operaciones, ver
+  // ActiveSetPanel.tsx). También limpia `selected`: una selección de
+  // checkboxes en curso pertenecía al preset ANTERIOR, no tiene sentido
+  // arrastrarla al preset recién activado (que puede ni siquiera tener esos
+  // addons como candidatos válidos).
+  useEffect(() => {
+    return subscribeOperation((event) => {
+      if (!isPresetActivationEvent(event)) return;
+      setSelected(new Set());
+      void refreshActiveSet();
+    });
+  }, [refreshActiveSet]);
 
   const handleAdded = useCallback(
     (addonId: string): void => {

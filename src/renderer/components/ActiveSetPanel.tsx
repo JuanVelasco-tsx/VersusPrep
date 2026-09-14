@@ -7,9 +7,10 @@ import type {
 } from "../../main/domain/index.js";
 import { LoadingIndicator } from "./LoadingIndicator.js";
 import { MergeSummaryPanel } from "./MergeSummaryPanel.js";
-import { publishOperation } from "./OperationOverlay.js";
+import { publishOperation, subscribeOperation } from "./OperationOverlay.js";
 import { PriorityRow, type CollisionSummary } from "./PriorityRow.js";
 import { resolveActiveSetEntries } from "../state/pendingSelection.js";
+import { isPresetActivationEvent } from "../state/presetActivation.js";
 import styles from "./ActiveSetPanel.module.css";
 
 const PREVIEW_DEBOUNCE_MS = 350;
@@ -225,6 +226,39 @@ export function ActiveSetPanel({
     }
 
     void load();
+  }, []);
+
+  // Bug reportado tras P-30 Paso 5: crear/cambiar de preset (PresetSwitcher)
+  // dejaba este panel mostrando el Active_Set del preset ANTERIOR (un preset
+  // nuevo y vacío nunca se reflejaba como vacío) porque `entries` solo se
+  // cargaba una vez al montar y nada acá escuchaba un cambio de preset
+  // activo disparado desde OTRO componente. `isPresetActivationEvent` filtra
+  // el ÚNICO evento relevante del pub-sub compartido (switch exitoso,
+  // directo o encadenado desde "Nuevo preset") — un `applyActiveSet`/
+  // `addAddon`/`removeAddon` de OTRO origen (p. ej. Biblioteca) NO dispara
+  // esto: la integración entre Biblioteca y este panel sigue
+  // DELIBERADAMENTE desacoplada para esas operaciones (ver el docblock de
+  // este componente); este panel refetchea el resto por su cuenta al
+  // remontar (cambiar de pestaña).
+  useEffect(() => {
+    return subscribeOperation((event) => {
+      if (!isPresetActivationEvent(event)) return;
+      window.l4d2Api
+        .getActiveSet()
+        .then((activeSet) => {
+          if (!isMounted.current) return;
+          setEntries(withSequentialPriority(sortedByPriority(activeSet)));
+          // Descarta cualquier resultado de "Aplicar"/preview del preset
+          // ANTERIOR: no tiene sentido para el recién activado.
+          setApplyState({ phase: "idle" });
+        })
+        .catch(() => {
+          // Best-effort: si esta re-consulta puntual falla, un remontaje
+          // posterior (cambiar de pestaña y volver) la reintenta vía el
+          // `load()` normal - no hace falta degradar todo el panel a error
+          // por un refresco secundario.
+        });
+    });
   }, []);
 
   // Preview debounced (300-400ms): se recalcula cada vez que `entries` cambia
