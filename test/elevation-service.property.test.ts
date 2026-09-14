@@ -108,7 +108,7 @@ class SpyStore implements LocalStore {
     return null;
   }
   createPreset(name: string, entries: AddonManifestEntry[]): Preset {
-    return { id: "preset-fake", name, entries };
+    return { id: "preset-fake", name, description: null, entries };
   }
   renamePreset(): void {}
   deletePreset(): void {}

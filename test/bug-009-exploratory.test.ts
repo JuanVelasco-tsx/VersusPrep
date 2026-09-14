@@ -303,13 +303,15 @@ class FakeLocalStore implements LocalStore {
   // sigan funcionando sin cambiar el resto de este archivo (fuera del alcance
   // de BUG-009).
   listPresets(): Preset[] {
-    return [{ id: "modsvs", name: "Principal", entries: [...this.manifest] }];
+    return [{ id: "modsvs", name: "Principal", description: null, entries: [...this.manifest] }];
   }
   getPreset(id: string): Preset | null {
-    return id === "modsvs" ? { id, name: "Principal", entries: [...this.manifest] } : null;
+    return id === "modsvs"
+      ? { id, name: "Principal", description: null, entries: [...this.manifest] }
+      : null;
   }
   createPreset(name: string, entries: AddonManifestEntry[]): Preset {
-    return { id: "preset-fake", name, entries };
+    return { id: "preset-fake", name, description: null, entries };
   }
   renamePreset(): void {}
   deletePreset(): void {}

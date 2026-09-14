@@ -97,7 +97,7 @@ class MockStore implements LocalStore {
     return null;
   }
   createPreset(name: string, entries: AddonManifestEntry[]): Preset {
-    return { id: "preset-fake", name, entries };
+    return { id: "preset-fake", name, description: null, entries };
   }
   renamePreset(_id: string, _newName: string): void {}
   deletePreset(_id: string): void {}

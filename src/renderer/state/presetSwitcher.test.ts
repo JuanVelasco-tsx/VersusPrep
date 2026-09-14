@@ -4,8 +4,8 @@ import { canDeletePreset, createAndActivatePreset } from "./presetSwitcher.js";
 import type { CreateAndActivateApi } from "./presetSwitcher.js";
 import type { OperationResult, Preset } from "../../main/domain/index.js";
 
-function preset(id: string, name: string): Preset {
-  return { id, name, entries: [] };
+function preset(id: string, name: string, description: string | null = null): Preset {
+  return { id, name, description, entries: [] };
 }
 
 describe("createAndActivatePreset (P-30, Paso 5)", () => {
@@ -54,6 +54,21 @@ describe("createAndActivatePreset (P-30, Paso 5)", () => {
 
     expect(created.id).toBe("preset-x");
     expect(switchResult).toEqual<OperationResult>({ status: "failure", error: "boom" });
+  });
+
+  test("reenvía la descripción tal cual a createPreset (bug/feature post Paso 5, modal con descripción)", async () => {
+    const createCalls: Array<{ name: string; description: string | undefined }> = [];
+    const api: CreateAndActivateApi = {
+      createPreset: async (name, description) => {
+        createCalls.push({ name, description });
+        return preset("preset-desc", name, description ?? null);
+      },
+      switchActivePreset: async () => ({ status: "success" }),
+    };
+
+    await createAndActivatePreset(api, "Armas", "Solo las mejores armas");
+
+    expect(createCalls).toEqual([{ name: "Armas", description: "Solo las mejores armas" }]);
   });
 });
 

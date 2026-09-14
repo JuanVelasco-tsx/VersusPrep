@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Preset } from "../../main/domain/index.js";
 import { canDeletePreset, createAndActivatePreset } from "../state/presetSwitcher.js";
+import { CreatePresetModal } from "./CreatePresetModal.js";
 import { publishOperation } from "./OperationOverlay.js";
 import styles from "./PresetSwitcher.module.css";
 
@@ -33,6 +34,8 @@ export function PresetSwitcher() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [managing, setManaging] = useState(false);
+  /** `true` mientras el modal de "Nuevo preset" está abierto (bug/feature post Paso 5). */
+  const [creating, setCreating] = useState(false);
 
   const isMounted = useRef(true);
   useEffect(() => {
@@ -90,13 +93,32 @@ export function PresetSwitcher() {
       });
   };
 
-  const handleCreate = (): void => {
-    const name = window.prompt("Nombre del nuevo preset:");
-    if (name === null) return; // cancelado
+  /**
+   * Confirmación del modal `CreatePresetModal` (bug/feature post Paso 5):
+   * antes, "Nuevo preset" pedía el nombre con `window.prompt()` (sin
+   * descripción, sin el aspecto del resto de la app). El adaptador `api` es
+   * necesario porque `window.l4d2Api.createPreset` tiene `entries` como
+   * segundo parámetro posicional (no `description`) — pasarlo TAL CUAL a
+   * `createAndActivatePreset` mandaría la descripción al parámetro
+   * equivocado sin que TypeScript lo marque (misma arity, tipos
+   * estructuralmente compatibles).
+   */
+  const handleCreateSubmit = (name: string, description: string): void => {
+    // Cierra el modal DE ENTRADA (no al terminar): la operación real que
+    // sigue (createPreset + switchActivePreset) puede disparar elevación
+    // UAC y ya tiene su propio indicador — el `OperationOverlay` compartido
+    // (mismo criterio que `handleSwitch`, que tampoco muestra UI propia
+    // mientras espera). Dejar el modal abierto detrás del overlay se vería
+    // como si "Nuevo preset" hubiera quedado colgado.
+    setCreating(false);
     setNotice(null);
     setBusy(true);
     publishOperation({ type: "start", kind: "switch", label: "Creando preset..." });
-    createAndActivatePreset(window.l4d2Api, name)
+    const api = {
+      createPreset: (n: string, d?: string) => window.l4d2Api.createPreset(n, undefined, d),
+      switchActivePreset: (id: string) => window.l4d2Api.switchActivePreset(id),
+    };
+    createAndActivatePreset(api, name, description === "" ? undefined : description)
       .then(({ preset, switchResult }) => {
         publishOperation({ type: "result", kind: "switch", result: switchResult });
         if (!isMounted.current) return;
@@ -173,9 +195,22 @@ export function PresetSwitcher() {
         ))}
       </select>
 
-      <button type="button" className={styles.button} disabled={busy} onClick={handleCreate}>
+      <button
+        type="button"
+        className={styles.button}
+        disabled={busy}
+        onClick={() => setCreating(true)}
+      >
         Nuevo preset
       </button>
+
+      {creating && (
+        <CreatePresetModal
+          busy={busy}
+          onCancel={() => setCreating(false)}
+          onSubmit={handleCreateSubmit}
+        />
+      )}
 
       <button
         type="button"

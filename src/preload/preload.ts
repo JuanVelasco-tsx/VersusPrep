@@ -57,8 +57,8 @@ const api: L4d2Api = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.mergeProgress, handler);
   },
   listPresets: () => ipcRenderer.invoke(IPC_CHANNELS.listPresets) as Promise<Preset[]>,
-  createPreset: (name, entries) =>
-    ipcRenderer.invoke(IPC_CHANNELS.createPreset, name, entries) as Promise<Preset>,
+  createPreset: (name, entries, description) =>
+    ipcRenderer.invoke(IPC_CHANNELS.createPreset, name, entries, description) as Promise<Preset>,
   renamePreset: (id, newName) =>
     ipcRenderer.invoke(IPC_CHANNELS.renamePreset, id, newName) as Promise<void>,
   deletePreset: (id) => ipcRenderer.invoke(IPC_CHANNELS.deletePreset, id) as Promise<void>,

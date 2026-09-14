@@ -172,7 +172,12 @@ describe("LocalStore — presets: estado inicial por migración (P-30, DECISIÓN
   test("una base nueva arranca con un preset 'Principal' vacío, ya marcado ACTIVO", () => {
     const presets = store.listPresets();
     expect(presets).toHaveLength(1);
-    expect(presets[0]).toEqual({ id: presets[0]!.id, name: DEFAULT_PRESET_NAME, entries: [] });
+    expect(presets[0]).toEqual({
+      id: presets[0]!.id,
+      name: DEFAULT_PRESET_NAME,
+      description: null,
+      entries: [],
+    });
     expect(store.getActivePresetId()).toBe(presets[0]!.id);
   });
 
@@ -239,6 +244,69 @@ describe("LocalStore — presets: CRUD (P-30, Paso 1)", () => {
   });
 });
 
+describe("LocalStore — presets.description (bug/feature post P-30 Paso 5)", () => {
+  test("createPreset con descripción la persiste tal cual, en createPreset/getPreset/listPresets", () => {
+    const preset = store.createPreset("Armas", CANDIDATE, "Solo las mejores armas");
+    expect(preset.description).toBe("Solo las mejores armas");
+    expect(store.getPreset(preset.id)?.description).toBe("Solo las mejores armas");
+    expect(store.listPresets().find((p) => p.id === preset.id)?.description).toBe(
+      "Solo las mejores armas",
+    );
+  });
+
+  test("createPreset sin descripción (parámetro omitido) persiste null, no undefined ni cadena vacía", () => {
+    const preset = store.createPreset("Skins", []);
+    expect(preset.description).toBeNull();
+    expect(store.getPreset(preset.id)?.description).toBeNull();
+  });
+
+  test("createPreset con descripción explícita null persiste null", () => {
+    const preset = store.createPreset("Skins", [], null);
+    expect(preset.description).toBeNull();
+  });
+
+  test("migración de esquema: una tabla `presets` SIN columna description (versión previa a este cambio) gana la columna vía ALTER TABLE, sin perder filas existentes", () => {
+    const rawDb = new Database(":memory:");
+    // Esquema VIEJO exacto (sin `description`), ya con un preset creado por
+    // una version anterior de la app.
+    rawDb.exec(`
+      CREATE TABLE presets (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+      CREATE TABLE preset_entries (
+        presetId TEXT NOT NULL, addonId TEXT NOT NULL, priorityOrder INTEGER NOT NULL,
+        PRIMARY KEY (presetId, addonId)
+      );
+      CREATE TABLE active_preset (id INTEGER PRIMARY KEY CHECK (id = 1), presetId TEXT);
+    `);
+    rawDb.prepare("INSERT INTO presets (id, name) VALUES (?, ?)").run("modsvs", DEFAULT_PRESET_NAME);
+    rawDb.prepare("INSERT INTO active_preset (id, presetId) VALUES (1, ?)").run("modsvs");
+
+    const migrated = new SqliteLocalStore(rawDb);
+
+    // La fila preexistente sigue ahí, ahora con description = null (columna
+    // nueva sin valor), no se duplicó ni se perdió.
+    expect(migrated.listPresets()).toEqual([
+      { id: "modsvs", name: DEFAULT_PRESET_NAME, description: null, entries: [] },
+    ]);
+    // La columna nueva ya admite escritura normal tras la migración.
+    const nuevo = migrated.createPreset("Armas", [], "desc");
+    expect(migrated.getPreset(nuevo.id)?.description).toBe("desc");
+
+    rawDb.close();
+  });
+
+  test("migración de columna es IDEMPOTENTE: reconstruir sobre una base ya migrada no falla ni duplica la columna", () => {
+    const rawDb = new Database(":memory:");
+    const first = new SqliteLocalStore(rawDb);
+    first.createPreset("Armas", [], "desc");
+
+    expect(() => new SqliteLocalStore(rawDb)).not.toThrow();
+    const second = new SqliteLocalStore(rawDb);
+    expect(second.listPresets().find((p) => p.name === "Armas")?.description).toBe("desc");
+
+    rawDb.close();
+  });
+});
+
 describe("LocalStore — presets: puntero de preset ACTIVO (P-30, Paso 1)", () => {
   test("setActivePresetId / getActivePresetId round-trip", () => {
     const preset = store.createPreset("Armas", []);
@@ -296,6 +364,7 @@ describe("LocalStore — presets: migración del Active_Set existente (P-30, Pas
       {
         id: activeId,
         name: DEFAULT_PRESET_NAME,
+        description: null,
         entries: [
           { addonId: "111", priorityOrder: 0 },
           { addonId: "222", priorityOrder: 1 },
@@ -322,7 +391,12 @@ describe("LocalStore — presets: migración del Active_Set existente (P-30, Pas
     const migrated = new SqliteLocalStore(rawDb);
 
     expect(migrated.listPresets()).toEqual([
-      { id: migrated.getActivePresetId(), name: DEFAULT_PRESET_NAME, entries: [] },
+      {
+        id: migrated.getActivePresetId(),
+        name: DEFAULT_PRESET_NAME,
+        description: null,
+        entries: [],
+      },
     ]);
     expect(migrated.getActivePresetId()).not.toBeNull();
 
@@ -391,6 +465,11 @@ describe("LocalStore — presets: migración del Active_Set existente (P-30, Pas
     expect(fixed).toEqual({
       id: DEFAULT_PRESET_FOLDER_ID,
       name: DEFAULT_PRESET_NAME,
+      // La tabla `presets` simulada arriba NO tenía columna `description`
+      // (esquema previo a esta corrección): `#migratePresetDescriptionColumn`
+      // la agrega vía ALTER TABLE ANTES de la reparación, así que la fila
+      // reparada queda con `description = null` (columna nueva, sin valor).
+      description: null,
       entries: [{ addonId: "111", priorityOrder: 0 }], // sin perder las entries que ya tenía
     });
     // El puntero de activo cascadeó al id nuevo (seguía apuntando al preset

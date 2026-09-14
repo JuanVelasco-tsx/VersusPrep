@@ -147,7 +147,7 @@ interface Doubles {
   classifyImpl: { fn: (addon: ScannedAddon) => Promise<VScriptClassification> };
   // --- Presets (P-30, Paso 4) ---
   presetsValue: { value: Preset[] };
-  createPresetCalls: Array<{ name: string; entries: AddonManifestEntry[] }>;
+  createPresetCalls: Array<{ name: string; entries: AddonManifestEntry[]; description: string | null }>;
   renamePresetCalls: Array<{ id: string; newName: string }>;
   deletePresetCalls: string[];
   activePresetIdValue: { value: string | null };
@@ -217,9 +217,14 @@ function buildDoubles(): Doubles {
       getPaths: () => d.getPathsValue.value,
       getManifest: () => d.manifestValue.value,
       listPresets: () => d.presetsValue.value,
-      createPreset: (name: string, entries: AddonManifestEntry[]) => {
-        d.createPresetCalls.push({ name, entries: [...entries] });
-        const preset: Preset = { id: `preset-fake-${d.createPresetCalls.length}`, name, entries };
+      createPreset: (name: string, entries: AddonManifestEntry[], description?: string | null) => {
+        d.createPresetCalls.push({ name, entries: [...entries], description: description ?? null });
+        const preset: Preset = {
+          id: `preset-fake-${d.createPresetCalls.length}`,
+          name,
+          description: description ?? null,
+          entries,
+        };
         d.presetsValue.value = [...d.presetsValue.value, preset];
         return preset;
       },
@@ -389,7 +394,7 @@ describe("IPC — ruteo canal->componente (catorce canales)", () => {
     const { ipc, d } = setup();
     const entries: AddonManifestEntry[] = [{ addonId: "111", priorityOrder: 0 }];
     d.activePresetIdValue.value = "preset-1";
-    d.presetsValue.value = [{ id: "preset-1", name: "Armas", entries }];
+    d.presetsValue.value = [{ id: "preset-1", name: "Armas", description: null, entries }];
 
     const res = await ipc.invoke(IPC_CHANNELS.getActiveSet);
 
@@ -756,7 +761,7 @@ describe("IPC — createProgressBroadcaster", () => {
 describe("IPC — presets:list", () => {
   test("caso feliz: devuelve exactamente lo que listPresets() del store trae", async () => {
     const { ipc, d } = setup();
-    const preset: Preset = { id: "preset-1", name: "Armas", entries: [] };
+    const preset: Preset = { id: "preset-1", name: "Armas", description: null, entries: [] };
     d.presetsValue.value = [preset];
 
     const res = await ipc.invoke(IPC_CHANNELS.listPresets);
@@ -779,7 +784,7 @@ describe("IPC — presets:create", () => {
 
     const res = (await ipc.invoke(IPC_CHANNELS.createPreset, "  Armas  ", entries)) as Preset;
 
-    expect(d.createPresetCalls).toEqual([{ name: "Armas", entries }]);
+    expect(d.createPresetCalls).toEqual([{ name: "Armas", entries, description: null }]);
     expect(res.name).toBe("Armas");
     expect(res.entries).toEqual(entries);
   });
@@ -789,7 +794,25 @@ describe("IPC — presets:create", () => {
 
     await ipc.invoke(IPC_CHANNELS.createPreset, "Skins");
 
-    expect(d.createPresetCalls).toEqual([{ name: "Skins", entries: [] }]);
+    expect(d.createPresetCalls).toEqual([{ name: "Skins", entries: [], description: null }]);
+  });
+
+  test("description opcional: se recorta y se persiste tal cual (bug/feature post P-30 Paso 5)", async () => {
+    const { ipc, d } = setup();
+
+    await ipc.invoke(IPC_CHANNELS.createPreset, "Armas", [], "  Solo las mejores armas  ");
+
+    expect(d.createPresetCalls).toEqual([
+      { name: "Armas", entries: [], description: "Solo las mejores armas" },
+    ]);
+  });
+
+  test("description ausente o vacía tras recortar -> se persiste como null, no como cadena vacía", async () => {
+    const { ipc, d } = setup();
+
+    await ipc.invoke(IPC_CHANNELS.createPreset, "Armas", [], "   ");
+
+    expect(d.createPresetCalls).toEqual([{ name: "Armas", entries: [], description: null }]);
   });
 
   test("caso de error: nombre vacío/solo espacios -> rechaza, NO llama a createPreset", async () => {

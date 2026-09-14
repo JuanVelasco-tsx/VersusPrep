@@ -200,10 +200,13 @@ export interface L4d2Api {
    * el preset arranca VACÍO (P-30, Paso 4, DECISIÓN documentada en
    * `ipc-handlers.ts`) — es la opción que requiere MENOS cambios en el flujo
    * existente de Biblioteca/Activos; agregarle addons a un preset recién creado
-   * queda pendiente de cablear (ver el hallazgo de alcance reportado en el Paso
-   * 4, todavía sin resolver). Lanza si `name` está vacío/solo espacios.
+   * quedó cableado en el Paso 5 (crear -> queda activo -> Biblioteca/Activos
+   * agregan sobre él normalmente). `description` también es OPCIONAL (bug/
+   * feature post Paso 5: modal real con nombre + descripción, ver
+   * `PresetSwitcher.tsx`); ausente o vacía persiste `null`. Lanza si `name`
+   * está vacío/solo espacios.
    */
-  createPreset(name: string, entries?: AddonManifestEntry[]): Promise<Preset>;
+  createPreset(name: string, entries?: AddonManifestEntry[], description?: string): Promise<Preset>;
   /** Renombra un preset existente (no-op si `id` no existe). Lanza si `newName` está vacío/solo espacios. */
   renamePreset(id: string, newName: string): Promise<void>;
   /**

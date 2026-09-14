@@ -13,7 +13,7 @@ import type { OperationResult, Preset } from "../../main/domain/index.js";
  * tests sin implementar el resto de la API.
  */
 export interface CreateAndActivateApi {
-  createPreset(name: string): Promise<Preset>;
+  createPreset(name: string, description?: string): Promise<Preset>;
   switchActivePreset(id: string): Promise<OperationResult>;
 }
 
@@ -33,12 +33,18 @@ export interface CreateAndActivateApi {
  * llamador lo reporte (mismo `OperationResult` que ya maneja
  * `OperationOverlay` para apply/add/remove), y el preset queda existente pero
  * inactivo — el usuario puede reintentar activarlo desde el desplegable.
+ *
+ * `description` (bug/feature post Paso 5, modal real de creación en
+ * `PresetSwitcher.tsx`): OPCIONAL, se reenvía tal cual a `api.createPreset` —
+ * ninguna lógica nueva acá, el backend ya normaliza vacío/ausente a `null`
+ * (ver `ipc-handlers.ts`).
  */
 export async function createAndActivatePreset(
   api: CreateAndActivateApi,
   name: string,
+  description?: string,
 ): Promise<{ preset: Preset; switchResult: OperationResult }> {
-  const preset = await api.createPreset(name);
+  const preset = await api.createPreset(name, description);
   const switchResult = await api.switchActivePreset(preset.id);
   return { preset, switchResult };
 }

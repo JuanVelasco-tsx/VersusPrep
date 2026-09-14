@@ -320,12 +320,23 @@ export function registerIpcHandlers(
   // válido a persistir.
   ipcMain.handle(
     IPC_CHANNELS.createPreset,
-    (_event, name: string, entries?: AddonManifestEntry[]) => {
+    (_event, name: string, entries?: AddonManifestEntry[], description?: string) => {
       const trimmedName = name.trim();
       if (trimmedName.length === 0) {
         throw new Error("El nombre del preset no puede estar vacío.");
       }
-      return deps.localStore.createPreset(trimmedName, entries ?? []);
+      // `description` OPCIONAL (bug/feature post Paso 5): se recorta y una
+      // cadena vacía tras el trim persiste como `null` (mismo criterio que
+      // "sin descripción"), no como `""` — evita dos representaciones
+      // distintas para el mismo estado "no hay descripción".
+      const trimmedDescription = description?.trim();
+      return deps.localStore.createPreset(
+        trimmedName,
+        entries ?? [],
+        trimmedDescription !== undefined && trimmedDescription.length > 0
+          ? trimmedDescription
+          : null,
+      );
     },
   );
 

@@ -180,6 +180,17 @@
  * `manifest`/`saveManifest`/`getManifest` ORIGINALES NO se tocan ni se
  * eliminan en este paso: siguen siendo la única fuente real que consume el
  * MergeOrchestrator hasta que un paso posterior los reemplace por presets.
+ *
+ * ---------------------------------------------------------------------------
+ * DECISIÓN 7 (bug/feature post P-30 Paso 5) — `presets.description` (TEXT,
+ * nullable): campo libre y OPCIONAL, agregado vía `ALTER TABLE` idempotente
+ * (`#migratePresetDescriptionColumn`, corre ANTES de la migración de la
+ * DECISIÓN 6 en el constructor) porque `CREATE TABLE IF NOT EXISTS` no altera
+ * una tabla `presets` que ya existía de una versión previa de la app. Motivo
+ * del campo: "Nuevo preset" (Paso 5) solo pedía un nombre vía `prompt()`, sin
+ * forma de anotar para qué es cada preset — un modal real (renderer) lo
+ * reemplaza y agrega este campo. Solo se CAPTURA y persiste por ahora, ver
+ * {@link Preset}.
  */
 
 import { randomUUID } from "node:crypto";
@@ -244,11 +255,13 @@ export interface LocalStore {
   getPreset(id: string): Preset | null;
   /**
    * Crea un preset nuevo con un `id` TÉCNICO generado (nunca derivado de
-   * `name`) y las `entries` dadas. Devuelve el {@link Preset} creado
-   * (incluido su `id` nuevo, para que el llamador pueda usarlo de inmediato,
-   * p. ej. para marcarlo activo).
+   * `name`), las `entries` dadas y una `description` OPCIONAL (bug/feature
+   * post P-30 Paso 5: ver {@link Preset}). `description` ausente o `null`
+   * persiste `NULL`. Devuelve el {@link Preset} creado (incluido su `id`
+   * nuevo, para que el llamador pueda usarlo de inmediato, p. ej. para
+   * marcarlo activo).
    */
-  createPreset(name: string, entries: AddonManifestEntry[]): Preset;
+  createPreset(name: string, entries: AddonManifestEntry[], description?: string | null): Preset;
   /** Renombra un preset existente (no-op si `id` no existe). NO toca `entries`. */
   renamePreset(id: string, newName: string): void;
   /**
@@ -359,6 +372,7 @@ export class SqliteLocalStore implements LocalStore {
   constructor(db: Database) {
     this.#db = db;
     this.#db.exec(SCHEMA_DDL);
+    this.#migratePresetDescriptionColumn();
     this.#migrateActiveSetToDefaultPreset();
   }
 
@@ -460,21 +474,25 @@ export class SqliteLocalStore implements LocalStore {
     // INSERCIÓN de forma estable; `id` es hex aleatorio y no serviría para
     // ordenar de forma significativa.
     const rows = this.#db
-      .prepare<[], { id: string; name: string }>("SELECT id, name FROM presets ORDER BY rowid ASC")
+      .prepare<[], { id: string; name: string; description: string | null }>(
+        "SELECT id, name, description FROM presets ORDER BY rowid ASC",
+      )
       .all();
     return rows.map((row) => ({ ...row, entries: this.#readPresetEntries(row.id) }));
   }
 
   getPreset(id: string): Preset | null {
     const row = this.#db
-      .prepare<[string], { id: string; name: string }>("SELECT id, name FROM presets WHERE id = ?")
+      .prepare<[string], { id: string; name: string; description: string | null }>(
+        "SELECT id, name, description FROM presets WHERE id = ?",
+      )
       .get(id);
     if (row === undefined) return null;
     return { ...row, entries: this.#readPresetEntries(id) };
   }
 
-  createPreset(name: string, entries: AddonManifestEntry[]): Preset {
-    return this.#insertPresetRow(this.#generateUniquePresetId(), name, entries);
+  createPreset(name: string, entries: AddonManifestEntry[], description?: string | null): Preset {
+    return this.#insertPresetRow(this.#generateUniquePresetId(), name, entries, description ?? null);
   }
 
   renamePreset(id: string, newName: string): void {
@@ -577,8 +595,32 @@ export class SqliteLocalStore implements LocalStore {
       DEFAULT_PRESET_FOLDER_ID,
       DEFAULT_PRESET_NAME,
       this.getManifest(),
+      null,
     );
     this.setActivePresetId(preset.id);
+  }
+
+  /**
+   * Migración idempotente de esquema (bug/feature post P-30 Paso 5): agrega
+   * la columna `presets.description` (TEXT, nullable) si todavía no existe.
+   * `CREATE TABLE IF NOT EXISTS` (SCHEMA_DDL) NO alcanza para esto — no
+   * modifica una tabla que ya existía de una versión anterior de la app, solo
+   * crea la tabla si falta por completo — así que hace falta un `ALTER TABLE`
+   * aparte, guardado detrás de un chequeo `PRAGMA table_info` para no
+   * relanzarlo en cada arranque (SQLite no tiene `ADD COLUMN IF NOT EXISTS`).
+   * Mismo criterio de migración idempotente que `#repairDefaultPresetFolder`
+   * (Paso 4.5a): corre SIEMPRE en el constructor, es un no-op si la columna ya
+   * está, y no requiere que el usuario haga nada. Las filas existentes quedan
+   * con `description = NULL` (comportamiento default de `ALTER TABLE ... ADD
+   * COLUMN` sin `DEFAULT`), que es exactamente la semántica de "sin
+   * descripción" que ya usa el resto del campo (ver {@link Preset}).
+   */
+  #migratePresetDescriptionColumn(): void {
+    const columns = this.#db.prepare<[], { name: string }>("PRAGMA table_info(presets)").all();
+    const hasDescription = columns.some((col) => col.name === "description");
+    if (!hasDescription) {
+      this.#db.exec("ALTER TABLE presets ADD COLUMN description TEXT");
+    }
   }
 
   /**
@@ -621,19 +663,29 @@ export class SqliteLocalStore implements LocalStore {
    * por `createPreset` (id generado, `#generateUniquePresetId`) y la
    * migración (id fijo `DEFAULT_PRESET_FOLDER_ID` para "Principal", ver
    * DECISIÓN 6-bis) — un solo lugar arma la transacción INSERT preset +
-   * entries, para que ambos caminos no puedan desincronizarse.
+   * entries, para que ambos caminos no puedan desincronizarse. `description`
+   * es explícito (no opcional acá): los dos llamadores ya saben si tienen una
+   * o no (`createPreset` normaliza `undefined` a `null`; la migración siempre
+   * pasa `null`), así que no hace falta un segundo default en este nivel.
    */
-  #insertPresetRow(id: string, name: string, entries: readonly AddonManifestEntry[]): Preset {
-    const insertPreset = this.#db.prepare("INSERT INTO presets (id, name) VALUES (@id, @name)");
+  #insertPresetRow(
+    id: string,
+    name: string,
+    entries: readonly AddonManifestEntry[],
+    description: string | null,
+  ): Preset {
+    const insertPreset = this.#db.prepare(
+      "INSERT INTO presets (id, name, description) VALUES (@id, @name, @description)",
+    );
     const insertEntry = this.#db.prepare(
       "INSERT INTO preset_entries (presetId, addonId, priorityOrder) VALUES (@presetId, @addonId, @priorityOrder)",
     );
     const tx = this.#db.transaction((rows: readonly AddonManifestEntry[]) => {
-      insertPreset.run({ id, name });
+      insertPreset.run({ id, name, description });
       for (const row of rows) insertEntry.run({ presetId: id, ...row });
     });
     tx(entries);
-    return { id, name, entries: [...entries] };
+    return { id, name, description, entries: [...entries] };
   }
 
   /** Lee las entries de un preset, en Priority_Order ascendente. */

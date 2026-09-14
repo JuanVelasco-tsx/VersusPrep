@@ -391,6 +391,17 @@ export interface Preset {
   id: string;
   name: string;
   entries: AddonManifestEntry[];
+  /**
+   * Descripción libre y OPCIONAL del preset (bug/feature reportado tras P-30
+   * Paso 5: "Nuevo preset" solo pedía un nombre por `prompt()`, sin forma de
+   * anotar para qué es cada preset). `string | null` —no una propiedad
+   * `description?:` ausente— mismo idioma que el resto de los campos
+   * respaldados por una columna SQLite nullable en este archivo (`coverPath`,
+   * `info`, `getActivePresetId()`): `null` es el valor explícito de "sin
+   * descripción", no una clave faltante. Solo se CAPTURA y persiste por
+   * ahora; ningún panel la muestra todavía (paso de UI futuro).
+   */
+  description: string | null;
 }
 
 // ---------------------------------------------------------------------------

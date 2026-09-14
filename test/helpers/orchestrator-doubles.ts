@@ -209,7 +209,12 @@ export class FakeLocalStore implements LocalStore {
     // `manifest` inicial. Sin esto, `#runPublic` (que ahora EXIGE un preset
     // activo) fallaría en TODOS los tests existentes de apply/add/remove.
     const seedEntries = init?.manifest ?? [];
-    this.#presets.set("modsvs", { id: "modsvs", name: "Principal", entries: [...seedEntries] });
+    this.#presets.set("modsvs", {
+      id: "modsvs",
+      name: "Principal",
+      description: null,
+      entries: [...seedEntries],
+    });
     this.#activePresetId = "modsvs";
   }
 
@@ -240,8 +245,13 @@ export class FakeLocalStore implements LocalStore {
   getPreset(id: string): Preset | null {
     return this.#presets.get(id) ?? null;
   }
-  createPreset(name: string, entries: AddonManifestEntry[]): Preset {
-    const preset: Preset = { id: `preset-fake-${this.#presetSeq++}`, name, entries: [...entries] };
+  createPreset(name: string, entries: AddonManifestEntry[], description?: string | null): Preset {
+    const preset: Preset = {
+      id: `preset-fake-${this.#presetSeq++}`,
+      name,
+      description: description ?? null,
+      entries: [...entries],
+    };
     this.#presets.set(preset.id, preset);
     return preset;
   }
