@@ -1,101 +1,207 @@
+/*
+ * "Estado del preset" (README 2a, rediseño Paso 3/8). Vive dentro del slot
+ * de panel derecho del shell (App.module.css .rightPanel, ya con su propio
+ * padding/ancho) — este archivo solo define el contenido interno.
+ */
 .summary {
-  width: 280px;
-  flex-shrink: 0;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
-.heading {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  margin: 0 0 var(--space-3);
+.kicker {
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-kicker); /* 9.5px, exacto al README */
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
 }
 
-.line {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-subtle);
-  margin: 0 0 var(--space-2);
+.metric {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
 }
 
-.message {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  margin: 0 0 var(--space-2);
+.metricNumber {
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-metric); /* 40px, exacto al README */
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
 }
 
-.list {
+.metricLegend {
+  font-size: var(--fs-base); /* 12px, cercano al README (12px) */
+  color: var(--color-text-dim);
+  padding-bottom: 5px;
+}
+
+.hairline {
+  height: 1px;
+  margin: var(--space-6) 0;
+  background: var(--hairline-fade);
+}
+
+.findings {
   list-style: none;
-  margin: 0 0 var(--space-3);
+  margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.finding {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.finding::before {
+  content: "";
+}
+
+.dotCollide,
+.dotBlocked,
+.dotAccent {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+
+.dotCollide {
+  background: var(--color-collide);
+}
+
+.dotBlocked {
+  background: var(--color-blocked);
+}
+
+.dotAccent {
+  background: var(--color-accent);
+}
+
+.findingText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.findingTitle {
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-base); /* 12.5px del README ~ fs-base 12.5px, exacto */
+  color: var(--color-text);
+}
+
+.findingBody {
+  font-size: var(--fs-sm); /* 11.5px, exacto al README */
+  line-height: 1.45;
+  color: var(--color-text-dim);
+}
+
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--color-accent-soft);
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 .details {
-  margin: 0 0 var(--space-3);
+  margin-top: var(--space-2);
 }
 
 .detailsSummary {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-subtle);
+  font-size: var(--fs-xs);
+  color: var(--color-text-faint);
   cursor: pointer;
 }
 
-.details .list {
+.detailsList {
+  list-style: none;
   margin: var(--space-2) 0 0;
+  padding: 0;
 }
 
-.listItem {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-subtle);
+.detailsItem {
+  font-size: var(--fs-xs);
+  color: var(--color-text-dim);
   padding: 2px 0;
 }
 
 .error {
-  font-size: var(--font-size-sm);
-  color: var(--color-danger);
-  margin: 0 0 var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--color-blocked-text);
+  margin: 0 0 var(--space-3);
 }
 
-.success {
-  font-size: var(--font-size-sm);
-  color: var(--color-text);
-  margin: 0 0 var(--space-2);
-}
-
-.actions {
+/* Pie: caja explicativa + Aplicar/Descartar (README punto 5). */
+.footer {
+  margin-top: auto;
+  padding-top: var(--space-6);
   display: flex;
-  gap: var(--space-2);
-  margin-top: var(--space-4);
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.explainer {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  font-size: var(--fs-xs); /* 11px, exacto al README */
+  line-height: 1.5;
+  color: var(--color-text-dim);
+  margin: 0;
+}
+
+.code {
+  font-family: var(--font-mono);
 }
 
 .applyButton {
-  flex: 1;
-  font-size: var(--font-size-sm);
-  background: var(--color-accent);
-  color: var(--color-accent-text);
-  border: none;
+  background: var(--color-accent-wash);
+  color: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
   border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-5) var(--space-6); /* ~11px/14px, cercano al README */
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-md); /* 13px, exacto al README */
   cursor: pointer;
 }
 
+.applyButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
 .applyButton:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }
 
 .discardButton {
-  font-size: var(--font-size-sm);
-  background: var(--color-surface-alt);
-  color: var(--color-text);
+  background: transparent;
+  color: var(--color-text-dim);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-md);
   cursor: pointer;
 }
 
+.discardButton:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
 .discardButton:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }

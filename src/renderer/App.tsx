@@ -12,20 +12,22 @@ import type { AddonManifestEntry, Preset } from "../main/domain/index.js";
 import { ActiveSetPanel } from "./components/ActiveSetPanel.js";
 import { AddonList } from "./components/AddonList.js";
 import { LoadingIndicator } from "./components/LoadingIndicator.js";
+import { MergeSummaryPanel } from "./components/MergeSummaryPanel.js";
 import { OperationOverlay, publishOperation } from "./components/OperationOverlay.js";
 import { PresetSwitcher } from "./components/PresetSwitcher.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
 import { NOTICES_COUNT, TrustNotices } from "./components/TrustNotices.js";
+import { useActiveSetState } from "./state/useActiveSetState.js";
 import styles from "./App.module.css";
 
 type View = "library" | "active" | "presets" | "settings";
 
 /**
  * Items del nav vertical del riel (README `2a`, "Nav vertical"). `count` es
- * `null` cuando este paso todavia no tiene de donde sacar un numero real sin
- * tocar el contenido interno de un componente que no le toca a este paso
- * (Biblioteca: total escaneado, vive en `AddonList`, Paso 3) - un item con
- * `count: null` simplemente no muestra contador, no un placeholder inventado.
+ * `null` para "Configuración" (esa pantalla no tiene noción de "cantidad").
+ * El contador de "Biblioteca" (total escaneado) se conecta en el Paso 3 via
+ * `AddonList.onAddonCountChange` - antes de ese paso quedaba `null` a
+ * propósito (sin tocar el contenido interno de `AddonList`).
  */
 interface NavItemDef {
   view: View;
@@ -100,18 +102,19 @@ export function App() {
   // que cualquiera de los dos paneles remonte, porque `pendingEntries` seguiria
   // ganando para siempre.
   //
-  // Fix: cada panel tiene su PROPIO flag de consumo, marcado por el panel
+  // Fix: `AddonList` tiene su PROPIO flag de consumo, marcado por el panel
   // mismo (via `onPendingConsumed`) la PRIMERA vez que su propio `load()`
   // efectivamente usa `pendingEntries` (no en remontajes posteriores, porque
-  // el flag vive aca en App.tsx, que no remonta). Una vez marcado, ese panel
-  // recibe `null` en vez de `pendingEntries` de ahi en adelante y cae al
-  // camino normal (`getActiveSet()` sin override). NO alcanza con un solo
-  // flag compartido: el resume fuerza `view="active"` primero, asi que si se
-  // limpiara `pendingEntries` apenas lo consume `ActiveSetPanel`, `AddonList`
-  // jamas lo veria no-`null` al entrar por primera vez a "Biblioteca"
-  // (reabriria BUG-013). Cada panel necesita su propia ventana de "primera
-  // vez", independiente del ciclo de montaje del otro.
-  const [activeSetConsumedPending, setActiveSetConsumedPending] = useState(false);
+  // el flag vive aca en App.tsx, que no remonta). Una vez marcado, recibe
+  // `null` en vez de `pendingEntries` de ahi en adelante y cae al camino
+  // normal (`getActiveSet()` sin override).
+  //
+  // (Paso 3) `ActiveSetPanel` YA NO necesita su propio flag equivalente: su
+  // consumo de `pendingEntries` (BUG-013) se movio a `useActiveSetState`
+  // (mas abajo), que se monta UNA sola vez para toda la vida del proceso -
+  // ver el docblock de ese hook para el porque el guard interno de ESE hook
+  // (mismo patron `hasStarted` que ya usa `AddonList`) alcanza sin necesitar
+  // un flag threadeado desde aca.
   const [addonListConsumedPending, setAddonListConsumedPending] = useState(false);
 
   // CORRECCION (hallazgo de revision QA): `onPendingConsumed` pasado como
@@ -129,9 +132,6 @@ export function App() {
   // que retorna es la MISMA en toda la vida de este componente.
   const handleAddonListPendingConsumed = useCallback(() => {
     setAddonListConsumedPending(true);
-  }, []);
-  const handleActiveSetPendingConsumed = useCallback(() => {
-    setActiveSetConsumedPending(true);
   }, []);
 
   // BUG-004 parte 2 (backend de Kiro cerrado en 8a7e009, reordenamiento A1):
@@ -249,6 +249,25 @@ export function App() {
   // arranque recien en el Paso 8.
   const [noticesOpen, setNoticesOpen] = useState(false);
 
+  // (Paso 3, wiring pendiente del Paso 2) Total de addons escaneados,
+  // reportado por AddonList (ver ese componente, `onAddonCountChange`) para
+  // el contador de "Biblioteca" del nav. `null` hasta que AddonList termina
+  // su primer escaneo.
+  const [libraryCount, setLibraryCount] = useState<number | null>(null);
+  const handleAddonCountChange = useCallback((count: number): void => {
+    setLibraryCount(count);
+  }, []);
+
+  // (Paso 3) Estado compartido del Active_Set candidato (entries/preview/
+  // apply) - montado de forma INCONDICIONAL aca (nunca dentro de una rama
+  // `{view === ... &&}`), lo que GARANTIZA por las reglas de Hooks de React
+  // que sobrevive a cualquier cambio de `view` sin remontar. Alimenta tanto
+  // a `ActiveSetPanel` (lista + reordenamiento) como al panel derecho
+  // "Estado del preset" (`MergeSummaryPanel`, Biblioteca Y Activos) - ver
+  // `useActiveSetState` para el detalle completo de esta decision de
+  // arquitectura (confirmada con el usuario, no asumida).
+  const activeSetState = useActiveSetState(pendingEntries);
+
   return (
     <div className={styles.shell}>
       <OperationOverlay />
@@ -268,11 +287,13 @@ export function App() {
         <nav className={styles.nav}>
           {NAV_ITEMS.map((item) => {
             const count =
-              item.view === "active"
-                ? (activePreset?.entries.length ?? null)
-                : item.view === "presets"
-                  ? presetsInfo.presets.length
-                  : null;
+              item.view === "library"
+                ? libraryCount
+                : item.view === "active"
+                  ? (activePreset?.entries.length ?? null)
+                  : item.view === "presets"
+                    ? presetsInfo.presets.length
+                    : null;
             return (
               <button
                 key={item.view}
@@ -313,14 +334,12 @@ export function App() {
             onPendingConsumed={handleAddonListPendingConsumed}
             pathsReady={pathsReady}
             onPathsReady={handlePathsReady}
+            onAddonCountChange={handleAddonCountChange}
+            activeSetState={activeSetState}
           />
         )}
         {resuming !== null && view === "active" && (
-          <ActiveSetPanel
-            resuming={resuming}
-            pendingEntries={activeSetConsumedPending ? null : pendingEntries}
-            onPendingConsumed={handleActiveSetPendingConsumed}
-          />
+          <ActiveSetPanel resuming={resuming} activeSetState={activeSetState} />
         )}
         {resuming !== null && view === "presets" && (
           <p className={styles.placeholder}>
@@ -333,8 +352,23 @@ export function App() {
 
       {VIEWS_WITH_RIGHT_PANEL.has(view) && (
         <aside className={styles.rightPanel}>
-          {/* Contenido real: Paso 3 (Biblioteca), Paso 4 (Activos), Paso 6 (Configuración). */}
-          <p className={styles.placeholder}>Próximamente</p>
+          {view === "settings" ? (
+            // Contenido real: Paso 6 (Configuración, "Estado de detección").
+            <p className={styles.placeholder}>Próximamente (Paso 6 del rediseño).</p>
+          ) : (
+            <MergeSummaryPanel
+              entryCount={activeSetState.entries.length}
+              previewState={activeSetState.previewState}
+              applyState={activeSetState.applyState}
+              hasUnappliedChanges={activeSetState.hasUnappliedChanges}
+              titles={
+                activeSetState.loadState.phase === "ready" ? activeSetState.loadState.titles : {}
+              }
+              onApply={activeSetState.handleApply}
+              onDiscard={activeSetState.handleDiscard}
+              onGoToActive={() => setView("active")}
+            />
+          )}
         </aside>
       )}
     </div>
