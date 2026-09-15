@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-import type { OperationResult } from "../../main/domain/index.js";
+import type { MergeProgressEvent, OperationResult } from "../../main/domain/index.js";
+import { computeChecklist, computeProgressFraction } from "../state/operationChecklist.js";
 import styles from "./OperationOverlay.module.css";
 
 export type OperationKind = "apply" | "add" | "remove" | "switch";
@@ -64,10 +65,18 @@ export function getWillNeedElevation(): Promise<boolean> {
   return cachedWillNeedElevation;
 }
 
-/** Estado local del overlay (union discriminada por `phase`, mismo estilo que el resto de la UI). */
+/**
+ * Estado local del overlay (unión discriminada por `phase`). `"restarting"`
+ * es un phase PROPIO desde el rediseño Paso 7/8 (antes se forzaba `"running"`
+ * con un `label` que pisaba el texto — ver el comentario de BUG-004 más abajo
+ * para el detalle histórico): el tratamiento visual del README (borde
+ * `#4c5397` con gradiente índigo, contenido completamente distinto al
+ * checklist de "running") ya no encaja como una variante de "running".
+ */
 type OverlayState =
   | { phase: "hidden" }
-  | { phase: "running"; kind: OperationKind; label?: string }
+  | { phase: "running"; kind: OperationKind; label?: string; currentStep: MergeProgressEvent["step"] | null }
+  | { phase: "restarting" }
   | { phase: "result"; kind: OperationKind; result: OperationResult };
 
 const RUNNING_LABELS: Record<OperationKind, string> = {
@@ -76,6 +85,18 @@ const RUNNING_LABELS: Record<OperationKind, string> = {
   remove: "Quitando addon...",
   switch: "Cambiando de preset...",
 };
+
+/** Kicker del estado de fallo (README: "cambiar el ámbar por el rojo hue 22... el ▲ por ✕"), por kind. */
+const FAILURE_KICKERS: Record<OperationKind, string> = {
+  apply: "No se pudo aplicar",
+  add: "No se pudo agregar",
+  remove: "No se pudo quitar",
+  switch: "No se pudo cambiar de preset",
+};
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Error desconocido.";
+}
 
 /**
  * Overlay MODAL BLOQUEANTE de progreso/resultado para las operaciones de
@@ -90,10 +111,17 @@ const RUNNING_LABELS: Record<OperationKind, string> = {
  * del condicional de vista, para cubrir tanto al panel "Activos" como a
  * `AddonRow` (biblioteca) y al selector de presets por igual.
  *
- * DELIBERADO: el backdrop en "running" no tiene onClick ni handler de Escape
- * para cerrarse - la operacion real sigue corriendo en el main process aunque
- * el modal desaparezca, asi que cerrarlo antes de tiempo dejaria el
- * checkbox/boton de origen en un estado optimista sin resultado que lo resuelva.
+ * DELIBERADO: el backdrop en "running"/"restarting" no tiene onClick ni
+ * handler de Escape para cerrarse - la operacion real sigue corriendo en el
+ * main process aunque el modal desaparezca, asi que cerrarlo antes de tiempo
+ * dejaria el checkbox/boton de origen en un estado optimista sin resultado
+ * que lo resuelva.
+ *
+ * REDISEÑO Paso 7/8 (README "1f"): el checklist de pasos ("en curso") usa
+ * SOLO la granularidad real que ya emite `MergeOrchestrator` — ver
+ * `operationChecklist.ts` para la decisión completa (confirmada contra el
+ * código) de por qué el mock separa "Desempaquetando"/"Empaquetando" en dos
+ * líneas con contador y acá quedan colapsadas en una sola, sin contador.
  */
 export function OperationOverlay() {
   const [state, setState] = useState<OverlayState>({ phase: "hidden" });
@@ -103,12 +131,22 @@ export function OperationOverlay() {
       if (event.type === "start") {
         setState(
           event.label === undefined
-            ? { phase: "running", kind: event.kind }
-            : { phase: "running", kind: event.kind, label: event.label },
+            ? { phase: "running", kind: event.kind, currentStep: null }
+            : { phase: "running", kind: event.kind, label: event.label, currentStep: null },
         );
-      } else {
-        setState({ phase: "result", kind: event.kind, result: event.result });
+        return;
       }
+      // (Paso 7/8) `status: "elevating"` y el step "restarting" (más abajo)
+      // son el MISMO momento real (justo antes de que esta instancia sin
+      // privilegios se cierre) — antes de este paso terminaban en vistas
+      // DISTINTAS según cuál de los dos llegaba primero (un latente
+      // inconsistencia de copy, nunca reportada como bug). Unificados en el
+      // mismo phase "restarting" para que se vea siempre igual.
+      if (event.result.status === "elevating") {
+        setState({ phase: "restarting" });
+        return;
+      }
+      setState({ phase: "result", kind: event.kind, result: event.result });
     });
   }, []);
 
@@ -116,23 +154,21 @@ export function OperationOverlay() {
   // emite ElevationService por el mismo canal `merge:onProgress`, JUSTO ANTES
   // del relanzo `runas` - es decir, mientras esta instancia (todavia sin
   // privilegios) sigue viva pero está a punto de cerrarse. En cuanto llega,
-  // el modal cambia su mensaje a uno de reinicio, EN VEZ de quedarse
-  // congelado en "Agregando addon..." (o lo que sea que RUNNING_LABELS
-  // mostraba) hasta que la ventana se cierra sin aviso. Se fuerza `"running"`
-  // pase lo que pase con el estado previo del overlay: el HUECO CONOCIDO de
-  // `AddonRow.tsx` (camino reactivo de elevacion, sin "start" previo si la
-  // heuristica `willNeedElevation` se equivoco) puede llegar a este punto con
-  // el overlay todavia en `"hidden"` - `kind` es irrelevante en ese caso (no
-  // hay `RUNNING_LABELS` que mostrar, `label` ya lo pisa), se usa "apply"
-  // como placeholder valido para el tipo.
+  // el modal cambia a la vista de reinicio, EN VEZ de quedarse congelado en
+  // el checklist hasta que la ventana se cierre sin aviso. Se fuerza el
+  // cambio pase lo que pase con el estado previo del overlay: el HUECO
+  // CONOCIDO de `AddonRow.tsx` (camino reactivo de elevacion, sin "start"
+  // previo si la heuristica `willNeedElevation` se equivoco) puede llegar a
+  // este punto con el overlay todavia en `"hidden"` - a diferencia de la
+  // version anterior, el nuevo phase "restarting" no necesita un `kind`
+  // placeholder para ese caso (su copy no depende del kind).
   useEffect(() => {
     return window.l4d2Api.onProgress((event) => {
-      if (event.step !== "restarting") return;
-      setState((prev) => ({
-        phase: "running",
-        kind: prev.phase === "hidden" ? "apply" : prev.kind,
-        label: "Reiniciando con permisos de administrador...",
-      }));
+      if (event.step === "restarting") {
+        setState({ phase: "restarting" });
+        return;
+      }
+      setState((prev) => (prev.phase === "running" ? { ...prev, currentStep: event.step } : prev));
     });
   }, []);
 
@@ -140,38 +176,132 @@ export function OperationOverlay() {
 
   const handleClose = (): void => setState({ phase: "hidden" });
 
+  // Extraído acá (en vez de leerlo inline dentro del botón de abajo) para que
+  // el closure de `onClick` capture un `string` ya angosto, sin repetir el
+  // discriminante `status === "failure"` ni recurrir a un non-null assertion.
+  const failureAddonId =
+    state.phase === "result" && state.result.status === "failure" ? state.result.addonId : undefined;
+
+  const handleRemoveAndRetry = (addonId: string): void => {
+    publishOperation({ type: "start", kind: "remove", label: "Sacando el addon y reintentando..." });
+    window.l4d2Api
+      .removeAddon(addonId)
+      .then((result) => {
+        publishOperation({ type: "result", kind: "remove", result });
+      })
+      .catch((error: unknown) => {
+        publishOperation({
+          type: "result",
+          kind: "remove",
+          result: { status: "failure", error: errorMessage(error) },
+        });
+      });
+  };
+
   return (
     <div className={styles.backdrop}>
-      <div className={styles.modal}>
-        {state.phase === "running" && (
-          <p className={styles.message}>{state.label ?? RUNNING_LABELS[state.kind]}</p>
-        )}
+      {state.phase === "running" && (
+        <div className={styles.modal}>
+          <div className={styles.runningHeading}>
+            <span className={styles.spinner} aria-hidden="true" />
+            <p className={styles.runningTitle}>{state.label ?? RUNNING_LABELS[state.kind]}</p>
+          </div>
 
-        {state.phase === "result" && state.result.status === "success" && (
-          <>
-            <p className={styles.message}>Operacion completada correctamente.</p>
-            <button type="button" className={styles.closeButton} onClick={handleClose}>
-              Cerrar
-            </button>
-          </>
-        )}
+          <div className={styles.progressTrack}>
+            <div
+              className={styles.progressFill}
+              style={{ width: `${computeProgressFraction(state.currentStep) * 100}%` }}
+            />
+          </div>
 
-        {state.phase === "result" && state.result.status === "failure" && (
-          <>
-            <p className={styles.error}>{state.result.error}</p>
-            <button type="button" className={styles.closeButton} onClick={handleClose}>
-              Cerrar
-            </button>
-          </>
-        )}
+          <ul className={styles.checklist}>
+            {computeChecklist(state.currentStep).map((row) => (
+              <li key={row.step} className={styles.checklistItem}>
+                <span
+                  className={
+                    row.state === "done"
+                      ? styles.stepIconDone
+                      : row.state === "current"
+                        ? styles.stepIconCurrent
+                        : styles.stepIconPending
+                  }
+                >
+                  {row.state === "done" ? "✓" : row.state === "current" ? "▸" : "·"}
+                </span>
+                <span className={row.state === "current" ? styles.stepLabelCurrent : styles.stepLabel}>
+                  {row.label}
+                </span>
+              </li>
+            ))}
+          </ul>
 
-        {state.phase === "result" && state.result.status === "elevating" && (
-          <p className={styles.message}>
-            Se requieren permisos de administrador para continuar. La aplicacion se va a
-            reiniciar en breve.
+          <p className={styles.runningNote}>
+            No cierres la app: si se corta a mitad, la copia de seguridad permite volver atrás.
           </p>
-        )}
-      </div>
+        </div>
+      )}
+
+      {state.phase === "restarting" && (
+        <div className={styles.modalRestarting}>
+          <p className={styles.restartingKicker}>Permisos de Windows</p>
+          <p className={styles.restartingTitle}>La app se va a reiniciar como administrador</p>
+          <p className={styles.restartingBody}>
+            Tu juego está en <code className={styles.code}>Program Files</code>, así que hace
+            falta permiso para escribir ahí. Windows va a mostrar un cartel que dice{" "}
+            <strong>"editor desconocido"</strong>: es esperado, la app no está firmada.
+          </p>
+          <p className={styles.restartingBox}>
+            Tu selección queda guardada y la fusión sigue sola después del reinicio.
+          </p>
+          <p className={styles.restartingFooter}>
+            <span className={styles.spinner} aria-hidden="true" />
+            Reiniciando...
+          </p>
+        </div>
+      )}
+
+      {state.phase === "result" && state.result.status === "success" && (
+        <div className={styles.modal}>
+          <p className={styles.message}>Operación completada correctamente.</p>
+          <button type="button" className={styles.closeButton} onClick={handleClose}>
+            Cerrar
+          </button>
+        </div>
+      )}
+
+      {state.phase === "result" && state.result.status === "failure" && (
+        <div className={styles.modalFailure}>
+          <p className={styles.failureKicker}>✕ {FAILURE_KICKERS[state.kind]}</p>
+          <p className={styles.failureTitle}>No se pudo completar la operación</p>
+          <p className={styles.failureBody}>
+            {state.result.addonId !== undefined && (
+              <>
+                El problema fue con el addon <code className={styles.code}>{state.result.addonId}</code>
+                .{" "}
+              </>
+            )}
+            <strong>Tu juego quedó como estaba</strong> — no se aplicó ningún cambio a medio hacer.
+          </p>
+          <details className={styles.details}>
+            <summary className={styles.detailsSummary}>Ver detalle técnico</summary>
+            <pre className={styles.detailsPre}>{state.result.error}</pre>
+          </details>
+          <div className={styles.failureActions}>
+            <button type="button" className={styles.closeButtonNeutral} onClick={handleClose}>
+              Cerrar
+            </button>
+            {failureAddonId !== undefined && (
+              <button
+                type="button"
+                className={styles.retryButton}
+                onClick={() => handleRemoveAndRetry(failureAddonId)}
+              >
+                Sacarlo y reintentar
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

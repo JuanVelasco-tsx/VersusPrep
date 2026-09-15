@@ -208,7 +208,15 @@ export function useActiveSetState(pendingEntries: AddonManifestEntry[] | null): 
 
   const handleApply = (): void => {
     setApplyState({ phase: "applying" });
-    publishOperation({ type: "start", kind: "apply" });
+    // (rediseño Paso 7/8) Título del OperationOverlay con el conteo real de
+    // la fusión ("Fusionando N addons", README "1f") en vez del genérico
+    // "Aplicando cambios..." de RUNNING_LABELS — mismo patrón de `label` que
+    // ya usan las acciones en lote de AddonList.tsx (Incluir/Excluir).
+    publishOperation({
+      type: "start",
+      kind: "apply",
+      label: `Fusionando ${entries.length} addon${entries.length === 1 ? "" : "s"}...`,
+    });
     window.l4d2Api
       .applyActiveSet(entries)
       .then((result) => {

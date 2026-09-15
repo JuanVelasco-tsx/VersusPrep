@@ -1,3 +1,11 @@
+/*
+ * OperationOverlay (README "Interactions & Behavior" fila "Overlay de
+ * operación", rediseño Paso 7/8): tres variantes de la misma caja modal —
+ * en curso (checklist), reinicio elevado (borde/gradiente índigo) y fallo
+ * (borde rojo hue 22). Cada variante define su propio fondo/borde sobre la
+ * misma base de tamaño/radius/sombra, mismo criterio que el resto de los
+ * modales del proyecto (cada uno con su propio .backdrop/.modal).
+ */
 .backdrop {
   position: fixed;
   inset: 0;
@@ -8,42 +16,303 @@
   z-index: 1000;
 }
 
+.modal,
+.modalRestarting,
+.modalFailure {
+  width: 100%;
+  min-width: 380px; /* exacto al README */
+  max-width: 420px; /* exacto al README */
+  border-radius: var(--radius-lg); /* 14px, exacto al README */
+  padding: var(--space-8); /* 20px, exacto al README */
+  box-shadow: var(--shadow-modal); /* 0 16px 40px rgba(0,0,0,.65), exacto al README */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
 .modal {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-  min-width: 280px;
-  max-width: 400px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-4);
-  text-align: center;
 }
 
+.modalRestarting {
+  background: linear-gradient(160deg, var(--color-section), var(--color-section-2));
+  border: 1px solid var(--color-section-border);
+}
+
+.modalFailure {
+  background: var(--color-surface);
+  border: 1px solid var(--color-blocked-border);
+}
+
+/* --- Estado "en curso" ---------------------------------------------------- */
+
+.runningHeading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.runningTitle {
+  margin: 0;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-md); /* 13px */
+  color: var(--color-text);
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: overlay-spin 0.8s linear infinite;
+}
+
+@keyframes overlay-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.progressTrack {
+  height: 4px;
+  background: var(--color-surface-alt);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent-border), var(--color-accent));
+  box-shadow: var(--color-accent-glow);
+  transition: width 0.25s ease;
+}
+
+.checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.checklistItem {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: var(--fs-md); /* 13px */
+}
+
+.stepIconDone,
+.stepIconCurrent,
+.stepIconPending {
+  flex-shrink: 0;
+  width: 1em;
+}
+
+.stepIconDone {
+  color: var(--color-text-faint); /* #75798c, exacto al README */
+}
+
+.stepIconCurrent {
+  color: var(--color-text); /* #e9e9ed, exacto al README */
+  font-weight: var(--fw-medium);
+}
+
+.stepIconPending {
+  color: var(--color-text-ghost); /* #595d6c, exacto al README */
+}
+
+.stepLabel {
+  color: var(--color-text-faint);
+}
+
+.stepLabelCurrent {
+  color: var(--color-text);
+  font-weight: var(--fw-medium);
+}
+
+.runningNote {
+  margin: 0;
+  font-size: var(--fs-xs); /* 11px */
+  line-height: 1.5;
+  color: var(--color-text-faint);
+}
+
+/* --- Estado "reiniciando como administrador" ------------------------------ */
+
+.restartingKicker {
+  margin: 0;
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-kicker);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-accent-soft);
+}
+
+.restartingTitle {
+  margin: 0;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-title); /* 16px */
+  color: var(--color-text);
+}
+
+.restartingBody {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.restartingBody strong {
+  color: var(--color-text);
+}
+
+.code {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+}
+
+.restartingBox {
+  margin: 0;
+  padding: var(--space-4);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--color-section-border);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.restartingFooter {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--color-text-dim);
+}
+
+/* --- Estado "fallo" --------------------------------------------------------- */
+
+.failureKicker {
+  margin: 0;
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-kicker);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-blocked-text);
+}
+
+.failureTitle {
+  margin: 0;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-title); /* 16px */
+  color: var(--color-text);
+}
+
+.failureBody {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.failureBody strong {
+  color: var(--color-text);
+}
+
+.details {
+  margin: 0;
+}
+
+.detailsSummary {
+  list-style: none;
+  font-size: var(--fs-xs);
+  color: var(--color-text-faint);
+  cursor: pointer;
+}
+
+.detailsSummary::-webkit-details-marker {
+  display: none;
+}
+
+.detailsPre {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 10.5px; /* exacto al README */
+  line-height: 1.5;
+  color: var(--color-text-dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.failureActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.closeButtonNeutral {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  background: transparent;
+  color: var(--color-text-dim);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+}
+
+.closeButtonNeutral:hover {
+  background: var(--color-surface-hover);
+}
+
+.retryButton {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  background: var(--color-accent-wash);
+  color: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+}
+
+.retryButton:hover {
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+/* --- Resultado simple (éxito) — sin cambios de este paso ------------------- */
+
 .message {
-  font-size: var(--font-size-base);
+  font-size: var(--fs-md);
   color: var(--color-text);
   margin: 0;
 }
 
-.error {
-  font-size: var(--font-size-base);
-  color: var(--color-danger);
-  margin: 0;
-}
-
 .closeButton {
-  font-size: var(--font-size-sm);
-  background: var(--color-accent);
-  color: var(--color-accent-text);
-  border: none;
+  align-self: flex-start;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  background: var(--color-accent-wash);
+  color: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
   border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-5);
   cursor: pointer;
 }
 
 .closeButton:hover {
-  opacity: 0.9;
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
