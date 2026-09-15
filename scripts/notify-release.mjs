@@ -47,7 +47,11 @@ async function main() {
 
   const body = {
     version,
-    changelog: 'Nueva version en fase de pruebas en entorno de desarrollo.',
+    // (Beta abierta) El mensaje anterior ("fase de pruebas en entorno de
+    // desarrollo") sonaba a nota interna de dev - este webhook lo lee la
+    // comunidad, no el equipo. Mismo tono llano que el resto del copy de la
+    // app (P-33, avisos de confianza).
+    changelog: 'Nueva version disponible: Beta abierta para toda la comunidad. Probala y contanos que te parece.',
   };
 
   // Timeout duro para que un webhook colgado (sin responder ni rechazar) no
