@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import { canSubmitPresetForm } from "../state/presetSwitcher.js";
 import styles from "./CreatePresetModal.module.css";
 
 /**
@@ -61,7 +62,7 @@ export function CreatePresetModal({
   const [description, setDescription] = useState("");
 
   const trimmedName = name.trim();
-  const canSubmit = trimmedName.length > 0 && !busy;
+  const canSubmit = canSubmitPresetForm(name, busy);
 
   const handleSubmit = (event: FormEvent): void => {
     event.preventDefault();

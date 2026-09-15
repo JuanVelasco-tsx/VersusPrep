@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { canDeletePreset, createAndActivatePreset } from "./presetSwitcher.js";
+import { canDeletePreset, canSubmitPresetForm, createAndActivatePreset } from "./presetSwitcher.js";
 import type { CreateAndActivateApi } from "./presetSwitcher.js";
 import type { OperationResult, Preset } from "../../main/domain/index.js";
 
@@ -83,5 +83,27 @@ describe("canDeletePreset (P-30, Paso 5)", () => {
 
   test("sin ningún preset activo (null), cualquier preset se puede borrar", () => {
     expect(canDeletePreset("preset-a", null)).toBe(true);
+  });
+});
+
+describe("canSubmitPresetForm (rediseño Paso 5/8 — compartida entre 'Nuevo preset' y 'Renombrar preset')", () => {
+  test("false si el nombre está vacío", () => {
+    expect(canSubmitPresetForm("", false)).toBe(false);
+  });
+
+  test("false si el nombre es solo espacios", () => {
+    expect(canSubmitPresetForm("   ", false)).toBe(false);
+  });
+
+  test("false mientras busy es true, incluso con un nombre válido", () => {
+    expect(canSubmitPresetForm("Versus casual", true)).toBe(false);
+  });
+
+  test("true con nombre no vacío y busy false", () => {
+    expect(canSubmitPresetForm("Versus casual", false)).toBe(true);
+  });
+
+  test("true con espacios alrededor de contenido real (se recorta antes de validar)", () => {
+    expect(canSubmitPresetForm("  Versus casual  ", false)).toBe(true);
   });
 });

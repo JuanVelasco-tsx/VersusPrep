@@ -62,3 +62,21 @@ export async function createAndActivatePreset(
 export function canDeletePreset(presetId: string, activePresetId: string | null): boolean {
   return presetId !== activePresetId;
 }
+
+/**
+ * `true` si el formulario de `CreatePresetModal` puede enviarse: nombre no
+ * vacío tras recortar espacios, y ninguna mutación en curso (`busy`).
+ *
+ * Extraída en el rediseño Paso 5/8: esta regla ya existía inline en
+ * `CreatePresetModal.tsx` desde antes del rediseño (sin test — nunca
+ * cruzó el umbral de "vale la pena aislar" mientras gateaba un solo flujo,
+ * "Nuevo preset"), pero el Paso 5 sumó el modo `"rename"` COMPARTIENDO el
+ * mismo componente/la misma validación para "Renombrar preset" — con DOS
+ * flujos distintos dependiendo de la misma regla, un bug acá afectaría
+ * ambos a la vez, así que cruza el mismo umbral que ya usó
+ * `isApplyButtonDisabled` en el Paso 4 (`activeSetEntries.ts`): se extrae y
+ * se testea en vez de quedar sin cobertura dentro del componente.
+ */
+export function canSubmitPresetForm(name: string, busy: boolean): boolean {
+  return name.trim().length > 0 && !busy;
+}
