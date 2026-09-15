@@ -287,6 +287,19 @@ export interface LocalStore {
    * ANTES de llegar acá, así que en la práctica `id` ya viene validado).
    */
   updatePresetEntries(id: string, entries: AddonManifestEntry[]): void;
+
+  // -------------------------------------------------------------------------
+  // Onboarding (rediseño Paso 8/8, README 2e — "Primer arranque"). Ver
+  // OnboardingState (ipc-contract.ts) para la distinción entre los dos flags.
+  // -------------------------------------------------------------------------
+
+  /** `true` si el usuario ya completó (o saltó) la pantalla de primer arranque. */
+  getOnboardingSeen(): boolean;
+  /** Marca el onboarding como visto. Idempotente (llamarlo de nuevo no hace nada distinto). */
+  markOnboardingSeen(): void;
+  /** `true` si el usuario tildó "no mostrar de nuevo" en los avisos condensados del primer arranque. */
+  getTrustNoticesAcknowledged(): boolean;
+  setTrustNoticesAcknowledged(value: boolean): void;
 }
 
 /** Claves de `GamePaths` en orden estable; una columna por cada una en la tabla `paths`. */
@@ -358,6 +371,11 @@ CREATE TABLE IF NOT EXISTS preset_entries (
 CREATE TABLE IF NOT EXISTS active_preset (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   presetId TEXT
+);
+CREATE TABLE IF NOT EXISTS onboarding (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  seen INTEGER NOT NULL DEFAULT 0,
+  trustNoticesAcknowledged INTEGER NOT NULL DEFAULT 0
 );
 `;
 
@@ -544,6 +562,39 @@ export class SqliteLocalStore implements LocalStore {
         "INSERT INTO active_preset (id, presetId) VALUES (1, @id) ON CONFLICT(id) DO UPDATE SET presetId = @id",
       )
       .run({ id });
+  }
+
+  getOnboardingSeen(): boolean {
+    const row = this.#db
+      .prepare<[], { seen: number }>("SELECT seen FROM onboarding WHERE id = 1")
+      .get();
+    return row !== undefined && row.seen === 1;
+  }
+
+  markOnboardingSeen(): void {
+    // INSERT con solo (id, seen): en un primer insert, trustNoticesAcknowledged
+    // queda en su DEFAULT 0; en un conflicto, el UPDATE toca SOLO `seen` (no
+    // pisa trustNoticesAcknowledged si ya se había seteado antes).
+    this.#db
+      .prepare("INSERT INTO onboarding (id, seen) VALUES (1, 1) ON CONFLICT(id) DO UPDATE SET seen = 1")
+      .run();
+  }
+
+  getTrustNoticesAcknowledged(): boolean {
+    const row = this.#db
+      .prepare<[], { trustNoticesAcknowledged: number }>(
+        "SELECT trustNoticesAcknowledged FROM onboarding WHERE id = 1",
+      )
+      .get();
+    return row !== undefined && row.trustNoticesAcknowledged === 1;
+  }
+
+  setTrustNoticesAcknowledged(value: boolean): void {
+    this.#db
+      .prepare(
+        "INSERT INTO onboarding (id, trustNoticesAcknowledged) VALUES (1, @value) ON CONFLICT(id) DO UPDATE SET trustNoticesAcknowledged = @value",
+      )
+      .run({ value: value ? 1 : 0 });
   }
 
   /**

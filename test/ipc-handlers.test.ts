@@ -158,6 +158,10 @@ interface Doubles {
   openPathCalls: string[];
   /** String de error que devuelve deps.openPath; "" simula éxito (contrato de shell.openPath). */
   openPathResult: { value: string };
+  // --- Onboarding (rediseño Paso 8/8, README 2e) ---
+  onboardingSeenValue: { value: boolean };
+  trustNoticesAcknowledgedValue: { value: boolean };
+  markOnboardingSeenCalls: { count: number };
 }
 
 function buildDoubles(): Doubles {
@@ -194,6 +198,9 @@ function buildDoubles(): Doubles {
     switchActivePresetResult: { value: { status: "success" } },
     openPathCalls: [],
     openPathResult: { value: "" },
+    onboardingSeenValue: { value: false },
+    trustNoticesAcknowledgedValue: { value: false },
+    markOnboardingSeenCalls: { count: 0 },
   };
 
   d.deps = {
@@ -248,6 +255,15 @@ function buildDoubles(): Doubles {
         d.presetsValue.value = d.presetsValue.value.map((p) =>
           p.id === id ? { ...p, entries: [...entries] } : p,
         );
+      },
+      getOnboardingSeen: () => d.onboardingSeenValue.value,
+      markOnboardingSeen: () => {
+        d.markOnboardingSeenCalls.count++;
+        d.onboardingSeenValue.value = true;
+      },
+      getTrustNoticesAcknowledged: () => d.trustNoticesAcknowledgedValue.value,
+      setTrustNoticesAcknowledged: (value: boolean) => {
+        d.trustNoticesAcknowledgedValue.value = value;
       },
     } as IpcHandlersDeps["localStore"],
     mergeOrchestrator: {
@@ -968,5 +984,36 @@ describe("IPC — paths:openGameFolder (README 2d, panel derecho, Paso 6/8)", ()
     const result = await ipc.invoke(IPC_CHANNELS.openGameFolder);
 
     expect(result).toEqual({ kind: "failed", error: "No se pudo abrir la ruta" });
+  });
+});
+
+describe("IPC — onboarding (README 2e, primer arranque, Paso 8/8)", () => {
+  test("onboarding:get devuelve el snapshot actual de los dos flags", async () => {
+    const { ipc, d } = setup();
+    d.onboardingSeenValue.value = false;
+    d.trustNoticesAcknowledgedValue.value = true;
+
+    const result = await ipc.invoke(IPC_CHANNELS.getOnboardingState);
+
+    expect(result).toEqual({ seen: false, trustNoticesAcknowledged: true });
+  });
+
+  test("onboarding:markSeen llama a localStore.markOnboardingSeen()", async () => {
+    const { ipc, d } = setup();
+
+    await ipc.invoke(IPC_CHANNELS.markOnboardingSeen);
+
+    expect(d.markOnboardingSeenCalls.count).toBe(1);
+    expect(d.onboardingSeenValue.value).toBe(true);
+  });
+
+  test("onboarding:setTrustNoticesAcknowledged persiste el valor recibido", async () => {
+    const { ipc, d } = setup();
+
+    await ipc.invoke(IPC_CHANNELS.setTrustNoticesAcknowledged, true);
+    expect(d.trustNoticesAcknowledgedValue.value).toBe(true);
+
+    await ipc.invoke(IPC_CHANNELS.setTrustNoticesAcknowledged, false);
+    expect(d.trustNoticesAcknowledgedValue.value).toBe(false);
   });
 });

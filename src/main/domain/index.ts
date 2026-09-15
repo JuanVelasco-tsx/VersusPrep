@@ -31,6 +31,8 @@ export type {
   ActiveSetPreview,
   MergeProgressEvent,
   MergeProgressListener,
+  ScanProgressEvent,
+  ScanProgressListener,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------

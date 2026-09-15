@@ -17,6 +17,7 @@ import type {
   Preset,
   RequiredPathKey,
   ScannedAddon,
+  ScanProgressEvent,
   VScriptClassification,
 } from "../domain/index.js";
 
@@ -63,6 +64,34 @@ export type OpenGameFolderResult =
   /** `error` es el string que devuelve `shell.openPath` (vacío = éxito, ya cubierto por "opened"). */
   | { kind: "failed"; error: string };
 
+/**
+ * Estado de onboarding persistido (rediseño Paso 8/8, README `2e` — pantalla
+ * de "Primer arranque"). DOS flags DISTINTOS, no uno solo:
+ *
+ *  - `seen`: gatea si `App.tsx` muestra `FirstLaunchScreen` (pantalla completa
+ *    sin riel) o el shell normal de siempre. Se marca `true` la PRIMERA vez
+ *    que el usuario termina ese flujo — ya sea porque la detección resolvió
+ *    `ready` (y se escanearon los addons), o porque clickeó "Entrar de todos
+ *    modos" en el Estado 2 (ruta faltante). Una vez `true`, queda así para
+ *    siempre: los arranques siguientes van directo al shell normal (que sigue
+ *    llamando `paths:detect`/`addons:scan` por su cuenta, como ya hacía antes
+ *    de este paso — sin la pantalla de bienvenida).
+ *  - `trustNoticesAcknowledged`: si el usuario tildó "Entendido, no mostrar de
+ *    nuevo al arrancar" en la caja de 3 avisos condensados DENTRO de
+ *    `FirstLaunchScreen`. Es un concepto separado de `seen`: cubre el caso en
+ *    que la pantalla de primer arranque se muestra más de una vez ANTES de
+ *    completarse (p. ej. el usuario cierra la app a mitad de una detección
+ *    fallida y la reabre) — sin este flag, la caja de avisos reaparecería en
+ *    cada uno de esos reintentos aunque el usuario ya la haya reconocido.
+ *    Después de `seen`, los mismos 4 avisos completos (no los 3 condensados)
+ *    siguen accesibles desde la píldora del riel (`TrustNoticesModal`, Paso
+ *    6/8) — ESTE flag no afecta a esa píldora en absoluto.
+ */
+export interface OnboardingState {
+  seen: boolean;
+  trustNoticesAcknowledged: boolean;
+}
+
 export const IPC_CHANNELS = {
   detectPaths: "paths:detect",
   getPaths: "paths:get",
@@ -94,6 +123,11 @@ export const IPC_CHANNELS = {
   switchActivePreset: "presets:switch",
   getActivePresetId: "presets:getActive",
   openGameFolder: "paths:openGameFolder",
+  // (rediseño Paso 8/8, README 2e) "Primer arranque".
+  scanProgress: "addons:onScanProgress",
+  getOnboardingState: "onboarding:get",
+  markOnboardingSeen: "onboarding:markSeen",
+  setTrustNoticesAcknowledged: "onboarding:setTrustNoticesAcknowledged",
 } as const;
 
 /**
@@ -250,4 +284,18 @@ export interface L4d2Api {
    * de llegar a este caso, no depender de él.
    */
   openGameFolder(): Promise<OpenGameFolderResult>;
+
+  // ---------------------------------------------------------------------------
+  // Primer arranque (rediseño Paso 8/8, README 2e). Ver OnboardingState y
+  // ScanProgressEvent (domain/types.ts) para el detalle de cada pieza.
+  // ---------------------------------------------------------------------------
+
+  /** Se suscribe al progreso de `addons:scan`; devuelve la función de desuscripción. */
+  onScanProgress(listener: (event: ScanProgressEvent) => void): () => void;
+  /** Snapshot ACTUAL del onboarding persistido. */
+  getOnboardingState(): Promise<OnboardingState>;
+  /** Marca el onboarding como visto — no repetir `FirstLaunchScreen` en arranques futuros. */
+  markOnboardingSeen(): Promise<void>;
+  /** Persiste si el usuario tildó "no mostrar de nuevo" en la caja de avisos condensados. */
+  setTrustNoticesAcknowledged(value: boolean): Promise<void>;
 }

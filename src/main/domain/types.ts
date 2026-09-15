@@ -661,3 +661,32 @@ export interface MergeProgressEvent {
  * operación se comporta de forma idéntica (el orquestador no emite nada).
  */
 export type MergeProgressListener = (event: MergeProgressEvent) => void;
+
+/**
+ * Progreso del escaneo de la Workshop_Folder (`AddonScanner.scan`, rediseño
+ * Paso 8/8, README `2e` — "Leyendo tus addons suscritos: N de M"). Excepción
+ * de scope aprobada por el usuario: es la ÚNICA instrumentación nueva que se
+ * agregó para la pantalla de primer arranque — `PathDetector.detect()` NO
+ * se instrumentó (ver docblock de `FirstLaunchScreen.tsx`): sus pasos
+ * ("Steam encontrado"/"Biblioteca con el juego") resuelven en milisegundos
+ * (lectura de registro + parseo de un `.vdf`, sin `vpk.exe` de por medio) y
+ * pasan de "pendiente" a "hecho" los tres juntos apenas `detectPaths()`
+ * resuelve — instrumentarlos no agregaría nada perceptible para el usuario,
+ * a cambio de tocar un módulo con tests extensos (`path-detector.test.ts`,
+ * `.property.test.ts`) por un beneficio nulo.
+ *
+ * `total` es la cantidad de candidatos de la FASE 1 (antes de `vpk.exe`);
+ * `done` cuenta workers de la FASE 2 que ya escribieron su resultado
+ * (orden de FINALIZACIÓN del pool acotado, no el orden posicional del
+ * resultado final — ver `AddonScanner.scan`).
+ */
+export interface ScanProgressEvent {
+  done: number;
+  total: number;
+}
+
+/**
+ * Listener opcional de progreso de `AddonScanner.scan` (dependencia OPCIONAL
+ * del constructor, mismo criterio que `MergeProgressListener`).
+ */
+export type ScanProgressListener = (event: ScanProgressEvent) => void;

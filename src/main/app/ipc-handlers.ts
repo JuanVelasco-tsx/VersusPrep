@@ -23,6 +23,7 @@ import type {
   MergeProgressListener,
   PathDetector,
   ScannedAddon,
+  ScanProgressListener,
   TitleCache,
   VScriptClassification,
   VScriptDetector,
@@ -79,6 +80,24 @@ export interface IpcHandlersDeps {
    * el string de error de `shell.openPath` ("" en éxito).
    */
   openPath: (path: string) => Promise<string>;
+}
+
+/**
+ * Espeja `createProgressBroadcaster` (más abajo) para el progreso de
+ * `AddonScanner.scan` (rediseño Paso 8/8, README `2e`): misma forma
+ * (`getWebContents` LAZY, resuelto en cada evento, no al construir el
+ * broadcaster — necesario porque `AddonScanner` se construye ANTES de que
+ * exista la `BrowserWindow`, ver `composition-root.ts`/`main.ts`), canal
+ * PROPIO (`addons:onScanProgress`) en vez de reusar `merge:onProgress`: son
+ * dos streams de progreso semánticamente distintos (escaneo vs. fusión), con
+ * consumidores distintos en el renderer.
+ */
+export function createScanProgressBroadcaster(
+  getWebContents: () => Pick<WebContents, "send"> | undefined | null,
+): ScanProgressListener {
+  return (event) => {
+    getWebContents()?.send(IPC_CHANNELS.scanProgress, event);
+  };
 }
 
 /**
@@ -400,4 +419,18 @@ export function registerIpcHandlers(
   );
 
   ipcMain.handle(IPC_CHANNELS.getActivePresetId, () => deps.localStore.getActivePresetId());
+
+  // (rediseño Paso 8/8, README 2e) "Primer arranque". El progreso de
+  // addons:scan viaja por addons:onScanProgress (canal push, sin handle
+  // asociado — ver createScanProgressBroadcaster más arriba), no por acá.
+  ipcMain.handle(IPC_CHANNELS.getOnboardingState, () => ({
+    seen: deps.localStore.getOnboardingSeen(),
+    trustNoticesAcknowledged: deps.localStore.getTrustNoticesAcknowledged(),
+  }));
+  ipcMain.handle(IPC_CHANNELS.markOnboardingSeen, () => {
+    deps.localStore.markOnboardingSeen();
+  });
+  ipcMain.handle(IPC_CHANNELS.setTrustNoticesAcknowledged, (_event, value: boolean) => {
+    deps.localStore.setTrustNoticesAcknowledged(value);
+  });
 }

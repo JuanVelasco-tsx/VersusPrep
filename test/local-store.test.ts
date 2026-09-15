@@ -491,3 +491,51 @@ describe("LocalStore — presets: migración del Active_Set existente (P-30, Pas
     rawDb.close();
   });
 });
+
+describe("LocalStore — onboarding (rediseño Paso 8/8, README 2e)", () => {
+  test("getOnboardingSeen: false por defecto (base nueva, sin fila todavía)", () => {
+    expect(store.getOnboardingSeen()).toBe(false);
+  });
+
+  test("markOnboardingSeen: queda en true, y llamarlo de nuevo no lo cambia (idempotente)", () => {
+    store.markOnboardingSeen();
+    expect(store.getOnboardingSeen()).toBe(true);
+    store.markOnboardingSeen();
+    expect(store.getOnboardingSeen()).toBe(true);
+  });
+
+  test("getTrustNoticesAcknowledged: false por defecto", () => {
+    expect(store.getTrustNoticesAcknowledged()).toBe(false);
+  });
+
+  test("setTrustNoticesAcknowledged: round-trip true/false", () => {
+    store.setTrustNoticesAcknowledged(true);
+    expect(store.getTrustNoticesAcknowledged()).toBe(true);
+    store.setTrustNoticesAcknowledged(false);
+    expect(store.getTrustNoticesAcknowledged()).toBe(false);
+  });
+
+  test("los dos flags son INDEPENDIENTES: setear uno no toca el otro", () => {
+    store.setTrustNoticesAcknowledged(true);
+    expect(store.getOnboardingSeen()).toBe(false);
+
+    store.markOnboardingSeen();
+    expect(store.getTrustNoticesAcknowledged()).toBe(true); // no se pisó
+
+    store.setTrustNoticesAcknowledged(false);
+    expect(store.getOnboardingSeen()).toBe(true); // tampoco se pisó
+  });
+
+  test("persiste entre instancias sobre la MISMA base (no es solo estado en memoria)", () => {
+    const rawDb = new Database(":memory:");
+    const first = new SqliteLocalStore(rawDb);
+    first.markOnboardingSeen();
+    first.setTrustNoticesAcknowledged(true);
+
+    const second = new SqliteLocalStore(rawDb);
+    expect(second.getOnboardingSeen()).toBe(true);
+    expect(second.getTrustNoticesAcknowledged()).toBe(true);
+
+    rawDb.close();
+  });
+});

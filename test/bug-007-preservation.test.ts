@@ -135,6 +135,7 @@ function makeStartupIo(argv: readonly string[] = []): StartupIo {
     tempDir: "C:\\tmp\\l4d2-temp",
     workRoot: "C:\\tmp\\l4d2-work",
     broadcaster: () => {},
+    scanProgressBroadcaster: () => {},
   };
 }
 
@@ -245,6 +246,10 @@ describe("BUG-007 (preservación) — baseline que el fix NO debe romper", () =>
       "switchActivePreset",
       "getActivePresetId",
       "openGameFolder",
+      "scanProgress",
+      "getOnboardingState",
+      "markOnboardingSeen",
+      "setTrustNoticesAcknowledged",
     ].sort();
 
     expect(Object.keys(IPC_CHANNELS).sort()).toEqual(expectedKeys);

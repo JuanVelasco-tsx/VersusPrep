@@ -34,7 +34,11 @@ import {
   runStartupSequence,
 } from "./app/composition-root.js";
 import type { ResumeState } from "./app/ipc-contract.js";
-import { createProgressBroadcaster, registerIpcHandlers } from "./app/ipc-handlers.js";
+import {
+  createProgressBroadcaster,
+  createScanProgressBroadcaster,
+  registerIpcHandlers,
+} from "./app/ipc-handlers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -137,6 +141,9 @@ async function bootstrap(): Promise<void> {
   // la ventana ya existe (se crea más abajo, antes del resume).
   let mainWindow: BrowserWindow | null = null;
   const broadcaster = createProgressBroadcaster(() => mainWindow?.webContents);
+  // (rediseño Paso 8/8) Mismo patrón que `broadcaster`, canal propio para el
+  // progreso de `addons:scan` — ver `createScanProgressBroadcaster`.
+  const scanProgressBroadcaster = createScanProgressBroadcaster(() => mainWindow?.webContents);
 
   const base = buildPathIndependentDomain({
     commandRunner,
@@ -198,6 +205,7 @@ async function bootstrap(): Promise<void> {
     tempDir: path.join(os.tmpdir(), "l4d2-vam-scan-temp"),
     workRoot: path.join(os.tmpdir(), "l4d2-vam-work"),
     broadcaster,
+    scanProgressBroadcaster,
   });
 
   if (outcome.kind === "fatal") {

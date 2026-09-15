@@ -293,6 +293,20 @@ export class FakeLocalStore implements LocalStore {
     const preset = this.#presets.get(id);
     if (preset !== undefined) preset.entries = [...entries];
   }
+  #onboardingSeen = false;
+  #trustNoticesAcknowledged = false;
+  getOnboardingSeen(): boolean {
+    return this.#onboardingSeen;
+  }
+  markOnboardingSeen(): void {
+    this.#onboardingSeen = true;
+  }
+  getTrustNoticesAcknowledged(): boolean {
+    return this.#trustNoticesAcknowledged;
+  }
+  setTrustNoticesAcknowledged(value: boolean): void {
+    this.#trustNoticesAcknowledged = value;
+  }
 }
 
 /** BackupFileSystem mockeado (para el BackupManager real): configurable. */

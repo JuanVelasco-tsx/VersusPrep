@@ -117,6 +117,14 @@ class SpyStore implements LocalStore {
   }
   setActivePresetId(): void {}
   updatePresetEntries(): void {}
+  getOnboardingSeen(): boolean {
+    return false;
+  }
+  markOnboardingSeen(): void {}
+  getTrustNoticesAcknowledged(): boolean {
+    return false;
+  }
+  setTrustNoticesAcknowledged(): void {}
 }
 
 /** Un error de Node con `code` opcional, como los que arroja `fs`. */

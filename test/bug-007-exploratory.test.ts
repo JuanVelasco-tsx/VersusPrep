@@ -146,6 +146,7 @@ function makeStartupIo(argv: readonly string[] = []): StartupIo {
     tempDir: "C:\\tmp\\l4d2-temp",
     workRoot: "C:\\tmp\\l4d2-work",
     broadcaster: () => {},
+    scanProgressBroadcaster: () => {},
   };
 }
 

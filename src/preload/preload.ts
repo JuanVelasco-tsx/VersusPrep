@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import { IPC_CHANNELS } from "../main/app/ipc-contract.js";
 import type {
   L4d2Api,
+  OnboardingState,
   OpenGameFolderResult,
   ResumeState,
   SetManualPathResult,
@@ -17,6 +18,7 @@ import type {
   PathDetectionResult,
   Preset,
   ScannedAddon,
+  ScanProgressEvent,
   VScriptClassification,
 } from "../main/domain/index.js";
 
@@ -74,6 +76,17 @@ const api: L4d2Api = {
     ipcRenderer.invoke(IPC_CHANNELS.getActivePresetId) as Promise<string | null>,
   openGameFolder: () =>
     ipcRenderer.invoke(IPC_CHANNELS.openGameFolder) as Promise<OpenGameFolderResult>,
+  onScanProgress: (listener) => {
+    const handler = (_event: unknown, payload: ScanProgressEvent): void => listener(payload);
+    ipcRenderer.on(IPC_CHANNELS.scanProgress, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.scanProgress, handler);
+  },
+  getOnboardingState: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.getOnboardingState) as Promise<OnboardingState>,
+  markOnboardingSeen: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.markOnboardingSeen) as Promise<void>,
+  setTrustNoticesAcknowledged: (value: boolean) =>
+    ipcRenderer.invoke(IPC_CHANNELS.setTrustNoticesAcknowledged, value) as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld("l4d2Api", api);

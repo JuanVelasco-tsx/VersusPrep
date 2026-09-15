@@ -53,6 +53,7 @@ import type {
   MergeProgressEvent,
   MergeProgressListener,
   PendingOperation,
+  ScanProgressListener,
 } from "../domain/index.js";
 
 import { RealAddonFileSystem } from "../data/addon-file-system.js";
@@ -149,6 +150,8 @@ export interface PathDependentIo {
   tempDir: string;
   workRoot: string;
   onProgress: MergeProgressListener;
+  /** (Rediseño Paso 8/8) Progreso de `AddonScanner.scan` — ver `ScanProgressListener`. */
+  onScanProgress: ScanProgressListener;
 }
 
 /** Construye VpkTool y todo lo que depende de el, mas MergeOrchestrator. */
@@ -158,7 +161,7 @@ export function buildPathDependentDomain(
   io: PathDependentIo,
 ): PathDependentDomain {
   const vpkTool = new VpkTool(io.commandRunner, paths.vpkToolPath);
-  const addonScanner = new AddonScanner(base.addonFileSystem, vpkTool, io.tempDir);
+  const addonScanner = new AddonScanner(base.addonFileSystem, vpkTool, io.tempDir, io.onScanProgress);
   const vscriptDetector = new VScriptDetector(vpkTool);
   const mergeEngine = new MergeEngine(vpkTool, base.mergeFileSystem, base.collisionResolver);
   const mergeOrchestrator = new MergeOrchestrator({
@@ -298,6 +301,8 @@ export interface StartupIo {
   tempDir: string;
   workRoot: string;
   broadcaster: MergeProgressListener;
+  /** (Rediseño Paso 8/8) Broadcaster de `addons:onScanProgress` — ver `createScanProgressBroadcaster`. */
+  scanProgressBroadcaster: ScanProgressListener;
 }
 
 /**
@@ -352,6 +357,7 @@ export async function runStartupSequence(
     tempDir: io.tempDir,
     workRoot: io.workRoot,
     onProgress,
+    onScanProgress: io.scanProgressBroadcaster,
   });
 
   // (BUG-004, A1) `isResuming` es un HECHO ESTÁTICO del arranque: este proceso

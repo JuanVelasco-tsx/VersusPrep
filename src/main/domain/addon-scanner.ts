@@ -67,7 +67,7 @@
 
 import { COVER_EXTENSION } from "./addon-cover.js";
 import { extractAddonInfo } from "./addoninfo-extract.js";
-import type { AddonInfo, ScannedAddon } from "./types.js";
+import type { AddonInfo, ScannedAddon, ScanProgressListener } from "./types.js";
 import { DEFAULT_VPK_CONCURRENCY } from "./vpk-tool.js";
 import type { VpkTool } from "./vpk-tool.js";
 
@@ -178,6 +178,7 @@ export class AddonScanner {
   readonly #vpkTool: VpkTool;
   /** Directorio base donde se extraen temporalmente los `addoninfo.txt`. */
   readonly #tempDir: string;
+  readonly #onProgress?: ScanProgressListener;
 
   /**
    * @param fs FS inyectado para listar entradas, comprobar existencia, leer
@@ -185,11 +186,21 @@ export class AddonScanner {
    * @param vpkTool Herramienta para listar/extraer el `addoninfo.txt` interno.
    * @param tempDir Directorio base para la extracción temporal del addoninfo.
    *   Se crea bajo demanda un subdirectorio por addon.
+   * @param onProgress (rediseño Paso 8/8, README `2e`) Listener OPCIONAL de
+   *   progreso — sin él, `scan` se comporta idéntico a antes (mismo criterio
+   *   que `MergeOrchestratorDeps.onProgress`). Alimenta el checklist "Leyendo
+   *   tus addons suscritos: N de M" de `FirstLaunchScreen`.
    */
-  constructor(fs: AddonFileSystem, vpkTool: VpkTool, tempDir: string) {
+  constructor(fs: AddonFileSystem, vpkTool: VpkTool, tempDir: string, onProgress?: ScanProgressListener) {
     this.#fs = fs;
     this.#vpkTool = vpkTool;
     this.#tempDir = tempDir;
+    // exactOptionalPropertyTypes: asignación condicional (mismo patrón que
+    // MergeOrchestrator con su propio #onProgress) en vez de `this.#onProgress
+    // = onProgress` directo, que fallaría el tipo si `onProgress` es `undefined`.
+    if (onProgress !== undefined) {
+      this.#onProgress = onProgress;
+    }
   }
 
   /**
@@ -248,6 +259,11 @@ export class AddonScanner {
     // FASE 2 — pool INLINE acotado que escribe por índice (orden preservado).
     const results: ScannedAddon[] = new Array<ScannedAddon>(candidates.length);
     let cursor = 0;
+    // (rediseño Paso 8/8) Contador de FINALIZACIÓN, aparte de `cursor` (que
+    // cuenta INICIOS): con concurrencia acotada, dos workers pueden terminar
+    // en cualquier orden respecto de cuál arrancó último — `done` debe avanzar
+    // por CADA resultado escrito, no por índice tomado.
+    let done = 0;
     const worker = async (): Promise<void> => {
       for (;;) {
         const index = cursor++;
@@ -269,6 +285,8 @@ export class AddonScanner {
           mtimeMs,
           sizeBytes,
         };
+        done += 1;
+        this.#onProgress?.({ done, total: candidates.length });
       }
     };
 

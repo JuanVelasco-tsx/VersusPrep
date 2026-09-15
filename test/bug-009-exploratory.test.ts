@@ -325,6 +325,14 @@ class FakeLocalStore implements LocalStore {
   }
   setActivePresetId(): void {}
   updatePresetEntries(): void {}
+  getOnboardingSeen(): boolean {
+    return false;
+  }
+  markOnboardingSeen(): void {}
+  getTrustNoticesAcknowledged(): boolean {
+    return false;
+  }
+  setTrustNoticesAcknowledged(): void {}
 }
 
 /** BackupFileSystem que registra el destino de la copia de backup y el orden. */

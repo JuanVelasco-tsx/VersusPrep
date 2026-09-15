@@ -1,7 +1,12 @@
 import type { SettablePathField } from "../../main/app/ipc-contract.js";
-import type { GamePaths, RequiredPathKey } from "../../main/domain/index.js";
+import type { GamePaths } from "../../main/domain/index.js";
 import type { SettingsState } from "../state/useSettingsState.js";
 import { computeDetectionStatus } from "../state/settingsDetectionStatus.js";
+import {
+  MISSING_FIELD_ACTION,
+  MISSING_FIELD_BODY,
+  MISSING_FIELD_LABEL,
+} from "../state/requiredPathCopy.js";
 import { LoadingIndicator } from "./LoadingIndicator.js";
 import styles from "./SettingsPanel.module.css";
 
@@ -55,44 +60,6 @@ const GROUPS: readonly GroupDef[] = [
     fields: [{ key: "vpkToolPath", label: "Ejecutable vpk.exe", settable: "vpkToolPath" }],
   },
 ];
-
-/**
- * Copy del banner "ruta faltante" (README `2d`) por `RequiredPathKey`. El
- * mock solo especifica el texto para `vpkToolPath` (el caso realista: es la
- * única ruta requerida que puede faltar legítimamente DESPUÉS de una
- * detección inicial exitosa, porque las Authoring Tools se instalan aparte).
- * Las otras tres tienen una explicación genérica de respaldo — no inventan
- * contenido de marketing, solo dicen para qué sirve la ruta.
- */
-// `RequiredPathKey` (tipo de dominio) admite `modsvsFolder`, pero esta pantalla
-// nunca la ofrece como banner: `REQUIRED_FIELD_ORDER` (settingsDetectionStatus.ts)
-// no la incluye, misma razón documentada ahí (la app la CREA, no la verifica).
-// Los tres Record de abajo igual necesitan una entrada para que el tipo cierre.
-const MISSING_FIELD_LABEL: Record<RequiredPathKey, string> = {
-  gameRoot: "la carpeta del juego",
-  workshopFolder: "la carpeta de Workshop",
-  vpkToolPath: "vpk.exe",
-  gameInfoFile: "gameinfo.txt",
-  modsvsFolder: "la carpeta modsvs",
-};
-
-const MISSING_FIELD_BODY: Record<RequiredPathKey, string> = {
-  gameRoot: "Sin esta carpeta no se puede ubicar el resto de los archivos del juego.",
-  workshopFolder: "Sin esta carpeta no se pueden encontrar los addons suscritos.",
-  vpkToolPath:
-    "Sin esta herramienta no se puede fusionar nada. Viene con las Left 4 Dead 2 Authoring Tools, que se instalan aparte desde Steam.",
-  gameInfoFile: "Sin este archivo no se puede activar ningún preset.",
-  modsvsFolder: "Acá se instala el VPK fusionado.",
-};
-
-/** Carpeta (openDirectory) vs. archivo (openFile) — espeja toRequiredPathOptions (manual-path-provider.ts), sin duplicar su lógica. */
-const MISSING_FIELD_ACTION: Record<RequiredPathKey, string> = {
-  gameRoot: "Elegir carpeta",
-  workshopFolder: "Elegir carpeta",
-  vpkToolPath: "Elegir archivo",
-  gameInfoFile: "Elegir archivo",
-  modsvsFolder: "Elegir carpeta",
-};
 
 interface RowBadge {
   text: string;

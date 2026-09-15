@@ -48,7 +48,9 @@ type LoadState =
     }
   | { phase: "error"; message: string };
 
-const REASON_MESSAGES: Record<PathDetectionFailureReason, string> = {
+// Exportado (Paso 8/8, README 2e): FirstLaunchScreen reusa el mismo copy por
+// reason para sus casos "no es required-path-missing", en vez de duplicarlo.
+export const REASON_MESSAGES: Record<PathDetectionFailureReason, string> = {
   "steam-not-installed": "No se detecto una instalacion de Steam.",
   "library-folders-unreadable":
     "No se pudo leer la configuracion de bibliotecas de Steam.",

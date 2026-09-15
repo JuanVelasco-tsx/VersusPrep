@@ -411,3 +411,51 @@ describe("extractAddonInfo: extractor ad-hoc de addoninfo.txt", () => {
     expect(extractAddonInfo(text)).toEqual({ author: "Autor" });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Rediseño Paso 8/8 (README 2e): progreso de escaneo para el checklist de
+// "Primer arranque" ("Leyendo tus addons suscritos: N de M").
+// ---------------------------------------------------------------------------
+
+describe("AddonScanner: progreso de scan (rediseño Paso 8/8)", () => {
+  test("sin onProgress: se comporta idéntico a antes (no rompe nada)", async () => {
+    const fs = new MockFs();
+    fs.entries.set(WORKSHOP, [file("1.vpk"), file("2.vpk")]);
+    const scanner = buildScanner(fs, new ScriptedRunner());
+
+    const result = await scanner.scan(WORKSHOP);
+
+    expect(result.map((a) => a.id).sort()).toEqual(["1", "2"]);
+  });
+
+  test("con onProgress: se llama una vez por addon, done llega a total y total es fijo", async () => {
+    const fs = new MockFs();
+    fs.entries.set(WORKSHOP, [file("1.vpk"), file("2.vpk"), file("3.vpk")]);
+    const calls: { done: number; total: number }[] = [];
+    const scanner = new AddonScanner(fs, new VpkTool(new ScriptedRunner(), VPK_EXE), TEMP, (event) =>
+      calls.push(event),
+    );
+
+    await scanner.scan(WORKSHOP);
+
+    expect(calls).toHaveLength(3);
+    expect(calls.every((event) => event.total === 3)).toBe(true);
+    // El orden de FINALIZACIÓN de un pool acotado no está garantizado, pero la
+    // secuencia de `done` sí: cada llamada suma exactamente 1 sobre la anterior.
+    expect(calls.map((event) => event.done)).toEqual([1, 2, 3]);
+  });
+
+  test("workshop vacía: onProgress nunca se llama (nada que escanear)", async () => {
+    const fs = new MockFs();
+    fs.entries.set(WORKSHOP, []);
+    const calls: { done: number; total: number }[] = [];
+    const scanner = new AddonScanner(fs, new VpkTool(new ScriptedRunner(), VPK_EXE), TEMP, (event) =>
+      calls.push(event),
+    );
+
+    const result = await scanner.scan(WORKSHOP);
+
+    expect(result).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+});

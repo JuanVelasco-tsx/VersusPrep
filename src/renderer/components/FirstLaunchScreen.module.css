@@ -1,0 +1,326 @@
+/*
+ * Primer arranque (README 2e, rediseño Paso 8/8). Layout ÚNICO de todo el
+ * rediseño sin riel — pantalla completa, columna centrada de 560px, sobre
+ * viñeta + scanlines. Primer consumidor real de --scanlines (Paso 1/8,
+ * nunca usado hasta ahora).
+ */
+.screen {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  background:
+    var(--scanlines),
+    radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.45) 100%),
+    var(--color-bg);
+  display: flex;
+  justify-content: center;
+  padding: 10vh var(--space-7) var(--space-9);
+}
+
+.column {
+  width: 560px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-7); /* 16px, exacto al README */
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.brandDot {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  box-shadow: var(--color-accent-glow);
+}
+
+.brandText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.brandName {
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-md); /* 12px, cercano al README */
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-text);
+}
+
+.brandSub {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-text-ghost);
+}
+
+.title {
+  margin: 0;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-display); /* 28px, exacto al README */
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+
+.hairline {
+  width: 100%;
+  height: 1px;
+  background: var(--hairline-fade);
+}
+
+.checklist {
+  width: 100%;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5); /* 10px, exacto al README */
+}
+
+.checklistItem {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: baseline;
+  gap: var(--space-4);
+  font-size: var(--fs-md); /* 13px, exacto al README */
+}
+
+.rowIconDone {
+  color: var(--color-accent);
+}
+
+.rowIconCurrent {
+  color: var(--color-accent-soft);
+  display: inline-block;
+  animation: first-launch-spin 1.1s linear infinite;
+}
+
+@keyframes first-launch-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.rowIconPending {
+  color: var(--color-text-ghost);
+}
+
+.rowLabel {
+  color: var(--color-text-ghost);
+}
+
+.rowLabelCurrent {
+  font-weight: var(--fw-medium);
+  color: var(--color-text);
+}
+
+.rowDetail {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm); /* 11.5px, exacto al README */
+  color: var(--color-text-ghost);
+  text-align: right;
+}
+
+.progressTrack {
+  width: 100%;
+  height: 4px;
+  background: var(--color-surface-alt);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent-border), var(--color-accent));
+  box-shadow: var(--color-accent-glow);
+  transition: width 0.25s ease;
+}
+
+.note {
+  margin: 0;
+  font-size: var(--fs-base); /* 12px, exacto al README */
+  line-height: 1.6;
+  color: var(--color-text-faint);
+}
+
+.errorNotice {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--color-notice-text);
+}
+
+/* --- Caja de avisos condensados (Estado 1) ---------------------------------- */
+
+.noticesBox {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.noticesKicker {
+  margin: 0;
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-kicker);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.noticesList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.noticeItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.noticeMarkWarning,
+.noticeMarkInfo {
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+}
+
+.noticeMarkWarning {
+  color: var(--color-notice-text);
+}
+
+.noticeMarkInfo {
+  color: var(--color-accent);
+}
+
+.noticeText {
+  display: block;
+}
+
+.noticeTitle {
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-base); /* 12.5px, exacto al README */
+  color: var(--color-text);
+}
+
+.noticeBody {
+  font-size: var(--fs-sm); /* 11.5px, exacto al README */
+  line-height: 1.45;
+  color: var(--color-text-dim);
+}
+
+.noticesCheckbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--color-text-dim);
+  cursor: pointer;
+}
+
+/* --- Caja roja de acción (Estado 2) ------------------------------------------ */
+
+.redBox {
+  width: 100%;
+  padding: var(--space-6); /* 15px, cercano al README */
+  background: var(--color-blocked-tint);
+  border: 1px solid var(--color-blocked-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.redBoxTitle {
+  margin: 0;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-xl); /* 14px, exacto al README */
+  color: var(--color-blocked-text);
+}
+
+.redBoxBody {
+  margin: 0;
+  font-size: var(--fs-base); /* 12.5px, exacto al README */
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+
+.redBoxActions {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.redBoxButton {
+  background: transparent;
+  color: var(--color-blocked-text);
+  border: 1px solid var(--color-blocked-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-5);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-md);
+  cursor: pointer;
+}
+
+.redBoxButton:hover:not(:disabled) {
+  background: var(--color-blocked-tint);
+}
+
+.redBoxButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ghostButton {
+  background: transparent;
+  color: var(--color-text-dim);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-5);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-md);
+  cursor: pointer;
+}
+
+.ghostButton:hover {
+  background: var(--color-surface-hover);
+}
+
+.closingNote {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--color-text-faint);
+}
+
+.enterAnywayButton {
+  background: var(--color-accent-wash);
+  color: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-5) var(--space-6);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-md);
+  cursor: pointer;
+}
+
+.enterAnywayButton:hover {
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+}

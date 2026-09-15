@@ -106,6 +106,14 @@ class MockStore implements LocalStore {
   }
   setActivePresetId(_id: string): void {}
   updatePresetEntries(): void {}
+  getOnboardingSeen(): boolean {
+    return false;
+  }
+  markOnboardingSeen(): void {}
+  getTrustNoticesAcknowledged(): boolean {
+    return false;
+  }
+  setTrustNoticesAcknowledged(): void {}
 }
 
 /** Proveedor de SO que registra el orden global de eventos (persistir vs relanzar). */

@@ -12,6 +12,7 @@ import type { AddonManifestEntry } from "../main/domain/index.js";
 import { ActiveSetPanel } from "./components/ActiveSetPanel.js";
 import { AddonList } from "./components/AddonList.js";
 import { DetectionStatusPanel } from "./components/DetectionStatusPanel.js";
+import { FirstLaunchScreen } from "./components/FirstLaunchScreen.js";
 import { LoadingIndicator } from "./components/LoadingIndicator.js";
 import { MergeSummaryPanel } from "./components/MergeSummaryPanel.js";
 import { OperationOverlay, publishOperation } from "./components/OperationOverlay.js";
@@ -273,6 +274,39 @@ export function App() {
   // remonta nunca" de `activeSetState`, solo la de compartir un mismo estado
   // entre las dos regiones simultáneas de esta vista).
   const settingsState = useSettingsState();
+
+  // (Paso 8/8, README 2e) `null` mientras no se sabe todavía si el usuario ya
+  // pasó por "Primer arranque" alguna vez (persistido en LocalStore, ver
+  // OnboardingState en ipc-contract.ts). `false` monta FirstLaunchScreen EN
+  // VEZ del shell de abajo (pantalla completa, sin riel); `true` monta el
+  // shell de siempre. Este hook se declara INCONDICIONALMENTE, antes del
+  // `return` condicional de más abajo, por las mismas reglas de Hooks que ya
+  // documentan `activeSetState`/`settingsState`.
+  const [onboardingSeen, setOnboardingSeen] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    window.l4d2Api
+      .getOnboardingState()
+      .then((state) => {
+        if (!cancelled) setOnboardingSeen(state.seen);
+      })
+      .catch(() => {
+        // Fail-safe: si falla la lectura, no se bloquea al usuario detrás de
+        // una pantalla de bienvenida que nunca resuelve - se asume "ya visto"
+        // y se va directo al shell normal (mismo camino que sigue hoy).
+        if (!cancelled) setOnboardingSeen(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (onboardingSeen === null) {
+    return null;
+  }
+  if (!onboardingSeen) {
+    return <FirstLaunchScreen onComplete={() => setOnboardingSeen(true)} />;
+  }
 
   return (
     <div className={styles.shell}>
