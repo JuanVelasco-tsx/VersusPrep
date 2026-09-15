@@ -1,0 +1,49 @@
+/*
+ * Modal de "Avisos de confianza" (corrección sobre el popover del riel,
+ * Paso 2/8). Mismo patrón de backdrop/caja que CreatePresetModal.module.css
+ * (cada modal de este proyecto define el suyo, sin shell compartido) — acá
+ * el ancho es más generoso (480-560px) porque el contenido es texto largo,
+ * no un formulario corto.
+ */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg); /* 14px, mismo criterio que CreatePresetModal */
+  padding: var(--space-8); /* 20px */
+  width: 100%;
+  max-width: 520px; /* dentro del rango 480-560px pedido */
+  max-height: min(600px, 80vh);
+  overflow-y: auto;
+  box-shadow: var(--shadow-modal);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-6);
+}
+
+.closeButton {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  background: transparent;
+  color: var(--color-text-dim);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background: var(--color-surface-hover);
+}

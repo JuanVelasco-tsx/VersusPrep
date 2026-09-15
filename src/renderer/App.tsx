@@ -18,7 +18,8 @@ import { OperationOverlay, publishOperation } from "./components/OperationOverla
 import { PresetsPanel } from "./components/PresetsPanel.js";
 import { PresetSwitcher } from "./components/PresetSwitcher.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
-import { NOTICES_COUNT, TrustNotices } from "./components/TrustNotices.js";
+import { NOTICES_COUNT } from "./components/TrustNotices.js";
+import { TrustNoticesModal } from "./components/TrustNoticesModal.js";
 import { useActiveSetState } from "./state/useActiveSetState.js";
 import { usePresetsState } from "./state/usePresetsState.js";
 import { useSettingsState } from "./state/useSettingsState.js";
@@ -239,10 +240,10 @@ export function App() {
   const activePreset =
     presetsState.presets.find((preset) => preset.id === presetsState.activePresetId) ?? null;
 
-  // (Paso 2, shell) `true` mientras el popover de avisos del pie del riel
-  // esta abierto. Puramente UI - el contenido de `TrustNotices` no cambia,
-  // solo DONDE se ve (popover en vez de franja fija); se muda al primer
-  // arranque recien en el Paso 8.
+  // (Paso 2, shell; corregido de popover a modal - ver TrustNoticesModal.tsx)
+  // `true` mientras el modal de avisos disparado por la pildora del riel
+  // esta abierto. El contenido de `TrustNotices` no cambia acá; se condensa
+  // recien en el Paso 8 (primer arranque, README 2e).
   const [noticesOpen, setNoticesOpen] = useState(false);
 
   // (Paso 3, wiring pendiente del Paso 2) Total de addons escaneados,
@@ -321,14 +322,11 @@ export function App() {
           >
             ▲ {NOTICES_COUNT} avisos importantes
           </button>
-          {noticesOpen && (
-            <div className={styles.noticesPopover}>
-              <TrustNotices />
-            </div>
-          )}
           <p className={styles.disclaimer}>Proyecto fan-made. Sin relación con Valve.</p>
         </div>
       </aside>
+
+      {noticesOpen && <TrustNoticesModal onClose={() => setNoticesOpen(false)} />}
 
       <div className={styles.center}>
         {resuming === null && <LoadingIndicator message="Cargando..." />}
