@@ -310,3 +310,23 @@ Reporte QA V3 (jornada 2): "la vista Activos solo renderiza el ID del addon al a
 **Descripción:** Sección de configuración pensada para usuarios técnicos, que expone las `GamePaths` ya detectadas (steamPath, gameRoot, left4dead2Dir, workshopFolder, vpkToolPath, gameInfoFile, modsvsFolder) con opción de re-detectar automáticamente o sobrescribir manualmente cada ruta.
 
 **Implementación:** reutiliza el canal IPC `paths:detect` y el `PathDetectorLocalStore.savePaths` ya existentes; falta la UI dedicada.
+
+---
+
+### P-38 - Limpieza física de carpetas de presets eliminados
+
+**Descripción:** hoy, `presets:delete` solo borra la fila de la base de datos — no elimina la carpeta técnica del preset en disco ni ninguna referencia en `gameinfo.txt` (que de todos modos nunca apunta a un preset inactivo, por diseño de `switchFolderEntry`). No es un bug: un preset borrado simplemente deja de ser accesible desde la app. Pero con el tiempo, borrar y crear presets repetidamente puede ir dejando carpetas huérfanas en disco que ya nadie referencia.
+
+**Pendiente de decidir:** si vale la pena una limpieza automática (borrar la carpeta física al hacer `presets:delete`) o dejarlo como está y documentarlo como limitación conocida.
+
+---
+
+### P-39 - Biblioteca en modo degradado cuando falta vpk.exe
+
+**Descripción:** Surgió en el rediseño Paso 8/8 (README `2e`, "Primer arranque"): el botón "Entrar de todos modos" del Estado 2 (ruta faltante) originalmente iba a prometer "ver tu biblioteca" aunque falte `vpk.exe`, pero hoy `AddonList.tsx` NO soporta eso — cuando `detectPaths()` resuelve `needs-manual`, el componente solo muestra el mensaje de `REASON_MESSAGES` + "Reintentar detección", sin escanear ni mostrar ningún addon. Además `needs-manual` nunca persiste rutas (Decisión D1 de `ipc-handlers.ts`: solo se guarda si el resultado es `ready`), así que `scanAddons()` ni siquiera podría llamarse hoy sin un `workshopFolder` explícito (el canal depende de `LocalStore.getPaths()`).
+
+Decisión tomada para el Paso 8 (no implementar esto ahora): "Entrar de todos modos" lleva al shell normal tal cual funciona hoy — Biblioteca muestra su pantalla `needs-manual` de siempre, sin lista. El copy del botón/pantalla de destino se ajustó para ser honesto con eso.
+
+**Implementación futura (si se prioriza):** que `AddonList` escanee igual cuando `reason === "required-path-missing"` y `paths.workshopFolder` esté disponible (con `Aplicar` deshabilitado), en vez de solo mostrar el mensaje de reintento.
+
+**Pendiente de decidir / confirmar contra el código antes de implementarlo:** cómo se comporta `AddonScanner.scan()` cuando `vpk.exe` está AUSENTE del todo (no solo un VPK puntual corrupto). `#readAddonInfoSafely` ya degrada BEST-EFFORT por addon (try/catch → `info: null`) para fallos de extracción de un VPK individual — eso está confirmado en el código. Lo que NO está confirmado es si una llamada a `vpk.exe` cuando el EJECUTABLE mismo no existe (ENOENT del proceso, no un exit code ≠ 0 de un binario que sí corrió) cae dentro de ese mismo try/catch o si se comporta distinto (por ejemplo, revienta el spawn de una forma que no está contemplada). Confirmar esto contra `VpkTool`/`ChildProcessCommandRunner` antes de dar por sentado que el escaneo "simplemente funciona sin vpk.exe, solo con addons sin metadata".

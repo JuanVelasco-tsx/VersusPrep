@@ -53,6 +53,6 @@
 
 .notice {
   margin: 0 var(--space-6) var(--space-7);
-  font-size: var(--font-size-sm);
-  color: var(--color-warning);
+  font-size: var(--fs-sm);
+  color: var(--color-notice-text);
 }

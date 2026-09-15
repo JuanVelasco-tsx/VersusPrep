@@ -1,3 +1,12 @@
+/*
+ * Avisos de confianza (contenido de TrustNotices.tsx, mostrado desde
+ * TrustNoticesModal). Migrado a los tokens del rediseño en el Paso 8/8 —
+ * era el último consumidor pendiente de --font-size-sm/--font-weight-semibold/
+ * --color-text-subtle/--color-warning (ver el chequeo final de alias en
+ * global.css). Mismo criterio de mapeo que el resto de los componentes ya
+ * migrados: título 500/12.5px (--fs-base) + cuerpo 400/11.5px (--fs-sm),
+ * mismo patrón que los "findings" de MergeSummaryPanel.
+ */
 .notices {
   margin-bottom: var(--space-4);
   background: var(--color-surface);
@@ -7,12 +16,12 @@
 }
 
 .heading {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-muted);
+  font-size: var(--fs-kicker);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-faint);
   margin: 0 0 var(--space-2);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.16em;
 }
 
 .list {
@@ -34,16 +43,17 @@
 }
 
 .itemWarning {
-  border-left-color: var(--color-warning);
+  border-left-color: var(--color-notice-border);
 }
 
 .title {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--fs-base); /* 12.5px, cercano al 12px viejo */
+  font-weight: var(--fw-medium);
   color: var(--color-text);
 }
 
 .text {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-subtle);
+  font-size: var(--fs-sm); /* 11.5px, cercano al 12px viejo */
+  line-height: 1.45;
+  color: var(--color-text-dim);
 }

@@ -24,7 +24,7 @@
   align-items: center;
   justify-content: center;
   background: var(--color-surface-hover);
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
   font-weight: var(--fw-semibold);
   /* 14px sin token exacto en la escala nueva (fs-md=13, fs-lg=13.5, ninguno
      calza); reducido desde 18px para que las iniciales no se vean
@@ -40,5 +40,5 @@
   /* 32px sin token (mismo caso que 40px de .image/.fallback arriba). */
   width: 32px;
   height: 32px;
-  font-size: var(--font-size-sm);
+  font-size: var(--fs-sm);
 }

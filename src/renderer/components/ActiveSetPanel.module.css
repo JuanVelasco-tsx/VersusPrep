@@ -51,6 +51,6 @@
 
 .message {
   padding: var(--space-5) 0;
-  color: var(--color-text-subtle);
-  font-size: var(--font-size-base);
+  color: var(--color-text-muted);
+  font-size: var(--fs-xl);
 }

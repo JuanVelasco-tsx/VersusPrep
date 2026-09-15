@@ -3,8 +3,10 @@
   align-items: flex-start;
   gap: var(--space-2);
   padding: var(--space-5) 0;
-  color: var(--color-text-subtle);
-  font-size: var(--font-size-base);
+  /* Más clara que .delayed (--color-text-muted) a propósito: preserva la
+     jerarquía original (mensaje principal más visible que la nota tardía). */
+  color: var(--color-text);
+  font-size: var(--fs-xl);
 }
 
 .spinner {
