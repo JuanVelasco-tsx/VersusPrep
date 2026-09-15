@@ -7,5 +7,14 @@
  * evita duplicar el string y que se desincronicen entre sí.
  *
  * Columnas: selección | portada | nombre (flexible) | fecha | tamaño | tipo | acciones.
+ *
+ * FIX (bug reportado tras Paso 2, commit 8f45fa3): la columna de portada
+ * decía `48px`, pero `AddonCover` (variante "md", la que usa `AddonRow`) mide
+ * `64px x 64px` (`AddonCover.module.css` .image/.fallback) - ese desfasaje
+ * hacía que la miniatura desbordara SIEMPRE ~16px hacia la columna de texto
+ * (confirmado con `getBoundingClientRect` en un repro headless: la portada
+ * pisaba ~4px del inicio del titulo incluso con textos cortos, y mucho mas
+ * con titulos largos donde encima el texto ocupaba mas lineas). `64px` acá
+ * hace que la columna coincida exactamente con el tamaño real de la portada.
  */
-export const LIBRARY_GRID_COLUMNS = "28px 48px minmax(120px,2fr) 132px 88px 88px auto";
+export const LIBRARY_GRID_COLUMNS = "28px 64px minmax(120px,2fr) 132px 88px 88px auto";

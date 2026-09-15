@@ -34,14 +34,30 @@
   white-space: nowrap;
 }
 
+/*
+ * FIX (bug reportado tras Paso 2, commit 8f45fa3): a diferencia de `.title`,
+ * `.author`/`.status` no truncaban con ellipsis - con un nombre de addon o
+ * autor largo, hacian wrap normal a 2+ lineas cada uno, lo que el usuario vio
+ * como "el titulo hace wrap" (en realidad era esta fila la que crecia sin
+ * limite). Mismo patron de una sola linea con ellipsis que ya usa `.title`
+ * (y `.cell` para fecha/tamaño/tipo) - la fila queda siempre a la altura de
+ * la portada (64px), sin crecer ni superponerse con la fila siguiente,
+ * combinado con el fix del ancho de columna de portada (`libraryGridColumns.ts`).
+ */
 .author {
   font-size: 12px;
   color: #9a9a9a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status {
   font-size: 12px;
   color: #cfcfcf;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .statusBlocked {
