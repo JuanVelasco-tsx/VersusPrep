@@ -233,6 +233,15 @@ async function bootstrap(): Promise<void> {
     } else {
       void mainWindow.loadURL("http://localhost:5173");
     }
+    // (P-32, fix) Menu.setApplicationMenu(null) (mas arriba) saco el menu "Ver"
+    // por defecto de Electron, y con el se fue el atajo Ctrl+Shift+I/F12 para
+    // abrir las DevTools - efecto secundario no anticipado en ese momento. En
+    // dev (no empaquetado) las abrimos automaticamente al crear la ventana;
+    // en el build empaquetado/produccion NUNCA se llama (mismo guard
+    // `app.isPackaged` que ya usa el if/else de arriba para loadFile/loadURL).
+    if (!app.isPackaged) {
+      mainWindow.webContents.openDevTools();
+    }
     // (DIAGNOSTICO crash.log) Captura un crash del PROCESO DE RENDER (que hoy no
     // se registra en ningun lado): si el renderer muere (crash/oom/killed), la
     // ventana puede desaparecer sin error visible. `details.reason` dice el
