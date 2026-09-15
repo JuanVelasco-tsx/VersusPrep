@@ -8,16 +8,18 @@
 // no se toca (llega en los Pasos 3, 4 y 6).
 import { useCallback, useEffect, useState } from "react";
 
-import type { AddonManifestEntry, Preset } from "../main/domain/index.js";
+import type { AddonManifestEntry } from "../main/domain/index.js";
 import { ActiveSetPanel } from "./components/ActiveSetPanel.js";
 import { AddonList } from "./components/AddonList.js";
 import { LoadingIndicator } from "./components/LoadingIndicator.js";
 import { MergeSummaryPanel } from "./components/MergeSummaryPanel.js";
 import { OperationOverlay, publishOperation } from "./components/OperationOverlay.js";
+import { PresetsPanel } from "./components/PresetsPanel.js";
 import { PresetSwitcher } from "./components/PresetSwitcher.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
 import { NOTICES_COUNT, TrustNotices } from "./components/TrustNotices.js";
 import { useActiveSetState } from "./state/useActiveSetState.js";
+import { usePresetsState } from "./state/usePresetsState.js";
 import styles from "./App.module.css";
 
 type View = "library" | "active" | "presets" | "settings";
@@ -226,22 +228,15 @@ export function App() {
     };
   }, []);
 
-  // (Paso 2, shell) presets/activePresetId reportados por PresetSwitcher
-  // (ver ese componente, `onPresetsChange`), para derivar los contadores de
-  // "Activos" y "Presets" del nav sin duplicar la llamada IPC que
-  // PresetSwitcher ya hace por su cuenta.
-  const [presetsInfo, setPresetsInfo] = useState<{
-    presets: Preset[];
-    activePresetId: string | null;
-  }>({ presets: [], activePresetId: null });
-  const handlePresetsChange = useCallback(
-    (presets: Preset[], activePresetId: string | null): void => {
-      setPresetsInfo({ presets, activePresetId });
-    },
-    [],
-  );
+  // (Paso 5, arquitectura) Estado compartido de presets (lista + activo +
+  // mutaciones) — montado de forma INCONDICIONAL acá, mismo criterio que
+  // `activeSetState` (Paso 3): nunca remonta al cambiar de vista, así que
+  // el bloque del riel (`PresetSwitcher`, persistente) y `PresetsPanel`
+  // (se monta/desmonta con la vista) SIEMPRE ven los mismos datos. Ver el
+  // docblock de `usePresetsState` para el porqué completo.
+  const presetsState = usePresetsState();
   const activePreset =
-    presetsInfo.presets.find((preset) => preset.id === presetsInfo.activePresetId) ?? null;
+    presetsState.presets.find((preset) => preset.id === presetsState.activePresetId) ?? null;
 
   // (Paso 2, shell) `true` mientras el popover de avisos del pie del riel
   // esta abierto. Puramente UI - el contenido de `TrustNotices` no cambia,
@@ -282,7 +277,7 @@ export function App() {
         </div>
         <div className={styles.hairline} />
 
-        <PresetSwitcher onPresetsChange={handlePresetsChange} />
+        <PresetSwitcher presetsState={presetsState} onOpenPresets={() => setView("presets")} />
 
         <nav className={styles.nav}>
           {NAV_ITEMS.map((item) => {
@@ -292,7 +287,7 @@ export function App() {
                 : item.view === "active"
                   ? (activePreset?.entries.length ?? null)
                   : item.view === "presets"
-                    ? presetsInfo.presets.length
+                    ? presetsState.presets.length
                     : null;
             return (
               <button
@@ -341,12 +336,7 @@ export function App() {
         {resuming !== null && view === "active" && (
           <ActiveSetPanel resuming={resuming} activeSetState={activeSetState} />
         )}
-        {resuming !== null && view === "presets" && (
-          <p className={styles.placeholder}>
-            Gestión de presets — próximamente (Paso 5 del rediseño). Mientras tanto, usá
-            "Cambiar preset" en el riel.
-          </p>
-        )}
+        {resuming !== null && view === "presets" && <PresetsPanel presetsState={presetsState} />}
         {resuming !== null && view === "settings" && <SettingsPanel />}
       </div>
 

@@ -1,0 +1,224 @@
+/*
+ * Pantalla "Presets" (README 2c, Paso 5/8). Layout de una sola columna, sin
+ * panel derecho (a diferencia de Biblioteca/Activos/Configuración) — por
+ * eso NO reusa el padding de App.module.css .center para todo, sino que
+ * define el propio (README: "padding:22px 24px, gap 14px").
+ */
+.panel {
+  padding: 22px var(--space-9); /* 24px, exacto al README */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6); /* 14px del README, --space-6 (13px) es el más cercano */
+  height: 100%;
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-6);
+  flex-shrink: 0;
+}
+
+.headerText {
+  min-width: 0;
+}
+
+.title {
+  margin: 0 0 var(--space-2);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-heading); /* 20px, exacto al README */
+  color: var(--color-text);
+}
+
+.subtitle {
+  margin: 0;
+  font-size: var(--fs-base); /* 12.5px, exacto al README */
+  color: var(--color-text-dim);
+}
+
+.newButton {
+  flex-shrink: 0;
+  background: var(--color-accent-wash);
+  color: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-md);
+  padding: var(--space-4) var(--space-6);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.newButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+.newButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.notice {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--color-blocked-text);
+}
+
+.noticeDismiss {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4); /* 9px del README, --space-4 (8px) es el más cercano */
+}
+
+.card,
+.cardActive {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px auto;
+  align-items: center;
+  gap: var(--space-6); /* 14px del README, --space-6 (13px) es el más cercano */
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.cardActive {
+  border-color: var(--color-accent);
+  background: linear-gradient(90deg, var(--color-accent-wash), var(--color-surface) 60%);
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-xl); /* 14px, exacto al README */
+  color: var(--color-text);
+}
+
+.activeBadge {
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-chip);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: var(--radius-xs);
+  background: var(--color-accent-wash);
+  color: var(--color-accent-soft);
+}
+
+.description {
+  font-size: var(--fs-sm); /* 11.5px, exacto al README */
+  color: var(--color-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.count {
+  font-size: var(--fs-sm);
+  color: var(--color-text-faint);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  justify-self: end;
+}
+
+.activateButton {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  background: var(--color-accent-wash);
+  color: var(--color-accent-soft);
+  border: 1px solid var(--color-accent-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.activateButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+.renameButton {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  background: var(--color-surface-alt);
+  color: var(--color-text-dim);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.renameButton:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.deleteButton {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  background: transparent;
+  color: var(--color-blocked-text);
+  border: 1px solid var(--color-blocked-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.deleteButton:hover:not(:disabled) {
+  background: var(--color-blocked-tint);
+}
+
+.activateButton:disabled,
+.renameButton:disabled,
+.deleteButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.footnote {
+  margin: 0;
+  font-size: var(--fs-sm); /* 11.5px, exacto al README */
+  line-height: 1.55;
+  color: var(--color-text-faint);
+}
+
+.message {
+  padding: var(--space-6) 0;
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-base);
+}

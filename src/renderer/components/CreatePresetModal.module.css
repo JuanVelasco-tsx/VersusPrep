@@ -1,3 +1,8 @@
+/*
+ * Modal "Nuevo preset"/"Renombrar preset" (README 2c, Paso 5/8). Mismo
+ * criterio de tokens del resto del rediseño: valor exacto cuando coincide,
+ * el más cercano cuando no.
+ */
 .backdrop {
   position: fixed;
   inset: 0;
@@ -11,81 +16,106 @@
 .modal {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
+  border-radius: var(--radius-lg); /* 14px, exacto al README */
+  padding: var(--space-8); /* 20px, exacto al README */
   min-width: 280px;
-  max-width: 420px;
+  max-width: 420px; /* exacto al README */
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-6); /* 13px, cercano a los 12px del README */
+  box-shadow: var(--shadow-modal);
 }
 
 .heading {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--fs-title); /* 16px, exacto al README */
+  font-weight: var(--fw-medium);
+  color: var(--color-text);
   margin: 0;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 .label {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-subtle);
+  font-size: var(--fs-sm); /* 11.5px, exacto al README */
+  color: var(--color-text-dim);
 }
 
 .input,
 .textarea {
-  font-size: var(--font-size-sm);
+  font-size: var(--fs-md); /* 13px, exacto al README */
   font-family: inherit;
-  background: var(--color-surface-alt);
+  background: var(--color-rail);
   color: var(--color-text);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm); /* 6px, exacto al README */
+  padding: var(--space-5) var(--space-5); /* ~10px, cercano a "9px 10px" del README */
+}
+
+.input:focus,
+.textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
 }
 
 .textarea {
   resize: vertical;
 }
 
+.note {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--color-text-faint);
+}
+
 .actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--space-2);
+  gap: var(--space-3);
   margin-top: var(--space-2);
 }
 
 .cancelButton {
-  font-size: var(--font-size-sm);
-  background: var(--color-surface-alt);
-  color: var(--color-text-subtle);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  background: transparent;
+  color: var(--color-text-dim);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-5);
   cursor: pointer;
 }
 
+.cancelButton:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
 .cancelButton:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }
 
 .createButton {
-  font-size: var(--font-size-sm);
-  background: var(--color-accent);
-  color: var(--color-accent-text);
-  border: none;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  background: var(--color-accent-wash);
+  color: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
   border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-5);
   cursor: pointer;
 }
 
+.createButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
 .createButton:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }
