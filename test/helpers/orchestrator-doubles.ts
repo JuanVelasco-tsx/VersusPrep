@@ -170,17 +170,35 @@ export class FakeGameInfoEditor {
 /** AddonScanner mockeado: devuelve un ScannedAddon por cada id configurado. */
 export class FakeAddonScanner {
   constructor(private readonly scannedIds: string[]) {}
+  #toScannedAddon(id: string): ScannedAddon {
+    return {
+      id,
+      vpkPath: `${TEST_PATHS.workshopFolder}\\${id}.vpk`,
+      coverPath: null,
+      info: null,
+      mtimeMs: 0,
+      sizeBytes: 0,
+    };
+  }
   scan(_workshopFolder: string): Promise<ScannedAddon[]> {
-    return Promise.resolve(
-      this.scannedIds.map((id) => ({
-        id,
-        vpkPath: `${TEST_PATHS.workshopFolder}\\${id}.vpk`,
-        coverPath: null,
-        info: null,
-        mtimeMs: 0,
-        sizeBytes: 0,
-      })),
-    );
+    return Promise.resolve(this.scannedIds.map((id) => this.#toScannedAddon(id)));
+  }
+  // (P-perf, Paso 1) Mismo contrato que AddonScanner.resolveByIds real: un id
+  // que no esté entre los configurados se reporta como "missing" (primer
+  // faltante), replicando la detección temprana de addon ausente que antes
+  // hacía el scan completo (DECISIÓN 5 de merge-orchestrator).
+  resolveByIds(
+    _workshopFolder: string,
+    addonIds: readonly string[],
+  ): Promise<{ kind: "ok"; addons: ScannedAddon[] } | { kind: "missing"; addonId: string }> {
+    const known = new Set(this.scannedIds);
+    for (const id of addonIds) {
+      if (!known.has(id)) return Promise.resolve({ kind: "missing", addonId: id });
+    }
+    return Promise.resolve({
+      kind: "ok",
+      addons: addonIds.map((id) => this.#toScannedAddon(id)),
+    });
   }
 }
 

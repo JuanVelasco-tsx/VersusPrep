@@ -265,17 +265,22 @@ class FakeGameInfoEditor {
 
 class FakeAddonScanner {
   constructor(private readonly ids: string[]) {}
+  #toScannedAddon(id: string): ScannedAddon {
+    return { id, vpkPath: `${WORKSHOP}\\${id}.vpk`, coverPath: null, info: null, mtimeMs: 0, sizeBytes: 0 };
+  }
   scan(): Promise<ScannedAddon[]> {
-    return Promise.resolve(
-      this.ids.map((id) => ({
-        id,
-        vpkPath: `${WORKSHOP}\\${id}.vpk`,
-        coverPath: null,
-        info: null,
-        mtimeMs: 0,
-        sizeBytes: 0,
-      })),
-    );
+    return Promise.resolve(this.ids.map((id) => this.#toScannedAddon(id)));
+  }
+  // (P-perf, Paso 1) Mismo contrato que AddonScanner.resolveByIds real.
+  resolveByIds(
+    _workshopFolder: string,
+    addonIds: readonly string[],
+  ): Promise<{ kind: "ok"; addons: ScannedAddon[] } | { kind: "missing"; addonId: string }> {
+    const known = new Set(this.ids);
+    for (const id of addonIds) {
+      if (!known.has(id)) return Promise.resolve({ kind: "missing", addonId: id });
+    }
+    return Promise.resolve({ kind: "ok", addons: addonIds.map((id) => this.#toScannedAddon(id)) });
   }
 }
 
