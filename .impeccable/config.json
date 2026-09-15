@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "files": [
+          "src/renderer/global.css"
+        ],
+        "createdAt": "2026-09-15T01:42:49.191Z",
+        "reason": "Viene tal cual de la seccion 'Design Tokens' del README de design-handoff/ (paso 1/8 del rediseño, pedido explicito del usuario: copiar el bloque verbatim, sin retocar) - la eleccion de fuente es del sistema de diseño entregado, no una decision mia"
+      }
+    ]
+  }
+}
