@@ -1,10 +1,14 @@
+/*
+ * Tamaño default ("md", sin `size` explícito) — portada de fila (README
+ * "Medidas fijas del layout": "portada de fila 40px"). Antes de este Paso
+ * 3/8 era 64px; único consumidor de "md" es `AddonRow` (Biblioteca), así que
+ * se actualiza el tamaño acá en vez de sumar un tercer nombre de variante.
+ * 40px sigue siendo una DIMENSIÓN DE LAYOUT (no ritmo de espaciado), por eso
+ * va como literal, no un token — mismo criterio que el resto de este archivo.
+ */
 .image {
-  /* 64px sin token: no hay categoria de "tamaño de componente" en la escala
-     de espaciado, y el README del rediseño ya indica que la portada de fila
-     pasa a 40px en el rediseño (paso 3, Biblioteca) - no tiene sentido
-     tokenizar un tamaño que va a cambiar en ese mismo paso. */
-  width: 64px;
-  height: 64px;
+  width: 40px;
+  height: 40px;
   object-fit: cover;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
@@ -12,32 +16,28 @@
 }
 
 .fallback {
-  width: 64px;
-  height: 64px;
+  width: 40px;
+  height: 40px;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  /* #3a3a3a sin token equivalente hoy. Revisar en paso 3 (Biblioteca) /
-     paso 4 (Activos, PriorityRow tambien usa AddonCover). */
-  background: #3a3a3a;
+  background: var(--color-surface-hover);
   color: var(--color-text-subtle);
-  font-weight: var(--font-weight-semibold);
-  /* 18px sin token: no esta en la escala tipografica nueva (--fs-lg es
-     13.5px, --fs-title es 16px, ninguno coincide). Revisar en paso 3/4.
-     0.5px de letter-spacing: sin categoria de token para tracking suelto
-     (el nuevo sistema solo define tracking relativo para kicker/chip, no
-     aplica aca). */
-  font-size: 18px;
-  letter-spacing: 0.5px;
+  font-weight: var(--fw-semibold);
+  /* 14px sin token exacto en la escala nueva (fs-md=13, fs-lg=13.5, ninguno
+     calza); reducido desde 18px para que las iniciales no se vean
+     desproporcionadas en la caja de 40px (antes 64px). */
+  font-size: 14px;
 }
 
 /* Variante compacta (P-35): PriorityRow ("Activos") es una fila de una sola
-   línea; 64px rompería esa altura. .sm se combina con .image/.fallback (no
-   los reemplaza) para heredar object-fit/radius/colores y solo pisar tamaño. */
+   línea; el tamaño default rompería esa altura. .sm se combina con
+   .image/.fallback (no los reemplaza) para heredar object-fit/radius/colores
+   y solo pisar tamaño. */
 .sm {
-  /* 32px sin token (mismo caso que 64px de .image/.fallback arriba). */
+  /* 32px sin token (mismo caso que 40px de .image/.fallback arriba). */
   width: 32px;
   height: 32px;
   font-size: var(--font-size-sm);

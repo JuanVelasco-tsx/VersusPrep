@@ -1,132 +1,171 @@
+/*
+ * Grilla de 5 columnas del README (2a, Paso 3/8): selección | portada |
+ * nombre+meta | chips de estado | acción. `gap:13px` es EXACTO a
+ * `--space-6`; `padding:8px 20px` usa --space-4 (8px, exacto) y --space-8
+ * (20px, exacto) — el resto de columnas/`height:56px` son dimensiones de
+ * layout literales (ver libraryGridColumns.ts).
+ */
 .row {
   display: grid;
   align-items: center;
-  gap: var(--space-3);
-  /* 10px sin token: no coincide con ningun valor de la escala vieja (4/8/12/
-     16/24) ni con uno nuevo disponible ahora mismo (el --space-5 nuevo SI es
-     10px, pero ese nombre esta pisado por el compat de global.css hasta que
-     se retire en el paso 8 - ver ese archivo). Revisar en paso 3 (Biblioteca). */
-  padding: 10px var(--space-3);
-  border-bottom: 1px solid var(--color-border);
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-8);
+  height: 56px;
+  border-bottom: 1px solid var(--color-row-border);
+}
+
+/* Fila incluida (README): franja lateral blurple + wash degradado. */
+.rowIncluded {
+  border-left: 2px solid var(--color-accent);
+  background: linear-gradient(90deg, var(--color-accent-wash), transparent 60%);
+}
+
+/* Fila bloqueada (VScript sin forzar): franja lateral roja + trama de peligro. */
+.rowBlocked {
+  border-left: 2px solid var(--color-blocked);
+  background: var(--color-blocked-hatch);
+}
+
+.rowBlocked .title {
+  color: var(--color-text-muted);
 }
 
 .selectCheckbox {
   justify-self: center;
 }
 
-.cell {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .info {
   display: flex;
   flex-direction: column;
-  /* 2px sin token: mismo caso que el padding de .row - es el --space-1
-     NUEVO (2px), pero ese nombre esta pisado por el compat. Revisar en
-     paso 3 (Biblioteca). */
   gap: 2px;
-  flex: 1;
   min-width: 0;
 }
 
 .title {
-  font-weight: var(--font-weight-semibold);
-  font-size: var(--font-size-base);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-lg); /* 13.5px, exacto al README ("título de fila") */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.meta {
+  font-size: var(--fs-sm); /* 11.5px, exacto al README */
+  color: var(--color-text-faint);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/*
- * FIX (bug reportado tras Paso 2, commit 8f45fa3): a diferencia de `.title`,
- * `.author`/`.status` no truncaban con ellipsis - con un nombre de addon o
- * autor largo, hacian wrap normal a 2+ lineas cada uno, lo que el usuario vio
- * como "el titulo hace wrap" (en realidad era esta fila la que crecia sin
- * limite). Mismo patron de una sola linea con ellipsis que ya usa `.title`
- * (y `.cell` para fecha/tamaño/tipo) - la fila queda siempre a la altura de
- * la portada (64px), sin crecer ni superponerse con la fila siguiente,
- * combinado con el fix del ancho de columna de portada (`libraryGridColumns.ts`).
- */
-.author {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
+.metaDanger {
+  font-size: var(--fs-sm);
+  color: var(--color-blocked-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.status {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-subtle);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.metaCollide {
+  color: var(--color-collide-text);
 }
 
-.statusBlocked {
-  color: var(--color-warning);
+.error {
+  font-size: var(--fs-xs);
+  color: var(--color-blocked-text);
 }
 
-.actions {
+/* Chips de estado (columna 4). Formato común: 600/10px, letter-spacing
+   .07em, uppercase, padding 3px 7px, radius 4 (README). */
+.chips {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
-.includeLabel {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: var(--fs-md); /* 13px: exacto en la escala tipografica NUEVA (sin equivalente en la vieja) */
+.chipIncluded,
+.chipCollide,
+.chipBlocked,
+.chipCompatible,
+.chipPending {
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-chip); /* 10px, exacto al README */
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: var(--radius-xs);
   white-space: nowrap;
 }
 
+.chipIncluded {
+  background: var(--color-accent-wash);
+  color: var(--color-accent-soft);
+}
+
+.chipCollide {
+  background: color-mix(in srgb, var(--color-collide) 14%, transparent);
+  color: var(--color-collide-text);
+}
+
+.chipBlocked {
+  background: transparent;
+  color: var(--color-blocked-text);
+  border: 1px solid var(--color-blocked-border);
+}
+
+.chipCompatible {
+  background: var(--color-surface-alt);
+  color: var(--color-text-dim);
+  border: 1px solid var(--color-border);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.chipPending {
+  background: transparent;
+  color: var(--color-text-faint);
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: var(--fw-regular);
+}
+
+.action {
+  justify-self: end;
+}
+
 .forceButton {
-  font-size: var(--font-size-sm);
-  /* #4a2a2a/#e0b0b0/#6a3a3a/#5a3232 (fam. "peligro"): sin token equivalente
-     hoy - el global.css viejo tenia --color-danger-bg/-border/-text, pero no
-     se migraron al compat porque nada mas los consumia via var() antes de
-     este paso (ver global.css). Revisar en paso 3 (Biblioteca). */
-  background: #4a2a2a;
-  color: #e0b0b0;
-  border: 1px solid #6a3a3a;
+  font-size: var(--fs-xs);
+  background: transparent;
+  color: var(--color-blocked-text);
+  border: 1px solid var(--color-blocked-border);
   border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-4);
   cursor: pointer;
   white-space: nowrap;
 }
 
 .forceButton:hover {
-  background: #5a3232;
+  background: var(--color-blocked-tint);
 }
 
 .removeButton {
-  font-size: var(--font-size-sm);
+  font-size: var(--fs-xs);
   background: var(--color-surface-alt);
-  color: var(--color-text-subtle);
-  /* #3a3a3a sin token equivalente hoy. Revisar en paso 3 (Biblioteca). */
-  border: 1px solid #3a3a3a;
+  color: var(--color-text-dim);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-4);
   cursor: pointer;
   white-space: nowrap;
 }
 
 .removeButton:hover {
-  background: var(--color-border);
+  background: var(--color-surface-hover);
 }
 
-.removeButton:disabled {
-  opacity: 0.6;
+.removeButton:disabled,
+.forceButton:disabled {
+  opacity: 0.45;
   cursor: default;
-}
-
-.error {
-  font-size: var(--font-size-sm);
-  color: var(--color-danger);
 }

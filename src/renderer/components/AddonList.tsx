@@ -8,22 +8,23 @@ import type {
   VScriptClassification,
 } from "../../main/domain/index.js";
 import { AddonRow } from "./AddonRow.js";
-import { LIBRARY_GRID_COLUMNS } from "./libraryGridColumns.js";
 import { LoadingIndicator } from "./LoadingIndicator.js";
 import { publishOperation, subscribeOperation, type OperationKind } from "./OperationOverlay.js";
+import { buildCollisionSummaries } from "../state/activeSetEntries.js";
 import { applySelectionClick } from "../state/librarySelection.js";
+import { filterAddons, type LibraryFilter } from "../state/libraryFilter.js";
 import { nextSortState, sortAddons } from "../state/librarySort.js";
-import type { SortColumn, SortState } from "../state/librarySort.js";
+import type { SortState } from "../state/librarySort.js";
 import { mergePendingIntoActive } from "../state/pendingSelection.js";
 import { isPresetActivationEvent } from "../state/presetActivation.js";
+import type { ActiveSetState } from "../state/useActiveSetState.js";
 import styles from "./AddonList.module.css";
 
-/** Etiquetas + orden de despliegue de los encabezados ordenables (P-31, Paso 2). */
-const SORT_COLUMNS: { column: SortColumn; label: string }[] = [
-  { column: "name", label: "Nombre" },
-  { column: "mtime", label: "Fecha de modificación" },
-  { column: "size", label: "Tamaño" },
-  { column: "type", label: "Tipo" },
+/** Chips de filtro (README `2a`, mutuamente excluyentes). "VScript · N" se arma aparte (necesita el conteo). */
+const FILTER_CHIPS: { filter: LibraryFilter; label: string }[] = [
+  { filter: "all", label: "Todos" },
+  { filter: "active", label: "Activos" },
+  { filter: "compatible", label: "Compatibles" },
 ];
 
 /**
@@ -98,6 +99,23 @@ interface AddonListProps {
    * no era `null` (nada que consumir, si ya lo es, no hace falta notificar).
    */
   onPendingConsumed: () => void;
+  /**
+   * (Paso 3, wiring pendiente del Paso 2) Notifica a `App.tsx` el total de
+   * addons escaneados, para el contador del item "Biblioteca" del nav del
+   * riel. Se llama cada vez que `state.addons.length` cambia (fase "ready").
+   */
+  onAddonCountChange?: (count: number) => void;
+  /**
+   * (Paso 3) Estado compartido del Active_Set candidato (`useActiveSetState`,
+   * montado en `App.tsx`) — Biblioteca es un consumidor de SOLO LECTURA:
+   * usa `entries`/`previewState` para calcular el chip "⇄ N"/"comparte N
+   * archivos" de cada fila con el MISMO preview que ya alimenta el panel
+   * derecho y Activos (evita una segunda llamada a `previewActiveSet`
+   * independiente y potencialmente desincronizada). Nunca llama
+   * `setEntries`/`handleApply`/`handleDiscard` — eso sigue siendo exclusivo
+   * de Activos/el panel derecho.
+   */
+  activeSetState: ActiveSetState;
 }
 
 export function AddonList({
@@ -106,6 +124,8 @@ export function AddonList({
   onPathsReady,
   pendingEntries,
   onPendingConsumed,
+  onAddonCountChange,
+  activeSetState,
 }: AddonListProps) {
   const [state, setState] = useState<LoadState>({ phase: "detecting-paths" });
 
@@ -134,8 +154,19 @@ export function AddonList({
   const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   // Ordenamiento de columnas de Biblioteca (P-31, Paso 2). `null` = orden de
-  // escaneo original (default, ver `nextSortState`/`sortAddons`).
+  // escaneo original (default, ver `nextSortState`/`sortAddons`). REDISEÑO
+  // (Paso 3): el indicador pasa de 4 encabezados clickeables a un único
+  // control "Fecha ▼" en la toolbar (README "Interactions & Behavior") - solo
+  // cambia la UI que lo dispara, `nextSortState`/`sortAddons` siguen intactos
+  // (mismo motivo por el que `SortColumn` distinto de "mtime" sigue existiendo
+  // sin usarse activamente desde acá).
   const [sort, setSort] = useState<SortState | null>(null);
+
+  // Búsqueda + chips de filtro (README "Interactions & Behavior"): NUEVOS,
+  // solo cliente, sin IPC — ver `libraryFilter.ts`. `query` sin debounce (la
+  // lista ya está en memoria).
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<LibraryFilter>("all");
 
   // Guard contra una operacion de OTRO origen en curso (mismo patron que cada
   // AddonRow, Seccion 21.4): los botones "Incluir seleccionados"/"Excluir
@@ -327,21 +358,56 @@ export function AddonList({
     [refreshActiveSet],
   );
 
+  // Total de addons escaneados, para el contador de "Biblioteca" del nav
+  // (Paso 3, wiring pendiente del Paso 2 - ver doc de `onAddonCountChange`).
+  useEffect(() => {
+    if (state.phase === "ready") onAddonCountChange?.(state.addons.length);
+  }, [state, onAddonCountChange]);
+
   // Biblioteca ordenada segun `sort` (P-31, Paso 2) — copia de `state.addons`
-  // en el orden de escaneo si `sort` es `null` (default). Determina el ORDEN
-  // de despliegue de filas y de los rangos de shift+click (`selectableIds`
-  // abajo), pero no filtra nada.
+  // en el orden de escaneo si `sort` es `null` (default).
   const sortedAddons = useMemo(() => {
     if (state.phase !== "ready") return [] as ScannedAddon[];
     return sortAddons(state.addons, state.classifications, sort);
   }, [state, sort]);
 
+  // Cantidad de addons VScript (clasificación ya resuelta), para el label
+  // "VScript · N" del chip de filtro (README).
+  const vscriptCount = useMemo(() => {
+    if (state.phase !== "ready") return 0;
+    return sortedAddons.filter((addon) => {
+      const classification = state.classifications[addon.id] ?? "pending";
+      return classification !== "pending" && classification.isVScriptAddon;
+    }).length;
+  }, [state, sortedAddons]);
+
+  // Biblioteca ordenada + filtrada (chip de filtro + búsqueda de texto,
+  // README "Interactions & Behavior") — determina el ORDEN y el CONJUNTO de
+  // filas realmente visibles: de acá en más, "selectableIds"/"Seleccionar
+  // todos"/shift+clic y el render de la lista usan `visibleAddons`, no
+  // `sortedAddons` (respeta el filtro aplicado, tal como ya documentaba este
+  // comentario desde el Paso 2, antes de que hubiera un filtro real).
+  const visibleAddons = useMemo(() => {
+    if (state.phase !== "ready") return [] as ScannedAddon[];
+    return filterAddons(sortedAddons, state.classifications, activeIds, filter, query);
+  }, [state, sortedAddons, activeIds, filter, query]);
+
+  // Preview compartido (`useActiveSetState`, ver doc de `activeSetState` en
+  // las props) → colisiones por addonId, mismo dato que el panel derecho y
+  // Activos (ver `buildCollisionSummaries`).
+  const collisionSummaries = useMemo(() => {
+    const preview =
+      activeSetState.previewState.phase === "ready" ? activeSetState.previewState.preview : null;
+    return buildCollisionSummaries(preview, activeSetState.entries);
+  }, [activeSetState.previewState, activeSetState.entries]);
+
   /**
-   * Ids seleccionables en el orden VISIBLE actual (`sortedAddons`): clasificacion
-   * ya resuelta, y si es VScript, solo si YA esta incluido (confirmado con el
-   * usuario, P-31+P-22 Paso 2 — ver `AddonRow.tsx`, mismo criterio que su
-   * `blocked`): un VScript sin forzar nunca se puede seleccionar para lote,
-   * porque `addAddons`/`removeAddons` no pasan por el dialogo de confirmacion
+   * Ids seleccionables en el orden VISIBLE actual (`visibleAddons`, ya con
+   * ordenamiento y filtro/búsqueda aplicados): clasificacion ya resuelta, y
+   * si es VScript, solo si YA esta incluido (confirmado con el usuario,
+   * P-31+P-22 Paso 2 — ver `AddonRow.tsx`, mismo criterio que su `blocked`):
+   * un VScript sin forzar nunca se puede seleccionar para lote, porque
+   * `addAddons`/`removeAddons` no pasan por el dialogo de confirmacion
    * individual (AC 3.7/3.8). A diferencia del viejo `eligibleIds` (BUG-002),
    * SI incluye addons ya incluidos — la seleccion ahora sirve tanto para
    * "Incluir seleccionados" como para "Excluir seleccionados".
@@ -353,14 +419,14 @@ export function AddonList({
    */
   const selectableIds = useMemo(() => {
     if (state.phase !== "ready") return [] as string[];
-    return sortedAddons
+    return visibleAddons
       .filter((addon) => {
         const classification = state.classifications[addon.id] ?? "pending";
         if (classification === "pending") return false;
         return !classification.isVScriptAddon || activeIds.has(addon.id);
       })
       .map((addon) => addon.id);
-  }, [state, sortedAddons, activeIds]);
+  }, [state, visibleAddons, activeIds]);
 
   const allSelectableSelected =
     selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
@@ -485,35 +551,70 @@ export function AddonList({
 
   return (
     <>
-      <div className={styles.headerRow} style={{ gridTemplateColumns: LIBRARY_GRID_COLUMNS }}>
-        <input
-          type="checkbox"
-          aria-label="Seleccionar todos"
-          checked={allSelectableSelected}
-          disabled={selectableIds.length === 0 || bulkBusy || operationRunning}
-          onChange={toggleSelectAll}
-        />
-        <span />
-        {SORT_COLUMNS.map(({ column, label }) => (
+      <div className={styles.toolbar}>
+        {/* "Seleccionar todos" no aparece dibujado en screenshots/2a-biblioteca.png
+            ni está descrito en el README para la toolbar - se mantiene igual
+            (P-22) porque el pedido de este paso no dijo que se quitara, y
+            sacarlo sería remover una función existente sin que nadie lo pida. */}
+        <label className={styles.selectAllLabel}>
+          <input
+            type="checkbox"
+            aria-label="Seleccionar todos"
+            checked={allSelectableSelected}
+            disabled={selectableIds.length === 0 || bulkBusy || operationRunning}
+            onChange={toggleSelectAll}
+          />
+        </label>
+        <div className={styles.search}>
+          <span className={styles.searchIcon} aria-hidden="true">
+            ⌕
+          </span>
+          <input
+            type="text"
+            className={styles.searchInput}
+            placeholder={`Buscar en ${state.addons.length} addons...`}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+        <div className={styles.chips}>
+          {FILTER_CHIPS.map(({ filter: chipFilter, label }) => (
+            <button
+              key={chipFilter}
+              type="button"
+              className={filter === chipFilter ? styles.chipActive : styles.chip}
+              onClick={() => setFilter(chipFilter)}
+            >
+              {label}
+            </button>
+          ))}
           <button
-            key={column}
             type="button"
-            className={styles.sortHeader}
-            onClick={() => setSort(nextSortState(sort, column))}
+            className={filter === "vscript" ? styles.chipVScriptActive : styles.chipVScript}
+            onClick={() => setFilter("vscript")}
           >
-            {label}
-            {sort?.column === column && (sort.direction === "asc" ? " ▲" : " ▼")}
+            VScript · {vscriptCount}
           </button>
-        ))}
-        <span />
+        </div>
+        <button
+          type="button"
+          className={styles.sortControl}
+          onClick={() => setSort(nextSortState(sort, "mtime"))}
+        >
+          Fecha{sort?.column === "mtime" ? (sort.direction === "asc" ? " ▲" : " ▼") : " ▼"}
+        </button>
       </div>
+      {visibleAddons.length === 0 && (
+        <p className={styles.message}>Ningún addon coincide con la búsqueda/filtro actual.</p>
+      )}
       <ul className={styles.list}>
-        {sortedAddons.map((addon) => (
+        {visibleAddons.map((addon) => (
           <AddonRow
             key={addon.id}
             addon={addon}
             classification={state.classifications[addon.id] ?? "pending"}
             included={activeIds.has(addon.id)}
+            collisionSummary={collisionSummaries[addon.id] ?? null}
             selected={selected.has(addon.id)}
             onSelectionClick={handleSelectionClick}
             onAdded={handleAdded}

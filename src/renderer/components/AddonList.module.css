@@ -5,22 +5,17 @@
 }
 
 .message {
-  padding: var(--space-5) 0;
+  padding: var(--space-6) 0;
   color: var(--color-text-subtle);
   font-size: var(--font-size-base);
 }
 .retryButton {
   margin-top: var(--space-3);
-  font-size: var(--fs-md); /* 13px: exacto en la escala tipografica NUEVA */
-  /* #2a3a4a/#cfe0f0/#3a5a7a/#324a5a (variante azul de retryButton): sin
-     token equivalente hoy. Revisar en paso 3 (Biblioteca). */
+  font-size: var(--fs-md); /* 13px, exacto a la escala nueva */
   background: #2a3a4a;
   color: #cfe0f0;
   border: 1px solid #3a5a7a;
   border-radius: var(--radius-sm);
-  /* 6px sin token: no coincide con la escala vieja (4/8/12/16/24); el
-     --radius-sm/--space-3 NUEVO en 6px esta pisado por el compat. Revisar
-     en paso 3 (Biblioteca). */
   padding: 6px var(--space-3);
   cursor: pointer;
 }
@@ -29,104 +24,195 @@
   background: #324a5a;
 }
 
-.headerRow {
-  display: grid;
+/*
+ * Toolbar (README 2a, Paso 3/8): checkbox "seleccionar todos" + búsqueda +
+ * chips de filtro + indicador de orden único. 60px de alto es una dimensión
+ * de layout (mismo criterio que el resto de este archivo para tamaños,
+ * no ritmo de espaciado); padding/gap sí usan tokens donde coinciden.
+ */
+.toolbar {
+  height: 60px;
+  flex-shrink: 0;
+  display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-3) var(--space-2);
+  gap: var(--space-5); /* 10px, exacto al README */
+  padding: 0 var(--space-8); /* 20px, exacto al README */
+  border-bottom: 1px solid var(--color-hairline);
 }
 
-.sortHeader {
+.selectAllLabel {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.search {
+  flex: 1;
+  max-width: 340px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5); /* 8px/10px, exacto al README */
+}
+
+.searchIcon {
+  color: var(--color-text-ghost);
+  font-size: var(--fs-base);
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
   background: transparent;
   border: none;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  text-align: left;
-  padding: 0;
+  outline: none;
+  color: var(--color-text);
+  font-size: var(--fs-base); /* 12.5px, exacto al README */
+}
+
+.searchInput::placeholder {
+  color: var(--color-text-ghost);
+}
+
+.chips {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.chip,
+.chipActive,
+.chipVScript,
+.chipVScriptActive {
+  border-radius: var(--radius-pill);
+  padding: 5px 12px;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-sm); /* 11.5px, exacto al README */
   cursor: pointer;
   white-space: nowrap;
 }
 
-.sortHeader:hover {
-  color: var(--color-text-subtle);
+.chip {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-dim);
 }
 
+.chip:hover {
+  background: var(--color-surface-hover);
+}
+
+.chipActive {
+  background: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  color: var(--color-bg);
+}
+
+.chipVScript {
+  background: transparent;
+  border: 1px solid var(--color-blocked-border);
+  color: var(--color-blocked-text);
+}
+
+.chipVScript:hover {
+  background: var(--color-blocked-tint);
+}
+
+.chipVScriptActive {
+  background: var(--color-blocked-tint);
+  border: 1px solid var(--color-blocked-border);
+  color: var(--color-blocked-text);
+}
+
+.sortControl {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--color-text-faint);
+  font-size: var(--fs-sm); /* 11.5px, exacto al README */
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sortControl:hover {
+  color: var(--color-text-dim);
+}
+
+/*
+ * Barra de lote (README 2a, Paso 3/8): mismo comportamiento de siempre
+ * (P-22), solo restyling. "Excluir" pasa a NEUTRO — el rojo queda
+ * reservado para "bloqueado" (README, sección "Barra de lote").
+ */
 .bulkBar {
   position: sticky;
   bottom: 0;
+  height: 52px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
-  /* 10px/6px sin token: mismo caso que AddonRow.module.css .row (padding) y
-     .forceButton (radio) - los NUEVOS --space-5/--radius-sm en esos valores
-     estan pisados por el compat de global.css. Revisar en paso 3 (Biblioteca). */
-  padding: 10px var(--space-3);
-  background: var(--color-surface-alt);
-  border: 1px solid #3a3a3a;
-  border-radius: 6px;
+  gap: var(--space-5);
+  padding: 0 var(--space-8);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
 }
 
 .bulkCount {
-  font-size: var(--fs-md); /* 13px: exacto en la escala tipografica NUEVA */
-  color: var(--color-text-subtle);
+  font-size: var(--fs-sm);
+  color: var(--color-text-dim);
   margin-right: auto;
 }
 
 .bulkClearButton {
-  font-size: var(--fs-md);
+  font-size: var(--fs-sm);
   background: transparent;
-  color: var(--color-text-subtle);
-  /* #3a3a3a sin token equivalente hoy. Revisar en paso 3 (Biblioteca). */
-  border: 1px solid #3a3a3a;
-  border-radius: var(--radius-sm);
-  padding: 6px var(--space-3);
+  color: var(--color-text-dim);
+  border: none;
+  padding: var(--space-3) var(--space-4);
   cursor: pointer;
 }
 
 .bulkClearButton:hover {
-  background: var(--color-border);
-}
-
-.bulkAddButton {
-  font-size: var(--fs-md);
-  font-weight: var(--font-weight-semibold);
-  /* #2a4a2a/#d0f0d0/#3a6a3a/#325a32 (variante verde "incluir"): sin token
-     equivalente hoy. Revisar en paso 3 (Biblioteca). */
-  background: #2a4a2a;
-  color: #d0f0d0;
-  border: 1px solid #3a6a3a;
-  border-radius: var(--radius-sm);
-  padding: 6px var(--space-3);
-  cursor: pointer;
-}
-
-.bulkAddButton:hover {
-  background: #325a32;
+  color: var(--color-text);
 }
 
 .bulkExcludeButton {
-  font-size: var(--fs-md);
-  font-weight: var(--font-weight-semibold);
-  /* #4a2a2a/#f0d0d0/#6a3a3a/#5a3232 (variante roja "excluir", fam.
-     "peligro"): sin token equivalente hoy, mismo caso que AddonRow.module.css
-     .forceButton. Revisar en paso 3 (Biblioteca). */
-  background: #4a2a2a;
-  color: #f0d0d0;
-  border: 1px solid #6a3a3a;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  background: var(--color-surface-alt);
+  color: var(--color-text-dim);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  padding: 6px var(--space-3);
+  padding: var(--space-3) var(--space-5);
   cursor: pointer;
 }
 
 .bulkExcludeButton:hover {
-  background: #5a3232;
+  background: var(--color-surface-hover);
+}
+
+.bulkAddButton {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  background: var(--color-accent-wash);
+  color: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+}
+
+.bulkAddButton:hover {
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .bulkClearButton:disabled,
 .bulkAddButton:disabled,
 .bulkExcludeButton:disabled {
-  opacity: 0.6;
+  opacity: 0.45;
   cursor: default;
 }
