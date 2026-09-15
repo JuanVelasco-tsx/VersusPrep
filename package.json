@@ -1,6 +1,6 @@
 {
   "name": "l4d2-versus-addon-manager",
-  "version": "0.2.0-alpha",
+  "version": "1.0.0-beta",
   "description": "Gestor de addons de la Steam Workshop para el modo Versus de Left 4 Dead 2 (Electron + TypeScript).",
   "private": true,
   "author": "L4D2 Versus Addon Manager contributors",
