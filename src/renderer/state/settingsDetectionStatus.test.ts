@@ -62,4 +62,15 @@ describe("computeDetectionStatus", () => {
     // modsvsFolder vacios no tocan NINGUN item del checklist (no estan en el).
     expect(status.checklist.map((item) => item.ok)).toEqual([false, true, true, true]);
   });
+
+  test("BUG FIX: la etiqueta del 4º ítem (vpk.exe) es coherente con el ✓/✕, no un texto fijo", () => {
+    const withVpk = computeDetectionStatus(FULL_PATHS);
+    const withoutVpk = computeDetectionStatus({ ...FULL_PATHS, vpkToolPath: "" });
+
+    const vpkItemWithVpk = withVpk.checklist[3];
+    const vpkItemWithoutVpk = withoutVpk.checklist[3];
+
+    expect(vpkItemWithVpk).toEqual({ label: "vpk.exe encontrado", ok: true });
+    expect(vpkItemWithoutVpk).toEqual({ label: "vpk.exe sin ubicar", ok: false });
+  });
 });

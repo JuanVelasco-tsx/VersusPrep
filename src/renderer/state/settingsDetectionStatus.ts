@@ -85,11 +85,17 @@ export function computeDetectionStatus(paths: GamePaths | null): DetectionStatus
     0,
   );
 
+  // Fix de bug reportado por el usuario: el 4º ítem tenía la etiqueta FIJA
+  // "vpk.exe sin ubicar" sin importar `ok` — mostraba un ✓ de éxito junto a
+  // un texto que literalmente dice "no encontrado" cuando vpk.exe SÍ estaba
+  // presente. Mismo criterio que los otros 3 ítems: la etiqueta es un
+  // enunciado que coincide con lo que el ✓/✕ representa, no un texto fijo.
+  const vpkFound = isPresent(paths, "vpkToolPath");
   const checklist: ChecklistItem[] = [
     { label: "Registro de Steam leído", ok: isPresent(paths, "steamPath") },
     { label: "Left 4 Dead 2 en la biblioteca 550", ok: isPresent(paths, "gameRoot") },
     { label: "gameinfo.txt encontrado", ok: isPresent(paths, "gameInfoFile") },
-    { label: "vpk.exe sin ubicar", ok: isPresent(paths, "vpkToolPath") },
+    { label: vpkFound ? "vpk.exe encontrado" : "vpk.exe sin ubicar", ok: vpkFound },
   ];
 
   const missingRequiredField =
