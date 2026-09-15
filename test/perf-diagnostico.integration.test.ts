@@ -9,9 +9,10 @@
  *
  * NO es un test de aserciones (no valida comportamiento): es una herramienta de
  * MEDICIÓN. Escribe su reporte por `console.log` Y por `appendFileSync` a
- * RESULTS_FILE (`C:\kiro-perf-diag\perf-resultados.txt`), que se SOBRESCRIBE al
- * inicio del `beforeAll` (`writeFileSync`) para que contenga SOLO los números de
- * esta corrida.
+ * RESULTS_FILE (`test/perf-resultados.txt`, junto a este archivo - portable,
+ * no una ruta de una máquina en particular), que se SOBRESCRIBE al inicio del
+ * `beforeAll` (`writeFileSync`) para que contenga SOLO los números de esta
+ * corrida. Excluido de git (ver `.gitignore`, `perf-resultados.txt`).
  *
  * SKIPPEABLE: solo corre si `vpk.exe` existe en la ruta conocida
  * ({@link VPK_EXE_PATH}); si no, se SALTA con `describe.skip` (otra máquina/CI).
@@ -34,8 +35,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, test } from "vitest";
 
 import Database from "better-sqlite3";
@@ -81,7 +83,13 @@ const suite = VPK_AVAILABLE ? describe : describe.skip;
 const ADDON_COUNT = 35;
 const FILES_PER_ADDON = 40;
 const ADDON_ID_BASE = 300_000_000;
-const RESULTS_FILE = "C:\\kiro-perf-diag\\perf-resultados.txt";
+// Portable: junto a este archivo, no una ruta de una máquina en particular
+// (bug reportado tras el merge de kiro/perf-diagnostico - la ruta original,
+// `C:\kiro-perf-diag\...`, solo existía en esa máquina y rompía el test en
+// cualquier otra). Bajo ESM (`module: NodeNext`) no hay `__dirname`, así que
+// se deriva desde `import.meta.url`, mismo criterio que `HELPER_DIR` en
+// `test/helpers/vpk-fixtures.ts`.
+const RESULTS_FILE = join(dirname(fileURLToPath(import.meta.url)), "perf-resultados.txt");
 
 // Paths internos COMPARTIDOS entre todos los addons (para forzar colisiones).
 const SHARED_COLLISION_PATHS = Array.from(
