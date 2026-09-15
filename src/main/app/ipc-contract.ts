@@ -48,6 +48,21 @@ export type SetManualPathResult =
     }
   | { kind: "cancelled" };
 
+/**
+ * Resultado de `paths:openGameFolder` (panel derecho "Estado de detección",
+ * rediseño Paso 6/8, README `2d`). Excepción PUNTUAL y explícita a "ningún
+ * canal IPC nuevo" (decisión confirmada con el usuario): el resto de esta
+ * pantalla reutiliza IPC existente, pero no había ningún canal para abrir una
+ * carpeta en el explorador de Windows y agregarlo es trivial (un solo
+ * `shell.openPath`, sin estado ni lógica de dominio nueva).
+ */
+export type OpenGameFolderResult =
+  /** `gameRoot` no está seteado todavía — el botón debe estar disabled antes de llegar acá. */
+  | { kind: "no-path" }
+  | { kind: "opened" }
+  /** `error` es el string que devuelve `shell.openPath` (vacío = éxito, ya cubierto por "opened"). */
+  | { kind: "failed"; error: string };
+
 export const IPC_CHANNELS = {
   detectPaths: "paths:detect",
   getPaths: "paths:get",
@@ -78,6 +93,7 @@ export const IPC_CHANNELS = {
   deletePreset: "presets:delete",
   switchActivePreset: "presets:switch",
   getActivePresetId: "presets:getActive",
+  openGameFolder: "paths:openGameFolder",
 } as const;
 
 /**
@@ -226,4 +242,12 @@ export interface L4d2Api {
   switchActivePreset(id: string): Promise<OperationResult>;
   /** Id del preset ACTIVO, o `null` si ninguno lo es todavía. */
   getActivePresetId(): Promise<string | null>;
+
+  /**
+   * Abre `gameRoot` en el explorador de archivos de Windows (panel derecho
+   * "Estado de detección", README `2d`). `{ kind: "no-path" }` si todavía no
+   * hay `gameRoot` persistido — el llamador debe deshabilitar el botón antes
+   * de llegar a este caso, no depender de él.
+   */
+  openGameFolder(): Promise<OpenGameFolderResult>;
 }

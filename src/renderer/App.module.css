@@ -201,8 +201,3 @@
   overflow-y: auto;
   padding: var(--space-7) var(--space-6);
 }
-
-.placeholder {
-  color: var(--color-text-faint);
-  font-size: var(--fs-base);
-}

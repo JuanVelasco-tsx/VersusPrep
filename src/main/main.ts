@@ -39,7 +39,7 @@ import { createProgressBroadcaster, registerIpcHandlers } from "./app/ipc-handle
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function bootstrap(): Promise<void> {
-  const { app, BrowserWindow: BrowserWindowCtor, dialog, ipcMain, Menu, net, protocol } =
+  const { app, BrowserWindow: BrowserWindowCtor, dialog, ipcMain, Menu, net, protocol, shell } =
     await import("electron");
 
   // ---------------------------------------------------------------------------
@@ -257,6 +257,7 @@ async function bootstrap(): Promise<void> {
     getIsResuming: () => outcome.isResuming,
     titleCache,
     getWillNeedElevation: () => outcome.willNeedElevation,
+    openPath: (path: string) => shell.openPath(path),
     // Handoff de elevación (fix del "reemplazo total, no coexisten" del diseño,
     // ElevationService Decisión 1 / tarea 17.1): cuando una operación resuelve
     // `status: "elevating"`, esta instancia SIN privilegios se cierra para ceder

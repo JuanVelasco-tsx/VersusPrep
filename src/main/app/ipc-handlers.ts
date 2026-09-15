@@ -71,6 +71,14 @@ export interface IpcHandlersDeps {
    * acción de cierre inyectada, igual que el resto de sus dependencias.
    */
   onElevatedHandoff: () => void;
+  /**
+   * Adaptador MÍNIMO sobre `shell.openPath` de Electron (panel derecho
+   * "Estado de detección", README `2d`, botón "Abrir carpeta del juego").
+   * Se inyecta en vez de importar `electron` como valor acá, mismo criterio
+   * que el resto del módulo (testeable sin runtime de Electron). Resuelve con
+   * el string de error de `shell.openPath` ("" en éxito).
+   */
+  openPath: (path: string) => Promise<string>;
 }
 
 /**
@@ -211,6 +219,19 @@ export function registerIpcHandlers(
   // `paths:detect`, no dispara ningún diálogo nativo ni re-detección. La
   // pantalla de Configuración la usa para pintar el estado ACTUAL al montar.
   ipcMain.handle(IPC_CHANNELS.getPaths, () => deps.localStore.getPaths());
+
+  // (README 2d, Paso 6/8) Abre `gameRoot` en el explorador de Windows. Sin
+  // `gameRoot` persistido no hay nada que abrir: el llamador (botón "Abrir
+  // carpeta del juego") debe deshabilitarse antes de llegar acá, pero el
+  // handler igual responde con un resultado tipado en vez de asumirlo.
+  ipcMain.handle(IPC_CHANNELS.openGameFolder, async () => {
+    const paths = deps.localStore.getPaths();
+    if (paths === null || paths.gameRoot === "") {
+      return { kind: "no-path" };
+    }
+    const error = await deps.openPath(paths.gameRoot);
+    return error === "" ? { kind: "opened" } : { kind: "failed", error };
+  });
 
   // (P-37) Selección manual de UN campo puntual desde la pantalla de
   // Configuración. Reusa `PathDetector.resolveManualPath` (mismo diálogo +

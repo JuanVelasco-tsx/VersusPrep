@@ -154,6 +154,10 @@ interface Doubles {
   switchActivePresetCalls: string[];
   /** Resultado que devuelve mergeOrchestrator.switchActivePreset; configurable por test. */
   switchActivePresetResult: { value: OperationResult };
+  /** Rutas pasadas a deps.openPath (paths:openGameFolder, README 2d). */
+  openPathCalls: string[];
+  /** String de error que devuelve deps.openPath; "" simula éxito (contrato de shell.openPath). */
+  openPathResult: { value: string };
 }
 
 function buildDoubles(): Doubles {
@@ -188,6 +192,8 @@ function buildDoubles(): Doubles {
     activePresetIdValue: { value: null },
     switchActivePresetCalls: [],
     switchActivePresetResult: { value: { status: "success" } },
+    openPathCalls: [],
+    openPathResult: { value: "" },
   };
 
   d.deps = {
@@ -277,6 +283,10 @@ function buildDoubles(): Doubles {
     titleCache: d.titleCache,
     onElevatedHandoff: () => {
       d.handoffCalls.count++;
+    },
+    openPath: (path: string) => {
+      d.openPathCalls.push(path);
+      return Promise.resolve(d.openPathResult.value);
     },
   };
 
@@ -925,5 +935,38 @@ describe("IPC — presets:getActive", () => {
     d.activePresetIdValue.value = null;
 
     expect(await ipc.invoke(IPC_CHANNELS.getActivePresetId)).toBeNull();
+  });
+});
+
+describe("IPC — paths:openGameFolder (README 2d, panel derecho, Paso 6/8)", () => {
+  test("caso feliz: abre gameRoot y devuelve opened", async () => {
+    const { ipc, d } = setup();
+    d.getPathsValue.value = PATHS;
+    d.openPathResult.value = "";
+
+    const result = await ipc.invoke(IPC_CHANNELS.openGameFolder);
+
+    expect(d.openPathCalls).toEqual([PATHS.gameRoot]);
+    expect(result).toEqual({ kind: "opened" });
+  });
+
+  test("sin gameRoot persistido (paths null) -> no-path, sin llamar a openPath", async () => {
+    const { ipc, d } = setup();
+    d.getPathsValue.value = null;
+
+    const result = await ipc.invoke(IPC_CHANNELS.openGameFolder);
+
+    expect(d.openPathCalls).toEqual([]);
+    expect(result).toEqual({ kind: "no-path" });
+  });
+
+  test("shell.openPath devuelve un error -> failed con ese error", async () => {
+    const { ipc, d } = setup();
+    d.getPathsValue.value = PATHS;
+    d.openPathResult.value = "No se pudo abrir la ruta";
+
+    const result = await ipc.invoke(IPC_CHANNELS.openGameFolder);
+
+    expect(result).toEqual({ kind: "failed", error: "No se pudo abrir la ruta" });
   });
 });

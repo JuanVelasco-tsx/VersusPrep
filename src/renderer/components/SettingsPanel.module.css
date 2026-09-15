@@ -1,47 +1,133 @@
+/*
+ * Configuración (README 2d, rediseño Paso 6/8): rutas agrupadas por origen +
+ * banner de ruta faltante. Migra esta pantalla al set de tokens del rediseño
+ * (--fs-*/--color-*/--space-*, Paso 1/8) — hasta este paso seguía en los
+ * tokens viejos (--font-size-base, --color-warning, etc.), nunca migrados
+ * porque "faltaba la UI dedicada" (P-37).
+ */
 .panel {
   max-width: 720px;
 }
 
 .heading {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--fs-heading); /* 20px, exacto al README */
+  font-weight: var(--fw-medium);
   margin: 0 0 var(--space-2);
 }
 
 .description {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-subtle);
-  margin: 0 0 var(--space-4);
+  font-size: var(--fs-base); /* 12.5px, exacto al README */
+  line-height: 1.5;
+  color: var(--color-text-dim);
+  margin: 0 0 var(--space-6);
 }
 
 .message {
-  font-size: var(--font-size-sm);
+  font-size: var(--fs-md);
   color: var(--color-text-muted);
   margin: 0 0 var(--space-3);
 }
 
 .notice {
-  font-size: var(--font-size-sm);
-  color: var(--color-warning);
+  font-size: var(--fs-md);
+  color: var(--color-notice-text);
   margin: 0 0 var(--space-3);
 }
 
-.list {
-  list-style: none;
+/* Banner de ruta faltante (README: padding 12px 13px, radius 8). */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-6); /* ~12px/13px, cercano al README */
+  margin-bottom: var(--space-7);
+  background: var(--color-blocked-tint);
+  border: 1px solid var(--color-blocked-border);
+  border-radius: var(--radius-md);
+}
+
+.bannerIcon {
+  flex-shrink: 0;
+  color: var(--color-blocked-text);
+  font-weight: var(--fw-medium);
+  line-height: 1.3;
+}
+
+.bannerText {
+  flex: 1;
+  min-width: 0;
+}
+
+.bannerTitle {
+  margin: 0 0 2px;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-md); /* 13px, exacto al README */
+  color: var(--color-blocked-text);
+}
+
+.bannerBody {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+
+.bannerButton {
+  flex-shrink: 0;
+  background: transparent;
+  color: var(--color-blocked-text);
+  border: 1px solid var(--color-blocked-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-5); /* ~6px/11px */
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bannerButton:hover:not(:disabled) {
+  background: var(--color-blocked-tint);
+}
+
+.bannerButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.group {
+  margin-bottom: var(--space-7);
+}
+
+.kicker {
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-kicker); /* 9.5px, exacto al README */
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
   margin: 0 0 var(--space-4);
+}
+
+.list,
+.listDanger {
+  list-style: none;
+  margin: 0;
   padding: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
 }
 
+.listDanger {
+  border-color: var(--color-blocked-border);
+}
+
 .row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-6); /* ~14px, cercano al README */
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-5) var(--space-6); /* ~11px/13px, cercano al README */
+  border-bottom: 1px solid var(--color-hairline);
 }
 
 .row:last-child {
@@ -55,50 +141,91 @@
   min-width: 0;
 }
 
+.labelLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 .label {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--fs-base); /* 12.5px, exacto al README */
+  font-weight: var(--fw-medium);
   color: var(--color-text);
 }
 
 .value {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-subtle);
-  overflow-wrap: break-word;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm); /* 11.5px, exacto al README */
+  color: var(--color-text-dim);
+  overflow-wrap: anywhere;
 }
 
-.changeButton {
+.note {
+  font-size: var(--fs-xs); /* 11px, exacto al README */
+  color: var(--color-text-faint);
+}
+
+.readOnlyNote {
   flex-shrink: 0;
-  font-size: var(--font-size-sm);
+  font-size: var(--fs-sm);
+  color: var(--color-text-faint);
+}
+
+.badgeNeutral,
+.badgeDanger {
+  flex-shrink: 0;
+  border-radius: var(--radius-xs);
+  padding: 2px 6px;
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-chip); /* 10px */
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.badgeNeutral {
   background: var(--color-surface-alt);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
+  color: var(--color-text-dim);
+}
+
+.badgeDanger {
+  background: var(--color-blocked-tint);
+  color: var(--color-blocked-text);
+  border: 1px solid var(--color-blocked-border);
+}
+
+.changeButton,
+.changeButtonDanger {
+  flex-shrink: 0;
   border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-5); /* ~6px/11px, exacto al README */
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-sm);
   cursor: pointer;
   white-space: nowrap;
 }
 
+.changeButton {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
 .changeButton:hover:not(:disabled) {
-  background: var(--color-surface);
+  background: var(--color-surface-hover);
 }
 
-.changeButton:disabled {
-  opacity: 0.5;
-  cursor: default;
+.changeButtonDanger {
+  background: transparent;
+  color: var(--color-blocked-text);
+  border: 1px solid var(--color-blocked-border);
 }
 
-.redetectButton {
-  font-size: var(--font-size-sm);
-  background: var(--color-accent);
-  color: var(--color-accent-text);
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
-  cursor: pointer;
+.changeButtonDanger:hover:not(:disabled) {
+  background: var(--color-blocked-tint);
 }
 
-.redetectButton:disabled {
-  opacity: 0.5;
+.changeButton:disabled,
+.changeButtonDanger:disabled {
+  opacity: 0.45;
   cursor: default;
 }

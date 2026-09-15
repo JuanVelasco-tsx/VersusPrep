@@ -1,7 +1,13 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 import { IPC_CHANNELS } from "../main/app/ipc-contract.js";
-import type { L4d2Api, ResumeState, SetManualPathResult, SettablePathField } from "../main/app/ipc-contract.js";
+import type {
+  L4d2Api,
+  OpenGameFolderResult,
+  ResumeState,
+  SetManualPathResult,
+  SettablePathField,
+} from "../main/app/ipc-contract.js";
 import type {
   ActiveSetPreview,
   AddonManifestEntry,
@@ -66,6 +72,8 @@ const api: L4d2Api = {
     ipcRenderer.invoke(IPC_CHANNELS.switchActivePreset, id) as Promise<OperationResult>,
   getActivePresetId: () =>
     ipcRenderer.invoke(IPC_CHANNELS.getActivePresetId) as Promise<string | null>,
+  openGameFolder: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.openGameFolder) as Promise<OpenGameFolderResult>,
 };
 
 contextBridge.exposeInMainWorld("l4d2Api", api);

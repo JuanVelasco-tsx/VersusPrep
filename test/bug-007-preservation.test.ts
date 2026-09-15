@@ -244,6 +244,7 @@ describe("BUG-007 (preservación) — baseline que el fix NO debe romper", () =>
       "deletePreset",
       "switchActivePreset",
       "getActivePresetId",
+      "openGameFolder",
     ].sort();
 
     expect(Object.keys(IPC_CHANNELS).sort()).toEqual(expectedKeys);

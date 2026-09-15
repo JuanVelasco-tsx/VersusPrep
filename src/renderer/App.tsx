@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { AddonManifestEntry } from "../main/domain/index.js";
 import { ActiveSetPanel } from "./components/ActiveSetPanel.js";
 import { AddonList } from "./components/AddonList.js";
+import { DetectionStatusPanel } from "./components/DetectionStatusPanel.js";
 import { LoadingIndicator } from "./components/LoadingIndicator.js";
 import { MergeSummaryPanel } from "./components/MergeSummaryPanel.js";
 import { OperationOverlay, publishOperation } from "./components/OperationOverlay.js";
@@ -20,6 +21,7 @@ import { SettingsPanel } from "./components/SettingsPanel.js";
 import { NOTICES_COUNT, TrustNotices } from "./components/TrustNotices.js";
 import { useActiveSetState } from "./state/useActiveSetState.js";
 import { usePresetsState } from "./state/usePresetsState.js";
+import { useSettingsState } from "./state/useSettingsState.js";
 import styles from "./App.module.css";
 
 type View = "library" | "active" | "presets" | "settings";
@@ -45,10 +47,9 @@ const NAV_ITEMS: readonly NavItemDef[] = [
 
 /**
  * Vistas que llevan el slot de panel derecho (README: `2a`/`2b` con "Estado
- * del preset", `2d` con "Estado de detección"; `2c` Presets es "riel + una
- * sola columna de contenido, sin panel derecho"). El contenido REAL del
- * panel se conecta en los Pasos 3 (Biblioteca), 4 (Activos) y 6
- * (Configuración) - acá el slot queda con un placeholder.
+ * del preset" vía `MergeSummaryPanel`, `2d` con "Estado de detección" vía
+ * `DetectionStatusPanel`; `2c` Presets es "riel + una sola columna de
+ * contenido, sin panel derecho").
  */
 const VIEWS_WITH_RIGHT_PANEL: ReadonlySet<View> = new Set(["library", "active", "settings"]);
 
@@ -263,6 +264,15 @@ export function App() {
   // arquitectura (confirmada con el usuario, no asumida).
   const activeSetState = useActiveSetState(pendingEntries);
 
+  // (Paso 6) Estado compartido de Configuración (paths/busyField/notice/
+  // permiso de administrador) - mismo criterio de arquitectura que
+  // `activeSetState` de arriba: alimenta tanto al centro (`SettingsPanel`)
+  // como al panel derecho ("Estado de detección", `DetectionStatusPanel`).
+  // Ver `useSettingsState` para el detalle (no necesita la garantía de "no
+  // remonta nunca" de `activeSetState`, solo la de compartir un mismo estado
+  // entre las dos regiones simultáneas de esta vista).
+  const settingsState = useSettingsState();
+
   return (
     <div className={styles.shell}>
       <OperationOverlay />
@@ -337,14 +347,15 @@ export function App() {
           <ActiveSetPanel resuming={resuming} activeSetState={activeSetState} />
         )}
         {resuming !== null && view === "presets" && <PresetsPanel presetsState={presetsState} />}
-        {resuming !== null && view === "settings" && <SettingsPanel />}
+        {resuming !== null && view === "settings" && (
+          <SettingsPanel state={settingsState} workshopAddonCount={libraryCount} />
+        )}
       </div>
 
       {VIEWS_WITH_RIGHT_PANEL.has(view) && (
         <aside className={styles.rightPanel}>
           {view === "settings" ? (
-            // Contenido real: Paso 6 (Configuración, "Estado de detección").
-            <p className={styles.placeholder}>Próximamente (Paso 6 del rediseño).</p>
+            <DetectionStatusPanel state={settingsState} />
           ) : (
             <MergeSummaryPanel
               entryCount={activeSetState.entries.length}
