@@ -224,8 +224,20 @@ async function bootstrap(): Promise<void> {
 
   const createWindow = (): void => {
     mainWindow = new BrowserWindowCtor({
-      width: 1024,
-      height: 720,
+      // (Fix bug reportado por el usuario) 1280×800 es la ventana de
+      // REFERENCIA del rediseño (design-handoff/README.md, "Medidas fijas
+      // del layout") — el default anterior (1024×720, andamiaje inicial
+      // pre-rediseño) era más angosto que el layout de 5 columnas de
+      // Biblioteca, truncando los nombres de addon a un solo carácter.
+      // minWidth/minHeight usan el "mínimo soportado" que el mismo README
+      // documenta (1100×700): por debajo de eso, el diseño espera que el
+      // panel derecho colapse a un drawer — comportamiento responsive que
+      // NO existe todavía, así que el mínimo de la ventana evita llegar a
+      // ese estado no soportado en vez de intentar simularlo acá.
+      width: 1280,
+      height: 800,
+      minWidth: 1100,
+      minHeight: 700,
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
