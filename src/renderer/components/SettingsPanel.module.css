@@ -1,7 +1,7 @@
 /*
  * Configuración (README 2d, rediseño Paso 6/8): rutas agrupadas por origen +
  * banner de ruta faltante. Migra esta pantalla al set de tokens del rediseño
- * (--fs-*/--color-*/--space-*, Paso 1/8) — hasta este paso seguía en los
+ * (--fs-*, --color-*, --space-*, Paso 1/8) — hasta este paso seguía en los
  * tokens viejos (--font-size-base, --color-warning, etc.), nunca migrados
  * porque "faltaba la UI dedicada" (P-37).
  */
