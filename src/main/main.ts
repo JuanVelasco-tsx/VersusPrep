@@ -238,11 +238,22 @@ async function bootstrap(): Promise<void> {
       height: 800,
       minWidth: 1100,
       minHeight: 700,
+      // (Fix pedido por el usuario) La app arranca MAXIMIZADA por defecto -
+      // width/height de arriba pasan a ser el tamaño de "restaurar" si el
+      // usuario la desmaximiza manualmente, no el tamaño inicial visible.
+      // Patron estandar de Electron: show:false + maximize() + show() en
+      // "ready-to-show", para no mostrar primero la ventana chica y despues
+      // agrandarla de golpe (evita el parpadeo).
+      show: false,
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
         preload: path.join(__dirname, "../preload/preload.js"),
       },
+    });
+    mainWindow.once("ready-to-show", () => {
+      mainWindow?.maximize();
+      mainWindow?.show();
     });
     // Carga del renderer (Seccion 21). En dev (no empaquetado) apunta al dev
     // server de Vite con HMR; en prod carga el HTML buildeado por Vite. El
