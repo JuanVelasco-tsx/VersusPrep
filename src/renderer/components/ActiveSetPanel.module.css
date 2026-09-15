@@ -1,7 +1,40 @@
+/*
+ * README 2b, Paso 4/8. El slot de panel derecho ya lo maneja App.module.css
+ * (.rightPanel) — este archivo es solo el contenido de la columna central.
+ */
 .panel {
   display: flex;
-  gap: var(--space-5);
-  align-items: flex-start;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.header {
+  flex-shrink: 0;
+  padding-bottom: var(--space-6);
+  margin-bottom: var(--space-6);
+  border-bottom: 1px solid var(--color-hairline);
+}
+
+.title {
+  margin: 0 0 var(--space-3);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-heading); /* 20px, exacto al README */
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+
+.subtitle {
+  margin: 0;
+  max-width: 640px; /* exacto al README */
+  font-size: var(--fs-base); /* 12.5px, exacto al README */
+  line-height: 1.5;
+  color: var(--color-text-dim);
+}
+
+.subtitle strong {
+  color: var(--color-text);
+  font-weight: var(--fw-medium);
 }
 
 .list {
@@ -9,7 +42,11 @@
   margin: 0;
   padding: 0;
   flex: 1;
-  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4); /* 8px, exacto al README (gap entre tarjetas) */
 }
 
 .message {

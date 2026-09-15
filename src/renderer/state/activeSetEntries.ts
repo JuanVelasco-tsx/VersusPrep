@@ -91,3 +91,31 @@ export function buildCollisionSummaries(
   }
   return summaries;
 }
+
+/**
+ * `true` si `preview` tiene al menos un addon en `unavailable` (README `2a`/
+ * `2b`, cierra P-19). Extraída de `MergeSummaryPanel.tsx` (Paso 4/8) para
+ * poder testearla sin renderizar el componente — no hay infraestructura
+ * para eso en este proyecto (jsdom/@testing-library, decisión confirmada en
+ * el Paso 3), así que la condición real que deshabilita "Aplicar cambios"
+ * vive ACÁ, y el componente solo la consume — el test de esta función es,
+ * por construcción, un test de esa misma condición.
+ */
+export function hasUnavailableEntries(preview: ActiveSetPreview | null): boolean {
+  return preview !== null && preview.kind === "ready" && preview.unavailable.length > 0;
+}
+
+/**
+ * `true` si el botón "Aplicar cambios" debe estar `disabled` (README
+ * "Interactions & Behavior": `entries.length === 0`, `applyState.phase ===
+ * "applying"`, o `preview.unavailable.length > 0` — este último cierra
+ * P-19, antes solo era una advertencia, ver Paso 3/4). Mismo motivo de
+ * extracción que `hasUnavailableEntries`.
+ */
+export function isApplyButtonDisabled(params: {
+  entryCount: number;
+  isApplying: boolean;
+  preview: ActiveSetPreview | null;
+}): boolean {
+  return params.entryCount === 0 || params.isApplying || hasUnavailableEntries(params.preview);
+}

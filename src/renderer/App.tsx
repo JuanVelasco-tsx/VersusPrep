@@ -366,7 +366,15 @@ export function App() {
               }
               onApply={activeSetState.handleApply}
               onDiscard={activeSetState.handleDiscard}
-              onGoToActive={() => setView("active")}
+              // Ya estando en Activos no tiene sentido un link PARA ir a
+              // Activos (ver el "Podés cambiar el orden en Activos" del
+              // hallazgo de colisiones, README 2a/2b) - se OMITE la prop en
+              // vez de pasar `undefined` (exactOptionalPropertyTypes) para
+              // que MergeSummaryPanel muestre el texto plano.
+              {...(view !== "active" && { onGoToActive: () => setView("active") })}
+              // README 2b: en Activos, este mismo panel pasa a "Resumen de
+              // fusión" con las cajas a ancho completo (Paso 4/8).
+              detailed={view === "active"}
             />
           )}
         </aside>

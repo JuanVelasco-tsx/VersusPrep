@@ -3,11 +3,25 @@ import { describe, expect, test } from "vitest";
 import {
   buildCollisionSummaries,
   entriesEqualByOrder,
+  hasUnavailableEntries,
+  isApplyButtonDisabled,
   sortedByPriority,
   swap,
   withSequentialPriority,
 } from "./activeSetEntries.js";
 import type { ActiveSetPreview, AddonManifestEntry } from "../../main/domain/index.js";
+
+function readyPreview(unavailableCount: number): ActiveSetPreview {
+  return {
+    kind: "ready",
+    fileCount: 0,
+    report: { collisions: [] },
+    unavailable: Array.from({ length: unavailableCount }, (_, i) => ({
+      addonId: `unavail-${i}`,
+      reason: "no se pudo leer el VPK",
+    })),
+  };
+}
 
 function entry(addonId: string, priorityOrder: number): AddonManifestEntry {
   return { addonId, priorityOrder };
@@ -104,5 +118,54 @@ describe("buildCollisionSummaries", () => {
       report: { collisions: [] },
     };
     expect(buildCollisionSummaries(preview, [entry("a", 0)])).toEqual({ a: { wins: 0, losses: 0 } });
+  });
+});
+
+describe("hasUnavailableEntries", () => {
+  test("false si preview es null", () => {
+    expect(hasUnavailableEntries(null)).toBe(false);
+  });
+
+  test("false si preview.kind es 'addon-missing'", () => {
+    expect(hasUnavailableEntries({ kind: "addon-missing", addonId: "a" })).toBe(false);
+  });
+
+  test("false si preview.kind es 'ready' pero unavailable esta vacio", () => {
+    expect(hasUnavailableEntries(readyPreview(0))).toBe(false);
+  });
+
+  test("true si preview.kind es 'ready' con al menos un unavailable", () => {
+    expect(hasUnavailableEntries(readyPreview(1))).toBe(true);
+    expect(hasUnavailableEntries(readyPreview(3))).toBe(true);
+  });
+});
+
+describe("isApplyButtonDisabled (README 'Interactions & Behavior', cierra P-19)", () => {
+  test("disabled si entryCount es 0, incluso sin unavailable ni applying", () => {
+    expect(
+      isApplyButtonDisabled({ entryCount: 0, isApplying: false, preview: readyPreview(0) }),
+    ).toBe(true);
+  });
+
+  test("disabled mientras isApplying es true", () => {
+    expect(
+      isApplyButtonDisabled({ entryCount: 3, isApplying: true, preview: readyPreview(0) }),
+    ).toBe(true);
+  });
+
+  test("disabled con al menos un addon en preview.unavailable (cierra P-19)", () => {
+    expect(
+      isApplyButtonDisabled({ entryCount: 3, isApplying: false, preview: readyPreview(1) }),
+    ).toBe(true);
+  });
+
+  test("habilitado cuando no hay ninguno de los tres motivos", () => {
+    expect(
+      isApplyButtonDisabled({ entryCount: 3, isApplying: false, preview: readyPreview(0) }),
+    ).toBe(false);
+  });
+
+  test("habilitado con preview null (todavia no resolvio) mientras entryCount > 0 y no se esta aplicando", () => {
+    expect(isApplyButtonDisabled({ entryCount: 3, isApplying: false, preview: null })).toBe(false);
   });
 });

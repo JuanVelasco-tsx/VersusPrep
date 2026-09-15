@@ -142,6 +142,78 @@
   margin: 0 0 var(--space-3);
 }
 
+/*
+ * Cajas a ancho completo del modo `detailed` (Activos, README 2b) — en vez
+ * de los list-items compactos con punto de color de Biblioteca (2a).
+ */
+.boxCollide,
+.boxUnavailable {
+  padding: var(--space-5);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-6);
+}
+
+.boxCollide {
+  background: var(--color-collide-tint);
+  border: 1px solid var(--color-collide-border);
+}
+
+.boxUnavailable {
+  background: var(--color-blocked-tint);
+  border: 1px solid var(--color-blocked-border);
+}
+
+.boxTitle {
+  margin: 0 0 var(--space-2);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-md);
+  color: var(--color-collide-text);
+}
+
+.boxTitleDanger {
+  margin: 0 0 var(--space-2);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-md);
+  color: var(--color-blocked-text);
+}
+
+.boxBody {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--color-text-dim);
+}
+
+.boxBody strong {
+  color: var(--color-text);
+  font-weight: var(--fw-medium);
+}
+
+.boxBodyDanger {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+
+.boxDetails {
+  margin-top: var(--space-3);
+}
+
+/* Sin marcador nativo de <summary>: el copy del README ya trae "▾" como
+   texto literal, un marcador nativo ADEMÁS se vería como flecha doble. */
+.boxDisclosure {
+  list-style: none;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-sm);
+  color: var(--color-accent-soft);
+  cursor: pointer;
+}
+
+.boxDisclosure::-webkit-details-marker {
+  display: none;
+}
+
 /* Pie: caja explicativa + Aplicar/Descartar (README punto 5). */
 .footer {
   margin-top: auto;
