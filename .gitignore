@@ -85,3 +85,8 @@ coverage/
 
 # Salida regenerable del harness de medicion de rendimiento (no versionar).
 perf-resultados.txt
+
+# ---- Handoff de diseño del rediseño (mockups .dc.html, screenshots, README) ----
+# Material de referencia del rediseño (Claude Design), no codigo del proyecto.
+# Se consulta localmente paso a paso, no se versiona.
+design-handoff/

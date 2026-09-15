@@ -5,55 +5,199 @@
 :root {
   color-scheme: dark;
 
-  /* Tokens de diseno (Seccion 21, paso 1a). Subconjunto MINIMO extraido del
-     mockup Nocturne de Claude Design: paleta oscura, pocos pasos de
-     espaciado/radio y una escala tipografica basica. Puramente aditivo - los
-     *.module.css existentes de 21.1 siguen con sus valores hex sueltos hasta
-     el paso 1b (migracion aparte, ver Context/05-plan-seccion-21-restante.md). */
+  /* Grounds y superficies */
+  --color-bg: #161826;          /* ventana */
+  --color-rail: #131523;        /* riel y panel lateral */
+  --color-surface: #1b1d2c;     /* tarjetas, toolbars, modales */
+  --color-surface-alt: #232532; /* botones neutros, chips neutros */
+  --color-surface-hover: #2f3140;
+  --color-border: #3f424d;      /* bordes de caja */
+  --color-hairline: #292b31;    /* separadores de columna */
+  --color-row-border: #232532;  /* separador entre filas */
 
-  /* Paleta */
-  --color-bg: #121212;
-  --color-surface: #1a1a1a;
-  --color-surface-alt: #202020;
-  --color-border: #2a2a2a;
-  --color-text: #e6e6e6;
-  --color-text-muted: #9a9a9a;
-  --color-text-subtle: #cfcfcf;
-  --color-accent: #4a90e2;
-  --color-accent-text: #ffffff;
-  --color-danger: #e07070;
-  --color-danger-bg: #4a2a2a;
-  --color-danger-border: #6a3a3a;
-  --color-danger-text: #e0b0b0;
-  --color-warning: #e0a0a0;
+  /* Texto */
+  --color-text: #e9e9ed;
+  --color-text-muted: #b2b6ca;
+  --color-text-dim: #9397ab;
+  --color-text-faint: #75798c;
+  --color-text-ghost: #595d6c;
+
+  /* Marca / activo (hue 289) */
+  --color-accent: #9184d9;
+  --color-accent-text: #d2cefd;
+  --color-accent-soft: #b5abfc;
+  --color-accent-border: #5d5294;
+  --color-accent-tint: #2b2741;
+  --color-accent-wash: rgba(145,132,217,.12);
+  --color-accent-glow: 0 0 12px 2px rgba(145,132,217,.6);
+
+  /* Loadout — única superficie saturada */
+  --color-section: #262a60;
+  --color-section-2: #1e2040;
+  --color-section-border: #4c5397;
+
+  /* Colisión — informativo (hue 205) */
+  --color-collide: oklch(.74 .09 205);
+  --color-collide-text: oklch(.82 .08 205);
+  --color-collide-border: oklch(.48 .07 205);
+  --color-collide-tint: oklch(.74 .09 205 / .12);
+
+  /* Bloqueado / no disponible — acción requerida (hue 22) */
+  --color-blocked: oklch(.62 .15 22);
+  --color-blocked-text: oklch(.83 .11 22);
+  --color-blocked-border: oklch(.5 .13 22);
+  --color-blocked-tint: oklch(.62 .15 22 / .16);
+  --color-blocked-hatch: repeating-linear-gradient(135deg, oklch(.62 .15 22 / .11) 0 6px, transparent 6px 12px);
+
+  /* Avisos de confianza y permisos (hue 78) */
+  --color-notice: oklch(.72 .11 78);
+  --color-notice-text: oklch(.88 .08 78);
+  --color-notice-border: oklch(.5 .08 78);
+  --color-notice-tint: oklch(.72 .11 78 / .10);
 
   /* Espaciado */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
+  --space-1: 2px;  --space-2: 4px;  --space-3: 6px;
+  --space-4: 8px;  --space-5: 10px; --space-6: 13px;
+  --space-7: 16px; --space-8: 20px; --space-9: 24px;
 
   /* Radios */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-xs: 4px;  /* chips */
+  --radius-sm: 6px;  /* botones chicos, portadas */
+  --radius-md: 8px;  /* tarjetas, botones, inputs */
+  --radius-lg: 14px; /* modales */
+  --radius-pill: 999px;
 
-  /* Tipografia */
-  --font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    Helvetica,
-    Arial,
-    sans-serif;
+  /* Tipografía */
+  --font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Escala usada en los mocks */
+  --fs-kicker: 9.5px;  /* 600, letter-spacing .16em, uppercase */
+  --fs-micro: 10px;
+  --fs-chip: 10px;     /* 600, letter-spacing .07em, uppercase */
+  --fs-xs: 11px;
+  --fs-sm: 11.5px;
+  --fs-base: 12.5px;
+  --fs-md: 13px;
+  --fs-lg: 13.5px;     /* título de fila */
+  --fs-xl: 14px;
+  --fs-title: 16px;    /* título de modal */
+  --fs-heading: 20px;  /* título de pantalla */
+  --fs-display: 28px;  /* primer arranque */
+  --fs-metric: 40px;   /* cifra del panel */
+
+  --fw-regular: 400;
+  --fw-medium: 500;    /* nunca pasar de 500 en títulos */
+  --fw-semibold: 600;  /* solo kickers y chips en versalitas */
+
+  /* Elevación — un borde + oscuridad ambiente, nunca sombras apiladas */
+  --shadow-panel: 0 -10px 24px rgba(0,0,0,.45);
+  --shadow-card: 0 8px 22px rgba(0,0,0,.4);
+  --shadow-modal: 0 16px 40px rgba(0,0,0,.65);
+
+  /* Texturas de identidad */
+  --scanlines: repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 3px);
+  --cover-hatch: repeating-linear-gradient(135deg, #2f3140 0 4px, #232532 4px 8px);
+  --hairline-fade: linear-gradient(to right, transparent, #3f424d 20%, #3f424d 80%, transparent);
+}
+
+/*
+ * COMPAT TEMPORAL — rediseño paso 1/8 (confirmado con el usuario).
+ *
+ * El bloque de arriba es el de la sección "Design Tokens" del README de
+ * design-handoff/, pegado TAL CUAL (sin retocar). El problema: varios
+ * *.module.css que TODAVIA no se migraron a la nueva paleta (los de los
+ * pasos 2-8 del "Orden de implementación sugerido") ya consumen nombres de
+ * variable que en el bloque nuevo, o bien NO EXISTEN, o bien EXISTEN pero con
+ * un VALOR distinto (mismo hue de marca, paleta nueva) - en cualquiera de los
+ * dos casos, sin este bloque esos componentes se verian rotos o distintos
+ * HOY, antes de que les toque su propio paso de migración.
+ *
+ * Regla seguida para cada entrada: si el valor VIEJO coincide EXACTO con
+ * algun token del bloque nuevo, se alias por variable (para que quede
+ * enganchado al sistema nuevo desde ya); si no coincide con nada, se
+ * hardcodea el valor LITERAL viejo (nunca una aproximacion al valor nuevo -
+ * un valor "parecido" rompe el pixel-perfect tan silenciosamente como un
+ * nombre faltante, solo que mas dificil de notar en review).
+ *
+ * Cada entrada anota en qué archivos vive el consumo actual y el paso (del
+ * "Orden de implementación sugerido" del README) en el que se espera que ese
+ * archivo se migre a los tokens nuevos directamente. Una entrada solo se
+ * puede borrar cuando TODOS sus archivos ya fueron migrados. Chequeo
+ * obligatorio al cerrar el paso 8 (o el rediseño completo): no debe quedar
+ * NINGUNA entrada de este bloque sin retirar - si queda alguna, avisar antes
+ * de darlo por cerrado.
+ */
+:root {
+  /* --- Colores: sin match exacto en la paleta nueva, valor viejo literal --- */
+  /* App(2), CreatePresetModal(5), LoadingIndicator(2a/2b/2e), MergeSummaryPanel(4), OperationOverlay(7), SettingsPanel(6), TrustNotices(8) */
+  --color-accent: #4a90e2;
+  /* CreatePresetModal(5), MergeSummaryPanel(4), OperationOverlay(7), SettingsPanel(6) */
+  --color-accent-text: #ffffff;
+  /* App(2), CreatePresetModal(5), LoadingIndicator, MergeSummaryPanel(4), OperationOverlay(7), PresetSwitcher(5), PriorityRow(4), SettingsPanel(6), TrustNotices(8) */
+  --color-border: #2a2a2a;
+  /* App(2), CreatePresetModal(5), MergeSummaryPanel(4), OperationOverlay(7), PresetSwitcher(5), PriorityRow(4), SettingsPanel(6), TrustNotices(8) */
+  --color-surface: #1a1a1a;
+  /* App(2), CreatePresetModal(5), MergeSummaryPanel(4), PresetSwitcher(5), PriorityRow(4), SettingsPanel(6) */
+  --color-surface-alt: #202020;
+  /* App(2), CreatePresetModal(5), MergeSummaryPanel(4), OperationOverlay(7), PresetSwitcher(5), PriorityRow(4), SettingsPanel(6), TrustNotices(8) */
+  --color-text: #e6e6e6;
+  /* LoadingIndicator, MergeSummaryPanel(4), PriorityRow(4), SettingsPanel(6), TrustNotices(8) */
+  --color-text-muted: #9a9a9a;
+
+  /* --- Colores: nombre ausente del todo en la paleta nueva --- */
+  /* MergeSummaryPanel(4), OperationOverlay(7), PriorityRow(4) */
+  --color-danger: #e07070;
+  /* App(2), ActiveSetPanel(4), CreatePresetModal(5), LoadingIndicator, MergeSummaryPanel(4), PresetSwitcher(5), PriorityRow(4), SettingsPanel(6), TrustNotices(8) */
+  --color-text-subtle: #cfcfcf;
+  /* PresetSwitcher(5), SettingsPanel(6), TrustNotices(8) */
+  --color-warning: #e0a0a0;
+
+  /* --- Radios: sin match exacto, valor viejo literal --- */
+  /* CreatePresetModal(5), OperationOverlay(7) */
+  --radius-lg: 12px;
+  /* --radius-md NO necesita alias: 8px viejo = 8px nuevo, ya coincide. */
+
+  /* --- Radios: coincide EXACTO con --radius-xs nuevo, alias por variable --- */
+  /* App(2), CreatePresetModal(5), MergeSummaryPanel(4), OperationOverlay(7), PresetSwitcher(5), PriorityRow(4), SettingsPanel(6) */
+  --radius-sm: var(--radius-xs);
+
+  /* --- Espaciado: TODOS literales, NO alias por variable ---
+   * Los nombres --space-1..5 EXISTEN en el bloque nuevo con OTRO valor
+   * (escala nueva: 2/4/6/8/10/13/16/20/24), y son EXACTAMENTE los mismos 5
+   * nombres que este bloque de compat necesita redeclarar con el valor
+   * viejo. Aliasear --space-1 a `var(--space-2)` (que coincide en valor con
+   * el viejo --space-1=4px) se ve tentador, PERO --space-2 se está
+   * REDECLARANDO ACÁ MISMO con su propio valor viejo - y var() siempre
+   * resuelve contra el valor FINAL cascadeado de la propiedad referenciada,
+   * no contra el que tenía en el bloque de arriba en el momento de escribir
+   * el alias. Encadenar los 5 así (confirmado empíricamente con
+   * getComputedStyle en Chromium real) hace que --space-1, --space-2 y
+   * --space-4 colapsen TODOS al mismo valor (16px) en vez de sus valores
+   * viejos correctos (4/8/16px) - por eso, a diferencia de radius-sm/
+   * font-size-base/font-weight-semibold (que sí aliasean seguro, porque sus
+   * targets --radius-xs/--fs-xl/--fw-semibold NO se redeclaran en este
+   * bloque), acá van los 5 valores viejos literales sin excepción. */
+  /* CreatePresetModal(5), PriorityRow(4) */
+  --space-1: 4px;
+  /* App(2), CreatePresetModal(5), LoadingIndicator, MergeSummaryPanel(4), OperationOverlay(7), PresetSwitcher(5), PriorityRow(4), SettingsPanel(6), TrustNotices(8) */
+  --space-2: 8px;
+  /* CreatePresetModal(5), MergeSummaryPanel(4), PresetSwitcher(5), PriorityRow(4), SettingsPanel(6), TrustNotices(8) */
+  --space-3: 12px;
+  /* App(2), CreatePresetModal(5), MergeSummaryPanel(4), OperationOverlay(7), PresetSwitcher(5), SettingsPanel(6), TrustNotices(8) */
+  --space-4: 16px;
+  /* ActiveSetPanel(4), CreatePresetModal(5), LoadingIndicator, OperationOverlay(7) */
+  --space-5: 24px;
+
+  /* --- Tipografía: coincide EXACTO con un token nuevo (escala fs, escala fw) --- */
+  /* App(2), ActiveSetPanel(4), CreatePresetModal(5), LoadingIndicator, MergeSummaryPanel(4), OperationOverlay(7), PriorityRow(4), SettingsPanel(6) */
+  --font-size-base: var(--fs-xl);
+  /* CreatePresetModal(5), MergeSummaryPanel(4), SettingsPanel(6), TrustNotices(8) */
+  --font-weight-semibold: var(--fw-semibold);
+
+  /* --- Tipografía: sin match exacto, valor viejo literal --- */
+  /* CreatePresetModal(5), MergeSummaryPanel(4), OperationOverlay(7), PresetSwitcher(5), PriorityRow(4), SettingsPanel(6), TrustNotices(8) */
   --font-size-sm: 12px;
-  --font-size-base: 14px;
-  --font-size-lg: 18px;
-  --font-weight-normal: 400;
-  --font-weight-semibold: 600;
 }
 
 * {

@@ -1,23 +1,34 @@
 .image {
+  /* 64px sin token: no hay categoria de "tamaño de componente" en la escala
+     de espaciado, y el README del rediseño ya indica que la portada de fila
+     pasa a 40px en el rediseño (paso 3, Biblioteca) - no tiene sentido
+     tokenizar un tamaño que va a cambiar en ese mismo paso. */
   width: 64px;
   height: 64px;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
-  background: #2a2a2a;
+  background: var(--color-border);
 }
 
 .fallback {
   width: 64px;
   height: 64px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  /* #3a3a3a sin token equivalente hoy. Revisar en paso 3 (Biblioteca) /
+     paso 4 (Activos, PriorityRow tambien usa AddonCover). */
   background: #3a3a3a;
-  color: #cfcfcf;
-  font-weight: 600;
+  color: var(--color-text-subtle);
+  font-weight: var(--font-weight-semibold);
+  /* 18px sin token: no esta en la escala tipografica nueva (--fs-lg es
+     13.5px, --fs-title es 16px, ninguno coincide). Revisar en paso 3/4.
+     0.5px de letter-spacing: sin categoria de token para tracking suelto
+     (el nuevo sistema solo define tracking relativo para kicker/chip, no
+     aplica aca). */
   font-size: 18px;
   letter-spacing: 0.5px;
 }
@@ -26,7 +37,8 @@
    línea; 64px rompería esa altura. .sm se combina con .image/.fallback (no
    los reemplaza) para heredar object-fit/radius/colores y solo pisar tamaño. */
 .sm {
+  /* 32px sin token (mismo caso que 64px de .image/.fallback arriba). */
   width: 32px;
   height: 32px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }

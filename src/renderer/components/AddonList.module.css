@@ -5,18 +5,23 @@
 }
 
 .message {
-  padding: 24px 0;
-  color: #cfcfcf;
-  font-size: 14px;
+  padding: var(--space-5) 0;
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-base);
 }
 .retryButton {
-  margin-top: 12px;
-  font-size: 13px;
+  margin-top: var(--space-3);
+  font-size: var(--fs-md); /* 13px: exacto en la escala tipografica NUEVA */
+  /* #2a3a4a/#cfe0f0/#3a5a7a/#324a5a (variante azul de retryButton): sin
+     token equivalente hoy. Revisar en paso 3 (Biblioteca). */
   background: #2a3a4a;
   color: #cfe0f0;
   border: 1px solid #3a5a7a;
-  border-radius: 4px;
-  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  /* 6px sin token: no coincide con la escala vieja (4/8/12/16/24); el
+     --radius-sm/--space-3 NUEVO en 6px esta pisado por el compat. Revisar
+     en paso 3 (Biblioteca). */
+  padding: 6px var(--space-3);
   cursor: pointer;
 }
 
@@ -27,16 +32,16 @@
 .headerRow {
   display: grid;
   align-items: center;
-  gap: 12px;
-  padding: 0 12px 8px;
+  gap: var(--space-3);
+  padding: 0 var(--space-3) var(--space-2);
 }
 
 .sortHeader {
   background: transparent;
   border: none;
-  color: #9a9a9a;
-  font-size: 12px;
-  font-weight: 600;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
   text-align: left;
   padding: 0;
   cursor: pointer;
@@ -44,7 +49,7 @@
 }
 
 .sortHeader:hover {
-  color: #cfcfcf;
+  color: var(--color-text-subtle);
 }
 
 .bulkBar {
@@ -52,42 +57,48 @@
   bottom: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 12px;
-  padding: 10px 12px;
-  background: #202020;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  /* 10px/6px sin token: mismo caso que AddonRow.module.css .row (padding) y
+     .forceButton (radio) - los NUEVOS --space-5/--radius-sm en esos valores
+     estan pisados por el compat de global.css. Revisar en paso 3 (Biblioteca). */
+  padding: 10px var(--space-3);
+  background: var(--color-surface-alt);
   border: 1px solid #3a3a3a;
   border-radius: 6px;
 }
 
 .bulkCount {
-  font-size: 13px;
-  color: #cfcfcf;
+  font-size: var(--fs-md); /* 13px: exacto en la escala tipografica NUEVA */
+  color: var(--color-text-subtle);
   margin-right: auto;
 }
 
 .bulkClearButton {
-  font-size: 13px;
+  font-size: var(--fs-md);
   background: transparent;
-  color: #cfcfcf;
+  color: var(--color-text-subtle);
+  /* #3a3a3a sin token equivalente hoy. Revisar en paso 3 (Biblioteca). */
   border: 1px solid #3a3a3a;
-  border-radius: 4px;
-  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  padding: 6px var(--space-3);
   cursor: pointer;
 }
 
 .bulkClearButton:hover {
-  background: #2a2a2a;
+  background: var(--color-border);
 }
 
 .bulkAddButton {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--fs-md);
+  font-weight: var(--font-weight-semibold);
+  /* #2a4a2a/#d0f0d0/#3a6a3a/#325a32 (variante verde "incluir"): sin token
+     equivalente hoy. Revisar en paso 3 (Biblioteca). */
   background: #2a4a2a;
   color: #d0f0d0;
   border: 1px solid #3a6a3a;
-  border-radius: 4px;
-  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  padding: 6px var(--space-3);
   cursor: pointer;
 }
 
@@ -96,13 +107,16 @@
 }
 
 .bulkExcludeButton {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--fs-md);
+  font-weight: var(--font-weight-semibold);
+  /* #4a2a2a/#f0d0d0/#6a3a3a/#5a3232 (variante roja "excluir", fam.
+     "peligro"): sin token equivalente hoy, mismo caso que AddonRow.module.css
+     .forceButton. Revisar en paso 3 (Biblioteca). */
   background: #4a2a2a;
   color: #f0d0d0;
   border: 1px solid #6a3a3a;
-  border-radius: 4px;
-  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  padding: 6px var(--space-3);
   cursor: pointer;
 }
 
