@@ -277,19 +277,21 @@ describe("MergeEngine.merge: orden del flujo end-to-end (AC 6.3, 6.7, 6.8)", () 
 
     // La secuencia por addon respeta el orden ascendente: list/extract del addon
     // N ocurren antes que los del addon N+1.
-    const listIdx = indicesOf(log, "list");
+
     const extractIdx = indicesOf(log, "extract");
-    expect(log.filter((e) => e.op === "list").map((e) => e.addonId)).toEqual(["100", "200", "300"]);
-    expect(log.filter((e) => e.op === "extract").map((e) => e.addonId)).toEqual([
-      "100",
-      "200",
-      "300",
-    ]);
+    expect(log.filter((e) => e.op === "list").map((e) => e.addonId).sort()).toEqual(["100", "200", "300"]);
+    expect(log.filter((e) => e.op === "extract").map((e) => e.addonId).sort()).toEqual(["100", "200", "300"]);
     // list del addon i antes que extract del addon i, y todo el bloque de un
     // addon antes del list del siguiente.
-    expect(listIdx[0]).toBeLessThan(extractIdx[0]!);
-    expect(extractIdx[0]!).toBeLessThan(listIdx[1]!);
-    expect(extractIdx[1]!).toBeLessThan(listIdx[2]!);
+    // (P-perf, Paso 2) Extraccion CONCURRENTE: el orden temporal entre addons
+    // DISTINTOS ya no es determinista. Invariante que SI se preserva: por cada
+    // addon, su list ocurre antes que su extract (secuencial en #extractAddon).
+    for (const id of ["100", "200", "300"]) {
+      const li = log.findIndex((e) => e.op === "list" && e.addonId === id);
+      const xi = log.findIndex((e) => e.op === "extract" && e.addonId === id);
+      expect(li).toBeGreaterThanOrEqual(0);
+      expect(xi).toBeGreaterThan(li);
+    }
 
     // mergeInto ocurre DESPUÉS de todas las extracciones y ANTES del pack, y UNA sola vez.
     expect(indicesOf(log, "mergeInto")).toHaveLength(1);
@@ -374,6 +376,72 @@ describe("MergeEngine.merge: generación del pak01_dir.vpk", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Caso 3.5 (P-perf, Paso 2): la EXTRACCIÓN CONCURRENTE preserva el orden de
+// resolución de colisiones aunque las extracciones TERMINEN en orden distinto.
+// ---------------------------------------------------------------------------
+
+describe("MergeEngine.merge: la extracción concurrente NO altera el orden de colisiones", () => {
+  test("aunque las extracciones terminen en orden INVERSO al de prioridad, mergeInto recibe los roots en orden ASCENDENTE", async () => {
+    // FakeVpkTool cuyo `extract` termina en orden INVERSO a la prioridad: el
+    // addon "100" (primero, menor prioridad) resuelve el ÚLTIMO, y el "300"
+    // (último, mayor prioridad) resuelve PRIMERO. Con la extracción serial vieja
+    // esto era imposible; con el pool concurrente es justo el escenario a blindar.
+    const log: LogEvent[] = [];
+    const listResults = new Map<string, string[]>([
+      ["100", ["materials/a.vmt"]],
+      ["200", ["materials/b.vmt"]],
+      ["300", ["materials/c.vmt"]],
+    ]);
+    // Delay por addon: 100 -> 30ms (termina último), 200 -> 20ms, 300 -> 10ms.
+    const delayByAddon = new Map<string, number>([["100", 30], ["200", 20], ["300", 10]]);
+    const finishOrder: string[] = [];
+    const vpk = {
+      list(_vpkPath: string, addonId: string): Promise<string[]> {
+        log.push({ op: "list", addonId });
+        return Promise.resolve(listResults.get(addonId) ?? []);
+      },
+      async extract(
+        _vpkPath: string,
+        _internalPaths: readonly string[],
+        _destDir: string,
+        addonId: string,
+      ): Promise<void> {
+        await new Promise((r) => setTimeout(r, delayByAddon.get(addonId) ?? 0));
+        finishOrder.push(addonId);
+        log.push({ op: "extract", addonId });
+      },
+      pack(sourceDir: string, _addonId: string): Promise<string> {
+        log.push({ op: "pack", dir: sourceDir });
+        return Promise.resolve(`${sourceDir}.vpk`);
+      },
+    };
+    const fs = new FakeMergeFs(log);
+    const resolver = new FakeCollisionResolver(log);
+    const engine = new MergeEngine(
+      vpk as unknown as VpkTool,
+      fs,
+      resolver as unknown as CollisionResolver,
+    );
+
+    await engine.merge([addon("100"), addon("200"), addon("300")], PATHS_STUB, WORK_DIR);
+
+    // Precondición del test: las extracciones EFECTIVAMENTE terminaron en orden
+    // inverso (si no, el test no estaría probando lo que dice probar).
+    expect(finishOrder).toEqual(["300", "200", "100"]);
+
+    // INVARIANTE CRÍTICA: pese a ese orden de finalización invertido, los
+    // extractedRoots llegan a mergeInto en orden ASCENDENTE por prioridad
+    // (100, 200, 300) — la escritura por índice lo garantiza. Esto es lo que
+    // mantiene determinística la resolución "el último gana".
+    expect(resolver.lastRoots).toEqual([
+      { addonId: "100", rootDir: `${EXTRACT_BASE}\\100` },
+      { addonId: "200", rootDir: `${EXTRACT_BASE}\\200` },
+      { addonId: "300", rootDir: `${EXTRACT_BASE}\\300` },
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Caso 4: aborto con identificación del addon ante fallo (AC 6.8, 6.12)
 // ---------------------------------------------------------------------------
 
@@ -401,11 +469,13 @@ describe("MergeEngine.merge: aborto identificando el addon ante fallo (AC 6.8, 6
     expect(e.operation).toBe("extract");
     expect(e.addonId).toBe("200");
 
-    // NO se procesó el 3.º addon (ni list ni extract del "300").
-    expect(log.some((ev) => ev.op === "list" && ev.addonId === "300")).toBe(false);
-    expect(log.some((ev) => ev.op === "extract" && ev.addonId === "300")).toBe(false);
-
-    // NO se fusionó ni se empaquetó.
+    // (P-perf, Paso 2) La extracción ahora corre con CONCURRENCIA ACOTADA
+    // (pool DEFAULT_VPK_CONCURRENCY), no serial. Con 3 addons y pool >= 3 los
+    // tres arrancan a la vez, así que ya NO se puede aseverar que el 3.º "no se
+    // tocó": pudo haber iniciado su `list`/`extract` antes de que el fallo del
+    // 2.º aborte. Lo que SÍ se preserva (invariante real del aborto, AC 6.8/6.12):
+    // la fusión rechaza con el VpkToolError que identifica el addon fallido, y
+    // NUNCA llega a la fase de fusión ni de empaquetado.
     expect(log.some((ev) => ev.op === "mergeInto")).toBe(false);
     expect(log.some((ev) => ev.op === "pack")).toBe(false);
   });
@@ -431,12 +501,17 @@ describe("MergeEngine.merge: aborto identificando el addon ante fallo (AC 6.8, 6
     expect(e.operation).toBe("list");
     expect(e.addonId).toBe("200");
 
-    // El list del "200" ocurrió, pero NO su extract (falló antes de extraer).
+    // El list del "200" ocurrió, pero NO su extract (falló en el list, antes de
+    // extraer): esta invariante NO depende de la concurrencia (el propio addon
+    // que falla su list nunca llega a su extract).
     expect(log.some((ev) => ev.op === "list" && ev.addonId === "200")).toBe(true);
     expect(log.some((ev) => ev.op === "extract" && ev.addonId === "200")).toBe(false);
 
-    // El 3.º addon no se tocó y no hubo fusión ni empaquetado.
-    expect(log.some((ev) => ev.op === "list" && ev.addonId === "300")).toBe(false);
+    // (P-perf, Paso 2) Con la extracción paralelizada (pool acotado) ya NO se
+    // asevera que el 3.º addon "no se tocó": con 3 addons y pool >= 3 pudo hacer
+    // su `list` concurrentemente antes de que el fallo del 2.º aborte. La
+    // invariante real del aborto (AC 6.8/6.12) que SÍ se preserva: no se llega a
+    // la fusión ni al empaquetado.
     expect(log.some((ev) => ev.op === "mergeInto")).toBe(false);
     expect(log.some((ev) => ev.op === "pack")).toBe(false);
   });

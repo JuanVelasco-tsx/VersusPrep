@@ -82,3 +82,6 @@ coverage/
 # tasks.md entre ramas (visto en la sesion de la rama addon-scanner). No
 # pertenece al repo.
 **/tasks.meta.json
+
+# Salida regenerable del harness de medicion de rendimiento (no versionar).
+perf-resultados.txt

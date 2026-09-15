@@ -279,6 +279,49 @@ export class AddonScanner {
   }
 
   /**
+   * Resuelve un SUBCONJUNTO de addons por sus ids, SIN recorrer toda la
+   * Workshop_Folder (optimización P-perf, Paso 1). Deriva el `vpkPath` de cada
+   * id por convención (`<workshopFolder>\<id>.vpk`, la MISMA que usa `scan`) y
+   * verifica la EXISTENCIA de ese `.vpk` con un `exists` por candidato — I/O
+   * acotado al lote pedido, NO un `listEntries` + `vpk l` + addoninfo de CADA
+   * `.vpk` de la carpeta como hace {@link scan}.
+   *
+   * Devuelve los {@link ScannedAddon} en el MISMO orden de `addonIds`. Los
+   * campos que NO se derivan sin escanear (`coverPath`, `info`, `mtimeMs`,
+   * `sizeBytes`) se degradan a `null`/`0`: este método es para el camino de
+   * FUSIÓN (`MergeEngine.merge`, que SOLO usa `id` + `vpkPath`), no para poblar
+   * la Biblioteca. Es el mismo criterio con el que `MergeOrchestrator.previewActiveSet`
+   * ya deriva sus addons desde BUG-001.
+   *
+   * Si algún `addonId` no tiene su `.vpk` en disco (desuscrito o borrado),
+   * devuelve `{ kind: "missing", addonId }` con el PRIMER id faltante (en el
+   * orden de `addonIds`), para que el llamador corte con un fallo definitivo
+   * ANTES de escribir nada o pedir elevación — preservando el contrato de la
+   * DECISIÓN 5 de `merge-orchestrator.ts` (fallar temprano por addon ausente)
+   * sin pagar el costo del escaneo completo.
+   */
+  async resolveByIds(
+    workshopFolder: string,
+    addonIds: readonly string[],
+  ): Promise<
+    | { kind: "ok"; addons: ScannedAddon[] }
+    | { kind: "missing"; addonId: string }
+  > {
+    const addons: ScannedAddon[] = [];
+    for (const id of addonIds) {
+      const vpkPath = joinWindowsPath(workshopFolder, `${id}${VPK_EXTENSION}`);
+      const present = await this.#fs.exists(vpkPath);
+      if (!present) {
+        return { kind: "missing", addonId: id };
+      }
+      // coverPath/info/mtimeMs/sizeBytes NO se derivan sin escanear: MergeEngine
+      // solo consume id + vpkPath (mismo criterio que previewActiveSet).
+      addons.push({ id, vpkPath, coverPath: null, info: null, mtimeMs: 0, sizeBytes: 0 });
+    }
+    return { kind: "ok", addons };
+  }
+
+  /**
    * Resuelve el Addon_Cover de un addon: ruta de `<id>.jpg` en la MISMA carpeta
    * que el VPK si existe, `null` si no (AC 2.4).
    */

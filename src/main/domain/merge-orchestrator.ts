@@ -744,11 +744,29 @@ export class MergeOrchestrator {
 
   /**
    * Resuelve el Active_Set candidato a `ScannedAddon[]` en Priority_Order
-   * ASCENDENTE (Paso 2, DECISIÓN 5). Escanea la Workshop, mapea cada entry por
-   * `id` y ordena. Si algún `addonId` NO aparece en el escaneo (desuscrito o
-   * borrado), devuelve `{ kind: "outcome" }` con un fallo definitivo que lleva ese
-   * `addonId`. Se llama ANTES de la elevación proactiva para no pedir UAC cuando la
-   * operación igual iba a fallar por un addon faltante.
+   * ASCENDENTE (Paso 2, DECISIÓN 5).
+   *
+   * OPTIMIZACIÓN (P-perf, Paso 1): ya NO escanea TODA la Workshop_Folder. Antes
+   * llamaba `AddonScanner.scan(workshopFolder)` completo —recorrer cada `.vpk` +
+   * `vpk l` + extraer addoninfo, ~750-790 ms fijos con ~35 addons, medido en el
+   * diagnóstico de rendimiento— SOLO para resolver el `vpkPath` de los pocos
+   * candidatos del preset/lote. Ahora usa `AddonScanner.resolveByIds`, que deriva
+   * el `vpkPath` por convención (`<workshopFolder>\<id>.vpk`) y verifica la
+   * existencia de cada `.vpk` con un `exists` POR CANDIDATO (I/O acotado al lote,
+   * no a toda la carpeta) — mismo enfoque que `previewActiveSet` desde BUG-001.
+   *
+   * Se PRESERVA el contrato de la DECISIÓN 5: si algún `addonId` no tiene su
+   * `.vpk` en disco (desuscrito o borrado), devuelve `{ kind: "outcome" }` con un
+   * fallo definitivo que lleva ese `addonId`, ANTES de la elevación proactiva
+   * (para no pedir UAC cuando la operación igual iba a fallar). La detección
+   * temprana de ausencia se mantiene vía el `exists` por candidato de
+   * `resolveByIds` — solo cambia CÓMO se detecta (exists dirigido en vez de
+   * escaneo completo), no CUÁNDO ni el resultado observable.
+   *
+   * El shape devuelto (`ScannedAddon[]` en Priority_Order ascendente) es
+   * IDÉNTICO al de antes; `MergeEngine.merge` solo consume `id` + `vpkPath` de
+   * cada uno (nunca `coverPath`/`info`/`mtimeMs`/`sizeBytes`), así que degradar
+   * esos campos en la derivación no afecta la fusión.
    */
   async #resolveOrderedAddons(
     entries: readonly AddonManifestEntry[],
@@ -756,24 +774,24 @@ export class MergeOrchestrator {
     | { kind: "ok"; addons: ScannedAddon[] }
     | { kind: "outcome"; result: OperationResult }
   > {
-    const scanned = await this.#scanner.scan(this.#paths.workshopFolder);
-    const byId = new Map<string, ScannedAddon>(scanned.map((a) => [a.id, a]));
+    // Priority_Order ASCENDENTE ANTES de resolver, para que el orden de los
+    // ScannedAddon resultantes (que MergeEngine.merge usa para "el último gana")
+    // sea el correcto y determinista.
     const ordered = [...entries].sort((a, b) => a.priorityOrder - b.priorityOrder);
-    const addons: ScannedAddon[] = [];
-    for (const entry of ordered) {
-      const addon = byId.get(entry.addonId);
-      if (addon === undefined) {
-        return {
-          kind: "outcome",
-          result: this.#failure(
-            `El addon ${entry.addonId} no está en la Workshop (¿desuscrito o borrado?). No se puede fusionar.`,
-            entry.addonId,
-          ),
-        };
-      }
-      addons.push(addon);
+    const resolved = await this.#scanner.resolveByIds(
+      this.#paths.workshopFolder,
+      ordered.map((e) => e.addonId),
+    );
+    if (resolved.kind === "missing") {
+      return {
+        kind: "outcome",
+        result: this.#failure(
+          `El addon ${resolved.addonId} no está en la Workshop (¿desuscrito o borrado?). No se puede fusionar.`,
+          resolved.addonId,
+        ),
+      };
     }
-    return { kind: "ok", addons };
+    return { kind: "ok", addons: resolved.addons };
   }
 
   /**
