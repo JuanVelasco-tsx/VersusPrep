@@ -290,15 +290,44 @@ export class MergeEngine {
     workDir: string,
   ): Promise<{ vpkPath: string; report: MergeReport }> {
     // Fase 1 — Por cada addon (orden ASCENDENTE): list → crear dirs → extract.
-    // Se arma en paralelo la lista de ExtractedRoot en el MISMO orden para la
-    // fusión. Un throw de VpkTool (list/extract) corta el bucle y aborta (AC 6.12).
-    const extractedRoots: ExtractedRoot[] = [];
+    // (P-perf, Paso 2) Extracción con CONCURRENCIA ACOTADA (antes era un
+    // `for...await` SERIAL, el costo dominante del merge según el diagnóstico:
+    // ~11 s con 35 addons). Mismo pool que `AddonScanner.scan` y
+    // `MergeEngine.preview` (`DEFAULT_VPK_CONCURRENCY`, única fuente en
+    // `vpk-tool.ts`): un array `extractedRoots` PRE-DIMENSIONADO + un cursor
+    // compartido; cada worker escribe su `ExtractedRoot` POR ÍNDICE
+    // (`extractedRoots[index]`), NUNCA por orden de finalización.
+    //
+    // INVARIANTE CRÍTICO PARA LAS COLISIONES ("el último gana", AC 6.7 / Req 7):
+    // la escritura por índice GARANTIZA que `extractedRoots` quede en el MISMO
+    // orden ASCENDENTE de `orderedAddons`, sin importar qué extracción termine
+    // primero. La Fase 2 (`CollisionResolver.mergeInto`) recibe ese array en
+    // orden y resuelve el ganador por posición — así el resultado de la fusión
+    // es DETERMINÍSTICO por Priority_Order aunque la extracción corra en
+    // paralelo. Lo verifica un test explícito (merge-engine).
+    //
+    // Aborto (AC 6.12): un `VpkToolError` de `list`/`extract` en cualquier
+    // worker rechaza el `Promise.all` y propaga ese error (que ya identifica el
+    // addon), abortando la fusión igual que el `for...await` serial anterior.
+    // El `workDir` se limpia en el `finally` del MergeOrchestrator (P-14).
     const extractBaseDir = joinWindowsPath(workDir, EXTRACT_SUBDIR);
-    for (const addon of orderedAddons) {
-      const destDir = joinWindowsPath(extractBaseDir, addon.id);
-      await this.#extractAddon(addon, destDir);
-      extractedRoots.push({ addonId: addon.id, rootDir: destDir });
-    }
+    const extractedRoots: ExtractedRoot[] = new Array<ExtractedRoot>(orderedAddons.length);
+    let cursor = 0;
+    const extractAddon = this.#extractAddon.bind(this);
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const index = cursor++;
+        const addon = orderedAddons[index];
+        // noUncheckedIndexedAccess: addon es ScannedAddon | undefined; el
+        // undefined solo ocurre cuando index salió de rango → fin del worker.
+        if (addon === undefined) return;
+        const destDir = joinWindowsPath(extractBaseDir, addon.id);
+        await extractAddon(addon, destDir);
+        extractedRoots[index] = { addonId: addon.id, rootDir: destDir };
+      }
+    };
+    const poolSize = Math.min(DEFAULT_VPK_CONCURRENCY, orderedAddons.length);
+    await Promise.all(Array.from({ length: poolSize }, () => worker()));
 
     // Fase 2 — Fusión "el último gana" en pak01_dir/ (delegada; AC 6.7). Se
     // CAPTURA el MergeReport que devuelve mergeInto (colisiones detectadas): no
