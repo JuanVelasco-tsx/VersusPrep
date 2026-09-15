@@ -108,6 +108,22 @@ interface AddonListProps {
    */
   onAddonCountChange?: (count: number) => void;
   /**
+   * (Fix BUG reportado por el usuario, jornada post-rediseño) Notifica que
+   * `scanAddons()` acaba de resolver — el momento exacto en que el handler
+   * `addons:scan` ya pobló `TitleCache` (`titleCache.setMany`, ANTES de
+   * devolver la lista, ver `ipc-handlers.ts`). `useActiveSetState` (montado
+   * en `App.tsx`, nunca remonta) leyó `getTitles()` UNA sola vez al arrancar
+   * el proceso — si ese primer snapshot corrió ANTES de que Biblioteca
+   * escaneara (carrera real: `activeSetState` y `AddonList` arrancan casi
+   * en simultáneo), quedaba con `titles: {}` para siempre, sin importar
+   * cuántas veces Biblioteca reescaneara después. Este callback dispara
+   * `activeSetState.refreshTitles()` (ver ese hook) exactamente una vez por
+   * escaneo, para que Activos (y el panel derecho de colisiones, que
+   * también lee `activeSetState.loadState.titles`) dejen de mostrar IDs
+   * crudos apenas Biblioteca los resuelve.
+   */
+  onTitlesChanged?: () => void;
+  /**
    * (Paso 3) Estado compartido del Active_Set candidato (`useActiveSetState`,
    * montado en `App.tsx`) — Biblioteca es un consumidor de SOLO LECTURA:
    * usa `entries`/`previewState` para calcular el chip "⇄ N"/"comparte N
@@ -127,6 +143,7 @@ export function AddonList({
   pendingEntries,
   onPendingConsumed,
   onAddonCountChange,
+  onTitlesChanged,
   activeSetState,
 }: AddonListProps) {
   const [state, setState] = useState<LoadState>({ phase: "detecting-paths" });
@@ -228,6 +245,10 @@ export function AddonList({
       ]);
       if (!isMounted.current) return;
 
+      // TitleCache ya está poblado en este punto (scanAddons() recién
+      // resolvió — ver doc de `onTitlesChanged` en AddonListProps).
+      onTitlesChanged?.();
+
       // (BUG-013) Fusiona el candidato pendiente del relanzo elevado (si lo
       // hay) para que "Incluir" arranque tildado tambien para lo que el
       // usuario tenia marcado ANTES del handoff, no solo lo ya instalado.
@@ -254,7 +275,7 @@ export function AddonList({
       const message = error instanceof Error ? error.message : "Error desconocido.";
       setState({ phase: "error", message });
     }
-  }, [pendingEntries, onPendingConsumed]);
+  }, [pendingEntries, onPendingConsumed, onTitlesChanged]);
 
   // Flujo de deteccion completo (detectPaths -> runScan), extraido para poder
   // REUSARLO: lo dispara el boton "Reintentar deteccion" de la rama

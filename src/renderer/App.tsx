@@ -372,6 +372,7 @@ export function App() {
             pathsReady={pathsReady}
             onPathsReady={handlePathsReady}
             onAddonCountChange={handleAddonCountChange}
+            onTitlesChanged={activeSetState.refreshTitles}
             activeSetState={activeSetState}
           />
         )}

@@ -92,6 +92,18 @@ export interface ActiveSetState {
   hasUnappliedChanges: boolean;
   handleApply: () => void;
   handleDiscard: () => void;
+  /**
+   * Fix de bug reportado por el usuario (jornada post-rediseño): `titles` se
+   * leía UNA sola vez al montar este hook (que ahora corre al arrancar TODA
+   * la app, ver docblock de arriba) — si esa lectura ganaba la carrera contra
+   * el primer escaneo de Biblioteca, `titles` quedaba en `{}` para siempre,
+   * mostrando ids crudos en Activos (y en el hallazgo de colisiones del panel
+   * derecho, que también lee `loadState.titles`) sin importar cuántas veces
+   * Biblioteca reescaneara después. `AddonList` llama a esto justo cuando su
+   * propio `scanAddons()` resuelve (`onTitlesChanged`, ver AddonListProps),
+   * que es el momento exacto en que `TitleCache` ya está poblado.
+   */
+  refreshTitles: () => void;
 }
 
 /**
@@ -256,6 +268,23 @@ export function useActiveSetState(pendingEntries: AddonManifestEntry[] | null): 
       });
   };
 
+  const refreshTitles = (): void => {
+    window.l4d2Api
+      .getTitles()
+      .then((titles) => {
+        if (!isMounted.current) return;
+        // Solo tiene sentido pisar `titles` si la carga inicial ya terminó
+        // (fase "ready") — si todavía está en "loading", el `load()` inicial
+        // (arriba) va a fijar su propio snapshot de `getTitles()` enseguida;
+        // pisarlo desde acá antes de que `load()` resuelva arriesgaría una
+        // condición de carrera con ESE snapshot inicial.
+        setLoadState((prev) => (prev.phase === "ready" ? { phase: "ready", titles } : prev));
+      })
+      .catch(() => {
+        // Best-effort: si falla, se queda con lo que ya tenía (no degrada a error).
+      });
+  };
+
   return {
     loadState,
     entries,
@@ -265,5 +294,6 @@ export function useActiveSetState(pendingEntries: AddonManifestEntry[] | null): 
     hasUnappliedChanges: !entriesEqualByOrder(entries, baselineEntries),
     handleApply,
     handleDiscard,
+    refreshTitles,
   };
 }
