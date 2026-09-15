@@ -7,14 +7,29 @@ import { publishOperation } from "./OperationOverlay.js";
 import styles from "./PresetSwitcher.module.css";
 
 /**
- * Selector de presets de la navegación (P-30, Paso 5 — cierra P-30). Vive en
- * el mismo lugar que las pestañas Biblioteca/Activos/Configuración
- * (`App.tsx`), pero es un componente aparte (no una cuarta pestaña): no
- * navega a una vista propia, actúa DIRECTO sobre el preset activo, y
- * Biblioteca/Activos ya reflejan ese cambio solos (Paso 4.5, `getActiveSet`/
- * `addAddon`/`removeAddon`/`applyActiveSet` ya operan sobre el preset
- * activo) — este componente no necesita comunicarse con `AddonList`/
- * `ActiveSetPanel` para nada.
+ * Bloque "preset activo" del riel izquierdo (P-30, Paso 5 — cierra P-30;
+ * reubicado en el rediseño Paso 2/8). Vive en el riel de `App.tsx`, dentro
+ * del shell de tres columnas: no navega a una vista propia, actúa DIRECTO
+ * sobre el preset activo, y Biblioteca/Activos ya reflejan ese cambio solos
+ * (Paso 4.5, `getActiveSet`/`addAddon`/`removeAddon`/`applyActiveSet` ya
+ * operan sobre el preset activo) — este componente no necesita comunicarse
+ * con `AddonList`/`ActiveSetPanel` para nada.
+ *
+ * REUBICACIÓN (rediseño Paso 2/8): antes era una barra inline SIEMPRE
+ * visible con un `<select>` (`.bar`, arriba de las pestañas). Ahora es un
+ * bloque compacto (kicker/nombre/meta + botón "Cambiar preset ▾") que
+ * expande el `<select>`/"Nuevo preset"/"Gestionar presets" existentes bajo
+ * demanda (`expanded`, estado puramente de UI) — MISMA lógica de carga/
+ * switch/creación/renombrado/borrado que ya existía, solo cambia el
+ * contenedor visual. La pantalla dedicada de gestión (README `2c`, sin el
+ * modo `managing` inline) es un componente NUEVO del Paso 5 — este bloque
+ * no se toca de nuevo ahí, solo deja de ser la única forma de gestionar.
+ *
+ * `onPresetsChange` (nuevo, opcional) reporta `presets`/`activePresetId` a
+ * `App.tsx` cada vez que cambian, para que el contador del item "Activos"/
+ * "Presets" del nav (riel) no dispare su propia llamada redundante a
+ * `listPresets()`/`getActivePresetId()` — la única fuente de esos datos
+ * sigue siendo el `load()` de este componente.
  *
  * `switchActivePreset`/`createPreset` (vía `createAndActivatePreset`) son
  * operaciones de escritura que pueden disparar elevación UAC por el mismo
@@ -27,7 +42,12 @@ function errorMessage(error: unknown): string {
 
 type LoadState = { phase: "loading" } | { phase: "ready" } | { phase: "error"; message: string };
 
-export function PresetSwitcher() {
+interface PresetSwitcherProps {
+  /** Notifica a `App.tsx` la lista de presets y el id activo, tal cual `load()` los resolvió. */
+  onPresetsChange?: (presets: Preset[], activePresetId: string | null) => void;
+}
+
+export function PresetSwitcher({ onPresetsChange }: PresetSwitcherProps) {
   const [loadState, setLoadState] = useState<LoadState>({ phase: "loading" });
   const [presets, setPresets] = useState<Preset[]>([]);
   const [activePresetId, setActivePresetId] = useState<string | null>(null);
@@ -36,6 +56,8 @@ export function PresetSwitcher() {
   const [managing, setManaging] = useState(false);
   /** `true` mientras el modal de "Nuevo preset" está abierto (bug/feature post Paso 5). */
   const [creating, setCreating] = useState(false);
+  /** `true` mientras el bloque muestra el selector/"Nuevo preset"/"Gestionar" (rediseño Paso 2/8, puramente UI). */
+  const [expanded, setExpanded] = useState(false);
 
   const isMounted = useRef(true);
   useEffect(() => {
@@ -44,6 +66,14 @@ export function PresetSwitcher() {
       isMounted.current = false;
     };
   }, []);
+
+  // Reporta presets/activePresetId a App.tsx en cada cambio (ver doc de
+  // `onPresetsChange` arriba) - efecto aparte del `load()` de abajo porque
+  // tambien debe dispararse tras `handleSwitch`/`handleCreateSubmit` (que
+  // actualizan `activePresetId` sin volver a llamar `load()`).
+  useEffect(() => {
+    onPresetsChange?.(presets, activePresetId);
+  }, [presets, activePresetId, onPresetsChange]);
 
   const load = useCallback(() => {
     Promise.all([window.l4d2Api.listPresets(), window.l4d2Api.getActivePresetId()])
@@ -180,80 +210,104 @@ export function PresetSwitcher() {
     return <p className={styles.notice}>No se pudieron cargar los presets: {loadState.message}</p>;
   }
 
+  const activePreset = presets.find((preset) => preset.id === activePresetId) ?? null;
+
   return (
-    <div className={styles.bar}>
-      <select
-        className={styles.select}
-        value={activePresetId ?? ""}
-        disabled={busy}
-        onChange={(event) => handleSwitch(event.target.value)}
-      >
-        {presets.map((preset) => (
-          <option key={preset.id} value={preset.id}>
-            {preset.name}
-          </option>
-        ))}
-      </select>
-
+    <div className={styles.block}>
+      <span className={styles.kicker}>Preset activo</span>
+      <span className={styles.name}>{activePreset?.name ?? "Sin preset activo"}</span>
+      <span className={styles.meta}>
+        {activePreset === null
+          ? "—"
+          : `${activePreset.entries.length} addon${activePreset.entries.length === 1 ? "" : "s"}`}
+      </span>
       <button
         type="button"
-        className={styles.button}
+        className={styles.changeButton}
         disabled={busy}
-        onClick={() => setCreating(true)}
+        onClick={() => setExpanded((prev) => !prev)}
       >
-        Nuevo preset
+        Cambiar preset {expanded ? "▴" : "▾"}
       </button>
 
-      {creating && (
-        <CreatePresetModal
-          busy={busy}
-          onCancel={() => setCreating(false)}
-          onSubmit={handleCreateSubmit}
-        />
-      )}
-
-      <button
-        type="button"
-        className={styles.button}
-        disabled={busy}
-        onClick={() => setManaging((prev) => !prev)}
-      >
-        {managing ? "Ocultar gestión" : "Gestionar presets"}
-      </button>
-
-      {notice !== null && <p className={styles.notice}>{notice}</p>}
-
-      {managing && (
-        <ul className={styles.manageList}>
-          {presets.map((preset) => (
-            <li key={preset.id} className={styles.manageRow}>
-              <span>
+      {expanded && (
+        <div className={styles.expanded}>
+          <select
+            className={styles.select}
+            value={activePresetId ?? ""}
+            disabled={busy}
+            onChange={(event) => handleSwitch(event.target.value)}
+          >
+            {presets.map((preset) => (
+              <option key={preset.id} value={preset.id}>
                 {preset.name}
-                {preset.id === activePresetId && <span className={styles.activeBadge}> (activo)</span>}
-              </span>
-              <span className={styles.manageActions}>
-                <button
-                  type="button"
-                  className={styles.button}
-                  disabled={busy}
-                  onClick={() => handleRename(preset)}
-                >
-                  Renombrar
-                </button>
-                {canDeletePreset(preset.id, activePresetId) && (
-                  <button
-                    type="button"
-                    className={styles.button}
-                    disabled={busy}
-                    onClick={() => handleDelete(preset)}
-                  >
-                    Eliminar
-                  </button>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            className={styles.button}
+            disabled={busy}
+            onClick={() => setCreating(true)}
+          >
+            Nuevo preset
+          </button>
+
+          {creating && (
+            <CreatePresetModal
+              busy={busy}
+              onCancel={() => setCreating(false)}
+              onSubmit={handleCreateSubmit}
+            />
+          )}
+
+          <button
+            type="button"
+            className={styles.button}
+            disabled={busy}
+            onClick={() => setManaging((prev) => !prev)}
+          >
+            {managing ? "Ocultar gestión" : "Gestionar presets"}
+          </button>
+
+          {notice !== null && <p className={styles.notice}>{notice}</p>}
+
+          {managing && (
+            <ul className={styles.manageList}>
+              {presets.map((preset) => (
+                <li key={preset.id} className={styles.manageRow}>
+                  <span>
+                    {preset.name}
+                    {preset.id === activePresetId && (
+                      <span className={styles.activeBadge}> (activo)</span>
+                    )}
+                  </span>
+                  <span className={styles.manageActions}>
+                    <button
+                      type="button"
+                      className={styles.button}
+                      disabled={busy}
+                      onClick={() => handleRename(preset)}
+                    >
+                      Renombrar
+                    </button>
+                    {canDeletePreset(preset.id, activePresetId) && (
+                      <button
+                        type="button"
+                        className={styles.button}
+                        disabled={busy}
+                        onClick={() => handleDelete(preset)}
+                      >
+                        Eliminar
+                      </button>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );

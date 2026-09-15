@@ -51,6 +51,14 @@ const NOTICES: Notice[] = [
   },
 ];
 
+/**
+ * Cantidad de avisos, para la píldora del riel (`App.tsx`, rediseño Paso
+ * 2/8: "▲ N avisos importantes"). Exportado aparte del componente para no
+ * duplicar el array `NOTICES` — el contenido/render de este componente NO
+ * cambia en este paso (se muda al primer arranque recién en el Paso 8).
+ */
+export const NOTICES_COUNT = NOTICES.length;
+
 export function TrustNotices() {
   return (
     <section className={styles.notices}>

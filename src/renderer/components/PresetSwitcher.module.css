@@ -1,9 +1,67 @@
-.bar {
+/*
+ * Bloque "preset activo" del riel (rediseño paso 2/8): reemplaza la vieja
+ * `.bar` (barra inline con <select> siempre visible, montada en la nav de
+ * App.tsx). Mismo criterio de aproximación por token más cercano que
+ * App.module.css (ver ese archivo) para las medidas del README que no caen
+ * justo en la escala --space-*.
+ */
+.block {
+  margin: 0 var(--space-6) var(--space-7);
+  padding: var(--space-5) var(--space-6);
+  background: linear-gradient(160deg, var(--color-section), var(--color-section-2));
+  border: 1px solid var(--color-section-border);
+  border-radius: var(--radius-md);
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kicker {
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-kicker);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-accent-soft);
+}
+
+.name {
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-xl); /* 14px, exacto al README */
+  color: var(--color-text);
+}
+
+.meta {
+  font-size: var(--fs-xs); /* 11px, exacto al README */
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-3);
+}
+
+.changeButton {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--color-text);
+  border: 1px solid var(--color-section-border);
+  border-radius: var(--radius-sm);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-sm); /* 11.5px, exacto al README */
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+}
+
+.changeButton:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.changeButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.expanded {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
-  margin-bottom: var(--space-4);
-  flex-wrap: wrap;
+  margin-top: var(--space-3);
 }
 
 .select {

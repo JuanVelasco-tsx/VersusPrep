@@ -1,35 +1,208 @@
-.app {
-  padding: 16px 24px;
+/*
+ * Shell de tres columnas (rediseño paso 2/8): riel fijo (214px) + centro
+ * flexible (min-width:0) + slot de panel derecho (304px). El ancho del
+ * riel/panel y la altura del shell son DIMENSIONES DE LAYOUT, no ritmo de
+ * espaciado — van como literales (mismo criterio que el tamaño de portada en
+ * AddonCover.module.css, Paso 1: no hay categoría de token para "tamaño de
+ * componente/columna"). El resto (paddings/gaps internos) usa los tokens
+ * migrados en el Paso 1.
+ *
+ * ALCANCE: este paso construye la ESTRUCTURA con los tokens disponibles, no
+ * una transcripción pixel-exacta de cada medida suelta del README de
+ * design-handoff/ — varias (p. ej. "12px"/"18px"/"14px" en el riel) no caen
+ * justo en la escala --space-* nueva (2/4/6/8/10/13/16/20/24), así que se
+ * usa el token más cercano en vez de hardcodear el número exacto. El pulido
+ * fino de cada pantalla llega en sus propios pasos (3/4/5/6).
+ */
+.shell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-family);
 }
 
-.title {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0 0 12px;
+/* ---------------------------------------------------------------------- */
+/* Riel izquierdo (214px, fijo)                                           */
+/* ---------------------------------------------------------------------- */
+
+.rail {
+  width: 214px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-7) 0;
+  background: var(--color-rail);
+  border-right: 1px solid var(--color-hairline);
+  overflow-y: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: 0 var(--space-7) var(--space-7);
+}
+
+.brandDot {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  box-shadow: var(--color-accent-glow);
+  flex-shrink: 0;
+}
+
+.brandText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.brandName {
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-xs); /* 11px, exacto al README */
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: var(--color-text);
+}
+
+.brandSub {
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-kicker); /* 9.5px, exacto al README */
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: var(--color-text-ghost);
+}
+
+.hairline {
+  height: 1px;
+  margin: 0 var(--space-7) var(--space-6);
+  background: var(--hairline-fade);
 }
 
 .nav {
   display: flex;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 var(--space-6);
+  margin-top: var(--space-6);
 }
 
-.navButton {
-  font-size: var(--font-size-base);
-  background: var(--color-surface-alt);
-  color: var(--color-text-subtle);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-4);
+.navItem,
+.navItemActive {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  font-weight: var(--fw-medium); /* 500/13px, exacto al README */
+  font-size: var(--fs-md);
+  /* `border: none` primero: un <button> nativo trae borde propio (UA
+     stylesheet) en los 4 lados - sin resetearlo antes, solo pisar
+     `border-left` (mas abajo) deja los otros 3 lados con el borde por
+     defecto del navegador. Bug real, encontrado en la verificacion visual
+     de este paso (capturas headless, no a simple vista). */
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: transparent;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  text-align: left;
+}
+
+.navItemActive {
+  color: var(--color-text);
+  background: var(--color-accent-wash);
+  border-left-color: var(--color-accent);
+}
+
+.navCount {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs); /* 11px, exacto al README */
+  color: inherit;
+  opacity: 0.8;
+}
+
+.railFooter {
+  margin-top: auto;
+  padding: var(--space-6) var(--space-6) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  position: relative;
+}
+
+.noticesPill {
+  width: 100%;
+  background: var(--color-notice-tint);
+  color: var(--color-notice-text);
+  border: 1px solid var(--color-notice-border);
+  border-radius: var(--radius-pill);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-sm);
+  padding: var(--space-3) var(--space-4);
   cursor: pointer;
 }
 
-.navButton:hover {
-  background: var(--color-surface);
+.noticesPill:hover {
+  filter: brightness(1.1);
 }
 
-.navButtonActive {
-  composes: navButton;
-  color: var(--color-text);
-  border-color: var(--color-accent);
+/*
+ * Popover simple (Paso 2): el contenido completo de TrustNotices se muda al
+ * primer arranque recién en el Paso 8 — por ahora solo se reubica DÓNDE se
+ * ve (popover en vez de franja fija arriba de la lista), sin tocar su
+ * render interno.
+ */
+.noticesPopover {
+  position: absolute;
+  left: var(--space-6);
+  right: var(--space-6);
+  bottom: 100%;
+  margin-bottom: var(--space-3);
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4);
+  z-index: 20;
+}
+
+.disclaimer {
+  font-size: var(--fs-micro);
+  color: var(--color-text-ghost);
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Columna central (flex:1) y slot de panel derecho (304px)               */
+/* ---------------------------------------------------------------------- */
+
+.center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: var(--space-7) var(--space-8);
+}
+
+.rightPanel {
+  width: 304px;
+  flex-shrink: 0;
+  background: var(--color-rail);
+  border-left: 1px solid var(--color-hairline);
+  overflow-y: auto;
+  padding: var(--space-7) var(--space-6);
+}
+
+.placeholder {
+  color: var(--color-text-faint);
+  font-size: var(--fs-base);
 }

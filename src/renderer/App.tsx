@@ -1,21 +1,52 @@
-// Capa UI (Seccion 21, Bloque 2 de la Tarea 21.1; nav de 21.2). Punto de
-// entrada del renderer: orquesta el layout de pagina y el toggle de vista; la
-// carga de datos y el estado real viven en AddonList/ActiveSetPanel, cada uno
-// por su cuenta (integracion desacoplada, opcion B - ver
-// Context/05-plan-seccion-21-restante.md).
+// Capa UI (Seccion 21, Bloque 2 de la Tarea 21.1; nav de 21.2; shell de tres
+// columnas del rediseño, Paso 2/8). Punto de entrada del renderer: orquesta
+// el layout de pagina (riel/centro/panel derecho) y el toggle de vista; la
+// carga de datos y el estado real viven en AddonList/ActiveSetPanel/
+// SettingsPanel, cada uno por su cuenta (integracion desacoplada, opcion B -
+// ver Context/05-plan-seccion-21-restante.md). Este paso SOLO reestructura
+// el shell que los envuelve - el contenido interno de esos tres componentes
+// no se toca (llega en los Pasos 3, 4 y 6).
 import { useCallback, useEffect, useState } from "react";
 
-import type { AddonManifestEntry } from "../main/domain/index.js";
+import type { AddonManifestEntry, Preset } from "../main/domain/index.js";
 import { ActiveSetPanel } from "./components/ActiveSetPanel.js";
 import { AddonList } from "./components/AddonList.js";
 import { LoadingIndicator } from "./components/LoadingIndicator.js";
 import { OperationOverlay, publishOperation } from "./components/OperationOverlay.js";
 import { PresetSwitcher } from "./components/PresetSwitcher.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
-import { TrustNotices } from "./components/TrustNotices.js";
+import { NOTICES_COUNT, TrustNotices } from "./components/TrustNotices.js";
 import styles from "./App.module.css";
 
-type View = "library" | "active" | "settings";
+type View = "library" | "active" | "presets" | "settings";
+
+/**
+ * Items del nav vertical del riel (README `2a`, "Nav vertical"). `count` es
+ * `null` cuando este paso todavia no tiene de donde sacar un numero real sin
+ * tocar el contenido interno de un componente que no le toca a este paso
+ * (Biblioteca: total escaneado, vive en `AddonList`, Paso 3) - un item con
+ * `count: null` simplemente no muestra contador, no un placeholder inventado.
+ */
+interface NavItemDef {
+  view: View;
+  label: string;
+}
+
+const NAV_ITEMS: readonly NavItemDef[] = [
+  { view: "library", label: "Biblioteca" },
+  { view: "active", label: "Activos" },
+  { view: "presets", label: "Presets" },
+  { view: "settings", label: "Configuración" },
+];
+
+/**
+ * Vistas que llevan el slot de panel derecho (README: `2a`/`2b` con "Estado
+ * del preset", `2d` con "Estado de detección"; `2c` Presets es "riel + una
+ * sola columna de contenido, sin panel derecho"). El contenido REAL del
+ * panel se conecta en los Pasos 3 (Biblioteca), 4 (Activos) y 6
+ * (Configuración) - acá el slot queda con un placeholder.
+ */
+const VIEWS_WITH_RIGHT_PANEL: ReadonlySet<View> = new Set(["library", "active", "settings"]);
 
 /**
  * `null` mientras no se determino si esta instancia arranco por un relanzo
@@ -195,53 +226,117 @@ export function App() {
     };
   }, []);
 
+  // (Paso 2, shell) presets/activePresetId reportados por PresetSwitcher
+  // (ver ese componente, `onPresetsChange`), para derivar los contadores de
+  // "Activos" y "Presets" del nav sin duplicar la llamada IPC que
+  // PresetSwitcher ya hace por su cuenta.
+  const [presetsInfo, setPresetsInfo] = useState<{
+    presets: Preset[];
+    activePresetId: string | null;
+  }>({ presets: [], activePresetId: null });
+  const handlePresetsChange = useCallback(
+    (presets: Preset[], activePresetId: string | null): void => {
+      setPresetsInfo({ presets, activePresetId });
+    },
+    [],
+  );
+  const activePreset =
+    presetsInfo.presets.find((preset) => preset.id === presetsInfo.activePresetId) ?? null;
+
+  // (Paso 2, shell) `true` mientras el popover de avisos del pie del riel
+  // esta abierto. Puramente UI - el contenido de `TrustNotices` no cambia,
+  // solo DONDE se ve (popover en vez de franja fija); se muda al primer
+  // arranque recien en el Paso 8.
+  const [noticesOpen, setNoticesOpen] = useState(false);
+
   return (
-    <main className={styles.app}>
-      <h1 className={styles.title}>L4D2 Versus Addon Manager</h1>
-      <nav className={styles.nav}>
-        <button
-          type="button"
-          className={view === "library" ? styles.navButtonActive : styles.navButton}
-          onClick={() => setView("library")}
-        >
-          Biblioteca
-        </button>
-        <button
-          type="button"
-          className={view === "active" ? styles.navButtonActive : styles.navButton}
-          onClick={() => setView("active")}
-        >
-          Activos
-        </button>
-        <button
-          type="button"
-          className={view === "settings" ? styles.navButtonActive : styles.navButton}
-          onClick={() => setView("settings")}
-        >
-          Configuración
-        </button>
-      </nav>
-      <PresetSwitcher />
-      <TrustNotices />
+    <div className={styles.shell}>
       <OperationOverlay />
-      {resuming === null && <LoadingIndicator message="Cargando..." />}
-      {resuming !== null && view === "library" && (
-        <AddonList
-          resuming={resuming}
-          pendingEntries={addonListConsumedPending ? null : pendingEntries}
-          onPendingConsumed={handleAddonListPendingConsumed}
-          pathsReady={pathsReady}
-          onPathsReady={handlePathsReady}
-        />
+
+      <aside className={styles.rail}>
+        <div className={styles.brand}>
+          <span className={styles.brandDot} aria-hidden="true" />
+          <span className={styles.brandText}>
+            <span className={styles.brandName}>Versus</span>
+            <span className={styles.brandSub}>Addon Manager</span>
+          </span>
+        </div>
+        <div className={styles.hairline} />
+
+        <PresetSwitcher onPresetsChange={handlePresetsChange} />
+
+        <nav className={styles.nav}>
+          {NAV_ITEMS.map((item) => {
+            const count =
+              item.view === "active"
+                ? (activePreset?.entries.length ?? null)
+                : item.view === "presets"
+                  ? presetsInfo.presets.length
+                  : null;
+            return (
+              <button
+                key={item.view}
+                type="button"
+                className={view === item.view ? styles.navItemActive : styles.navItem}
+                onClick={() => setView(item.view)}
+              >
+                <span>{item.label}</span>
+                {count !== null && <span className={styles.navCount}>{count}</span>}
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className={styles.railFooter}>
+          <button
+            type="button"
+            className={styles.noticesPill}
+            onClick={() => setNoticesOpen((prev) => !prev)}
+          >
+            ▲ {NOTICES_COUNT} avisos importantes
+          </button>
+          {noticesOpen && (
+            <div className={styles.noticesPopover}>
+              <TrustNotices />
+            </div>
+          )}
+          <p className={styles.disclaimer}>Proyecto fan-made. Sin relación con Valve.</p>
+        </div>
+      </aside>
+
+      <div className={styles.center}>
+        {resuming === null && <LoadingIndicator message="Cargando..." />}
+        {resuming !== null && view === "library" && (
+          <AddonList
+            resuming={resuming}
+            pendingEntries={addonListConsumedPending ? null : pendingEntries}
+            onPendingConsumed={handleAddonListPendingConsumed}
+            pathsReady={pathsReady}
+            onPathsReady={handlePathsReady}
+          />
+        )}
+        {resuming !== null && view === "active" && (
+          <ActiveSetPanel
+            resuming={resuming}
+            pendingEntries={activeSetConsumedPending ? null : pendingEntries}
+            onPendingConsumed={handleActiveSetPendingConsumed}
+          />
+        )}
+        {resuming !== null && view === "presets" && (
+          <p className={styles.placeholder}>
+            Gestión de presets — próximamente (Paso 5 del rediseño). Mientras tanto, usá
+            "Cambiar preset" en el riel.
+          </p>
+        )}
+        {resuming !== null && view === "settings" && <SettingsPanel />}
+      </div>
+
+      {VIEWS_WITH_RIGHT_PANEL.has(view) && (
+        <aside className={styles.rightPanel}>
+          {/* Contenido real: Paso 3 (Biblioteca), Paso 4 (Activos), Paso 6 (Configuración). */}
+          <p className={styles.placeholder}>Próximamente</p>
+        </aside>
       )}
-      {resuming !== null && view === "active" && (
-        <ActiveSetPanel
-          resuming={resuming}
-          pendingEntries={activeSetConsumedPending ? null : pendingEntries}
-          onPendingConsumed={handleActiveSetPendingConsumed}
-        />
-      )}
-      {resuming !== null && view === "settings" && <SettingsPanel />}
-    </main>
+    </div>
   );
 }
