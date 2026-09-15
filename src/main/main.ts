@@ -253,14 +253,25 @@ async function bootstrap(): Promise<void> {
     } else {
       void mainWindow.loadURL("http://localhost:5173");
     }
-    // (P-32, fix) Menu.setApplicationMenu(null) (mas arriba) saco el menu "Ver"
-    // por defecto de Electron, y con el se fue el atajo Ctrl+Shift+I/F12 para
-    // abrir las DevTools - efecto secundario no anticipado en ese momento. En
-    // dev (no empaquetado) las abrimos automaticamente al crear la ventana;
-    // en el build empaquetado/produccion NUNCA se llama (mismo guard
-    // `app.isPackaged` que ya usa el if/else de arriba para loadFile/loadURL).
+    // (P-32, fix; ajustado antes de la Beta) Menu.setApplicationMenu(null)
+    // (mas arriba) saco el menu "Ver" por defecto de Electron, y con el se
+    // fue el atajo Ctrl+Shift+I/F12 para abrir las DevTools. La version
+    // anterior de este fix las auto-abria en cada arranque en dev, lo cual
+    // no le suma nada al usuario verlas siempre - reemplazado acá por un
+    // atajo de teclado EXPLICITO (mismo par Ctrl+Shift+I / F12 de Chromium)
+    // que las abre/cierra bajo demanda, via toggleDevTools(). Mismo guard
+    // `!app.isPackaged` que el fix anterior: en el build empaquetado que
+    // llega a la comunidad, este listener ni siquiera se registra, asi que
+    // el atajo no existe ahi.
     if (!app.isPackaged) {
-      mainWindow.webContents.openDevTools();
+      mainWindow.webContents.on("before-input-event", (_event, input) => {
+        if (input.type !== "keyDown") return;
+        const isToggleCombo =
+          input.key === "F12" || (input.control && input.shift && input.key.toUpperCase() === "I");
+        if (isToggleCombo) {
+          mainWindow?.webContents.toggleDevTools();
+        }
+      });
     }
     // (DIAGNOSTICO crash.log) Captura un crash del PROCESO DE RENDER (que hoy no
     // se registra en ningun lado): si el renderer muere (crash/oom/killed), la
