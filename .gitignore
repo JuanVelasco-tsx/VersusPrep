@@ -90,3 +90,8 @@ perf-resultados.txt
 # Material de referencia del rediseño (Claude Design), no codigo del proyecto.
 # Se consulta localmente paso a paso, no se versiona.
 design-handoff/
+
+# ---- Cache del hook de revision de diseño (impeccable) ----
+# .impeccable/config.json (las excepciones ignore-value/ignore-rule/ignore-file)
+# SI se versiona; el cache de resultados por archivo es regenerable, no.
+.impeccable/hook.cache.json
