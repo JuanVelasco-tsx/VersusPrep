@@ -3,10 +3,21 @@ node_modules/
 
 # ---- Salida de build / empaquetado (Electron + electron-builder) ----
 dist/
-build/
 out/
 release/
 *.tsbuildinfo
+
+# build/ (a diferencia de dist/out/release) es TAMBIÉN la carpeta de INSUMOS
+# de electron-builder (buildResources: build, electron-builder.yml) - el
+# ícono de la app vive ahí y sí debe versionarse (si no, desaparece en un
+# clone nuevo). Por eso NO se ignora la carpeta entera (`build/` con barra
+# excluiría el directorio y git ni entraría a mirar excepciones puntuales
+# adentro - gotcha documentado de gitignore): se ignora su CONTENIDO
+# (`build/*`) y se excepciona el ícono puntual. Cualquier otro archivo que
+# caiga en build/ en el futuro (salida real de alguna herramienta) sigue
+# ignorado por defecto.
+build/*
+!build/icon.png
 
 # ---- VPK: nunca versionar archivos VPK ----
 # Regla general: excluye cualquier .vpk en cualquier carpeta del repo por

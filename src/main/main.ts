@@ -245,6 +245,18 @@ async function bootstrap(): Promise<void> {
       // "ready-to-show", para no mostrar primero la ventana chica y despues
       // agrandarla de golpe (evita el parpadeo).
       show: false,
+      // (Ícono de la app) Solo en DEV: el .exe empaquetado ya lleva el
+      // ícono embebido por electron-builder (build/icon.png -> .ico
+      // multi-resolución generado automáticamente al packagear, ver
+      // electron-builder.yml), así que Windows lo toma solo para la barra
+      // de tareas en el build de producción sin necesidad de este option.
+      // `build/` NO viaja dentro del paquete (electron-builder.yml solo
+      // incluye dist/**/* + package.json), por eso esto NO funcionaría en
+      // un build empaquetado igual - de ahí el guard `!app.isPackaged`
+      // (mismo criterio que ya usa el resto del archivo para DevTools/
+      // loadURL). `__dirname` acá es dist/src/main/, tres niveles arriba
+      // es la raíz del proyecto (donde vive build/ en un checkout de dev).
+      ...(!app.isPackaged && { icon: path.join(__dirname, "../../../build/icon.png") }),
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
